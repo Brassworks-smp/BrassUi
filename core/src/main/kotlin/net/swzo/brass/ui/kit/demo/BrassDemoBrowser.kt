@@ -62,7 +62,21 @@ import java.awt.image.BufferedImage
  * reason rather than vanishing.
  */
 class BrassDemoBrowser(
-    private val onClose: () -> Unit = {},
+    // Named onExit, not onClose: this is a BrassScreen, and UScreen already declares a no-arg onClose(),
+    // so a property called onClose here compiles but `onClose()` binds to that inherited method instead
+    // of invoking the lambda — the Close button silently called the wrong thing.
+    private val onExit: () -> Unit = {},
+    /** Name of the demo to open on first mount, or null to start on the first in the list. */
+    initial: String? = null,
+    /**
+     * Capture the opened demo to a PNG and close, once it has drawn a few frames.
+     *
+     * For a scripted single-shot — `-Dui.shot=node-editor` on the desktop — that regenerates exactly one
+     * screenshot without anyone clicking. This is deliberately one demo at a time and writes a file you
+     * then look at, which is the same contract the manual shutter keeps; it is not the old batch sweep
+     * this browser was built to replace.
+     */
+    private val autoShot: Boolean = false,
 ) : BrassScreen() {
 
     private val demos = BrassDemos.ALL
@@ -70,6 +84,15 @@ class BrassDemoBrowser(
     // Not `selected`: BrassWidget already has a `selected` flag, and this class's inner widgets would
     // resolve the wrong one — silently, since both are in scope.
     private var current: BrassDemo = demos.first()
+
+    /** Index to open on, resolved from the [initial] name against the demo list. */
+    private val startIndex: Int =
+        initial?.let { name -> demos.indexOfFirst { it.name.equals(name, ignoreCase = true) } }
+            ?.takeIf { it >= 0 } ?: 0
+
+    /** Frames drawn since mount, for the [autoShot] delay. */
+    private var shotFrames = 0
+    private var shotDone = false
 
     /** The live demo instance, or null before the first mount. */
     private var mounted: UIComponent? = null
@@ -107,7 +130,7 @@ class BrassDemoBrowser(
 
     init {
         buildChrome()
-        select(0)
+        select(startIndex)
     }
 
     // ---- layout ----------------------------------------------------------------------------------
@@ -199,7 +222,7 @@ class BrassDemoBrowser(
         // hand-driven now: once you have clicked a demo into some state there is otherwise no way back
         // to the untouched version short of leaving the screen and returning.
         control("Reset") { mount() }
-        control("Close") { onClose() }
+        control("Close") { onExit() }
 
         if (!BrassDemoCapture.available) {
             // Disabled with a reason rather than hidden: the buttons being visibly off is what tells
@@ -391,6 +414,14 @@ class BrassDemoBrowser(
         pendingStatus.getAndSet(null)?.let { say(it) }
 
         super.onDrawScreen(matrixStack, mouseX, mouseY, partialTicks)
+
+        // Scripted single-shot: let the demo settle a few frames (its entrance runs, colours land), take
+        // the picture, then close. Guarded so it fires exactly once.
+        if (autoShot && !shotDone) {
+            shotFrames++
+            if (shotFrames == 30) screenshot()
+            if (shotFrames >= 40) { shotDone = true; onExit() }
+        }
 
         // After the screen has drawn, so the frame captured is the one just shown rather than the
         // widget's state a frame ahead of it. Paced to FPS by real time rather than grabbing every

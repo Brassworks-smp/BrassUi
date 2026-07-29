@@ -617,7 +617,7 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         // does not fit in a panel floating inside this one. Closing it comes back here.
         // Closing the browser comes straight back to a fresh gallery, so the section reads as a
         // round trip rather than a dead end.
-        host.open(BrassDemoBrowser { host.open(BrassGalleryScreen(host)) })
+        host.open(BrassDemoBrowser(onExit = { host.open(BrassGalleryScreen(host)) }))
     }
 
     private fun openTable() {

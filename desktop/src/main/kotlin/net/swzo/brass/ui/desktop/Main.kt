@@ -5,8 +5,10 @@ import gg.essential.universal.UResolution
 import gg.essential.universal.UScreen
 import gg.essential.universal.standalone.runUniversalCraft
 import net.swzo.brass.ui.demo.BrassGalleryScreen
+import net.swzo.brass.ui.kit.demo.BrassDemoBrowser
 import net.swzo.brass.ui.kit.demo.BrassDemoCapture
 import net.swzo.brass.ui.kit.platform.BrassPlatform
+import org.lwjgl.glfw.GLFW
 
 /**
  * Entry point for the standalone desktop demo.
@@ -52,7 +54,23 @@ fun main() {
         // straight off the GL framebuffer. Point output at the wiki with -Dbrassui.shots.dir=...
         BrassDemoCapture.bind(DesktopDemoCapture())
 
-        UScreen.displayScreen(BrassGalleryScreen(DesktopDemoHost()))
+        // -Dui.demo=<name> jumps straight into the demo browser on that widget (like -Dui.section does
+        // for the gallery); -Dui.shot=<name> does the same, captures a PNG and quits. Both are for
+        // working on one widget without clicking through the gallery every launch.
+        val jumpTo = System.getProperty("ui.demo")
+        val shotOf = System.getProperty("ui.shot")
+        val screen = if (jumpTo != null || shotOf != null) {
+            val glfwId = window.glfwWindow.glfwId
+            BrassDemoBrowser(
+                onExit = { GLFW.glfwSetWindowShouldClose(glfwId, true) },
+                initial = jumpTo ?: shotOf,
+                autoShot = shotOf != null,
+            )
+        } else {
+            BrassGalleryScreen(DesktopDemoHost())
+        }
+
+        UScreen.displayScreen(screen)
         window.renderScreenUntilClosed()
     }
 }

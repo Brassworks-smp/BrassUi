@@ -37,6 +37,7 @@ import net.swzo.brass.ui.kit.surface.BrassChart
 import net.swzo.brass.ui.kit.surface.BrassChat
 import net.swzo.brass.ui.kit.surface.BrassPanel
 import net.swzo.brass.ui.kit.surface.BrassEmptyState
+import net.swzo.brass.ui.kit.node.BrassNodeEditor
 import net.swzo.brass.ui.kit.surface.BrassLoading
 import net.swzo.brass.ui.kit.surface.BrassProgressBar
 import net.swzo.brass.ui.kit.surface.BrassTable
@@ -92,7 +93,7 @@ object BrassDemos {
      * would run every widget's constructor on the first touch of this object.
      */
     private val SOURCES: List<BrassDemoSource> = listOf(
-        // ---- buttons and clickable controls -----------------------------------------------------
+        // Buttons and clickable controls
         BrassButton,
         BrassSquareButton,
         BrassIconButton,
@@ -105,7 +106,7 @@ object BrassDemos {
         BrassDropdown,
         BrassScrollSelector,
 
-        // ---- value inputs -----------------------------------------------------------------------
+        // Value inputs
         BrassSlider,
         BrassRangeSlider,
         BrassNumberInput,
@@ -115,7 +116,7 @@ object BrassDemos {
         BrassChips,
         BrassColorPicker,
 
-        // ---- text and static surfaces -----------------------------------------------------------
+        // Text and static surfaces
         BrassLabel,
         BrassWrappedLabel,
         BrassTag,
@@ -125,12 +126,12 @@ object BrassDemos {
         BrassCodeView,
         BrassMarkdown,
 
-        // ---- progress and motion ----------------------------------------------------------------
+        // Progress and motion
         BrassProgressBar,
         BrassLoading,
         BrassSkeleton,
 
-        // ---- data surfaces ----------------------------------------------------------------------
+        // Data surfaces
         BrassBarChart,
         BrassChart,
         BrassTable,
@@ -138,7 +139,10 @@ object BrassDemos {
         BrassAccordion,
         BrassChat,
 
-        // ---- layout -----------------------------------------------------------------------------
+        // Canvas
+        BrassNodeEditor,
+
+        // Layout
         BrassPanel,
         BrassFlow,
         BrassGrid,
@@ -147,7 +151,7 @@ object BrassDemos {
         BrassPagination,
         BrassImage,
 
-        // ---- game content -----------------------------------------------------------------------
+        // Game content
         // Item, effect and inventory render off-world; entity, block and player head need a client
         // level and mark themselves worldRequired, which the browser flags before you capture one.
         BrassItem,

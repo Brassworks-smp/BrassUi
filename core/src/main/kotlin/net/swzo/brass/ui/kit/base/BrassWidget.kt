@@ -361,31 +361,24 @@ abstract class BrassWidget(
         super.draw(matrixStack)
     }
 
-    /** The sharp-cornered raised keycap: fill + inner border + outer ring + bottom edge. */
+    /**
+     * The sharp-cornered raised keycap: fill + inner border + outer ring + bottom edge.
+     *
+     * The stack itself now lives in [net.swzo.brass.ui.kit.paint.BrassKeycap] so composites that paint
+     * their own keycap-shaped regions (the node editor) wear the identical chrome; this just hands it the
+     * widget's live animated colours and press state.
+     */
     private fun drawKeycap(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
         // the lip loses a pixel as the key goes down
-        val lip = (press * PRESS_TRAVEL).roundToInt()
-        fun fill(x1: Int, y1: Int, x2: Int, y2: Int, c: Color) = BrassPaint.rect(m, x1, y1, x2, y2, c)
-        if (!transparent) fill(x, y, x + w, y + h, bgColor)
-        val border = borderColor
-        fill(x, y, x + w, y + 1, border)             // top
-        fill(x, y + h - 1, x + w, y + h, border)     // bottom
-        fill(x, y, x + 1, y + h, border)             // left
-        fill(x + w - 1, y, x + w, y + h, border)     // right
-        if (chrome == BrassChrome.FLAT) return
-        val outer = outerColor
-        fill(x - 1, y - 1, x + w + 1, y, outer)      // outer top
-        fill(x - 1, y, x, y + h, outer)              // outer left
-        fill(x + w, y, x + w + 1, y + h, outer)      // outer right
-        // bottom edge - soft shadow, then a coloured (accent) or dark (default) lip
-        fill(x, y + h + 1, x + w, y + h + 4 - lip, SOFT_SHADOW)
-        fill(x - 1, y + h, x + w + 1, y + h + 3 - lip, outer)
-        if (accent.isDefault) {
-            fill(x, y + h, x + w, y + h + 2 - lip, bgColor)
-            fill(x, y + h, x + w, y + h + 2 - lip, SOFT_SHADOW)
-        } else {
-            fill(x, y + h, x + w, y + h + 2 - lip, bottomColor)
-        }
+        val lip = (press * PRESS_TRAVEL).roundToInt().toFloat()
+        net.swzo.brass.ui.kit.paint.BrassKeycap.draw(
+            m, x.toFloat(), y.toFloat(), w.toFloat(), h.toFloat(),
+            bg = bgColor, border = borderColor, outer = outerColor, bottom = bottomColor,
+            transparent = transparent,
+            flat = chrome == BrassChrome.FLAT,
+            defaultAccent = accent.isDefault,
+            lip = lip,
+        )
     }
 
     /**
