@@ -49,7 +49,7 @@ jobs:
         if: env.HAS_TOKEN == 'true'
         run: |
           git clone --depth 1 \
-            "https://x-access-token:${{ secrets.BRASSUIREACT_TOKEN }}@github.com/Brassworks-smp/BrassUiReact.git" \
+            "https://x-access-token:${{ secrets.BRASSUIREACT_TOKEN }}@github.com/salem-5/BrassUiReact.git" \
             "${{ github.workspace }}/../BrassUiReact"
 
       - name: Build brassui-react
