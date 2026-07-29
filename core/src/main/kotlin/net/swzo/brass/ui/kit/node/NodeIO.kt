@@ -63,6 +63,7 @@ object NodeIO {
 
         val links = JsonArray()
         for (l in graph.links) {
+            if (l.closing) continue
             val o = JsonObject()
             o.addProperty("from", l.from.id)
             o.addProperty("fromPort", l.fromPort)

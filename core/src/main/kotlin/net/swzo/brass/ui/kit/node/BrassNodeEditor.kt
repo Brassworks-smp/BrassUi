@@ -80,7 +80,7 @@ class BrassNodeEditor(
     private sealed interface Mode {
         object Idle : Mode
         object Pan : Mode
-        class DragNode(val node: GraphNode, val grabX: Float, val grabY: Float) : Mode
+        class DragNode(val node: GraphNode, val grabX: Float, val grabY: Float, val startX: Float, val startY: Float) : Mode
         class Wire(val node: GraphNode, val port: Int) : Mode
         class Scrub(val onDrag: (Float) -> Unit) : Mode
         class Box(val startX: Float, val startY: Float) : Mode
@@ -103,9 +103,10 @@ class BrassNodeEditor(
     private var tipTitle: String? = null
     private var tipBody: String? = null
 
-    // undo / clipboard
-    private val undo = ArrayDeque<String>()
-    private val redo = ArrayDeque<String>()
+    // history / clipboard
+    private val history = CommandStack(graph)
+    /** The graph snapshot taken when a live edit (a scrub, a wire drag) began, pushed on release. */
+    private var editBefore: String? = null
     private var clipboard: String? = null
 
     init {
@@ -126,6 +127,8 @@ class BrassNodeEditor(
 
             portAt(wx, wy)?.let { (node, port, isOut) ->
                 select(node, additive = false)
+                // Capture now; a completed wire or a wire dragged off an input is pushed on release.
+                editBefore = graph.toJson()
                 if (isOut) { mode = Mode.Wire(node, port); wireEndWx = wx; wireEndWy = wy }
                 else graph.links.firstOrNull { it.to === node && it.toPort == port }?.let { ex ->
                     graph.links.remove(ex); mode = Mode.Wire(ex.from, ex.fromPort); wireEndWx = wx; wireEndWy = wy
@@ -139,21 +142,20 @@ class BrassNodeEditor(
                 if (hit.field.opensEditor) {
                     hit.field.showEditor(Window.of(this), this, originX + lx, originY + ly)
                 } else {
-                    pushUndo()
+                    editBefore = graph.toJson()
                     val drag = hit.field.onPress(wx, hit.x1, hit.x2)
-                    if (drag != null) mode = Mode.Scrub(drag)
+                    if (drag != null) mode = Mode.Scrub(drag) else pushEditSnapshot("Edit")
                 }
                 return@onMouseClick
             }
 
             nodeAt(wx, wy)?.let { node ->
                 if (chevronAt(wx, wy, node)) {
-                    node.collapsed = !node.collapsed; select(node, additive = false); return@onMouseClick
+                    history.record("Collapse") { node.collapsed = !node.collapsed }; select(node, additive = false); return@onMouseClick
                 }
                 bringToFront(node)
                 select(node, additive = shift)
-                pushUndo()
-                mode = Mode.DragNode(node, wx - node.x, wy - node.y)
+                mode = Mode.DragNode(node, wx - node.x, wy - node.y, node.x, node.y)
                 return@onMouseClick
             }
 
@@ -185,12 +187,20 @@ class BrassNodeEditor(
                 is Mode.Wire -> {
                     val (lx, ly) = mouseLocal()
                     portAt(worldX(lx), worldY(ly))?.let { (node, port, isOut) ->
-                        if (!isOut) { pushUndo(); graph.link(m.node, m.port, node, port)?.let { it.flash = 1f } }
+                        if (!isOut) graph.link(m.node, m.port, node, port)?.let { it.flash = 1f }
                     }
+                    // Covers a completed wire and a wire pulled off an input and dropped in empty space.
+                    pushEditSnapshot("Wire")
                 }
+                is Mode.DragNode -> {
+                    val cmd = MoveNodesCommand(listOf(MoveNodesCommand.Move(m.node.id, m.startX, m.startY, m.node.x, m.node.y)))
+                    if (cmd.moved) history.push(cmd)
+                }
+                is Mode.Scrub -> pushEditSnapshot("Edit")
                 is Mode.Box -> selectInBox()
                 else -> {}
             }
+            editBefore = null
             pressedField = null
             mode = Mode.Idle
         }
@@ -216,8 +226,8 @@ class BrassNodeEditor(
     /** Serialize the whole graph to the native JSON format. */
     fun save(): String = graph.toJson()
 
-    /** Replace the graph from [json] and frame it. */
-    fun load(json: String) { graph.load(json); framed = false }
+    /** Replace the graph from [json] and frame it; the undo history starts fresh with the new graph. */
+    fun load(json: String) { graph.load(json); framed = false; history.clear() }
 
     // Keyboard
 
@@ -269,17 +279,19 @@ class BrassNodeEditor(
         val sel = graph.nodes.filter { it.selected }
         val selLinks = graph.links.filter { it.selected }
         if (sel.isEmpty() && selLinks.isEmpty()) return
-        pushUndo()
-        selLinks.forEach { disconnect(it) }
-        for (n in sel) { graph.links.removeAll { it.from === n || it.to === n }; n.closing = true; n.pop.target = 0f }
+        history.record("Delete") {
+            selLinks.forEach { disconnect(it) }
+            for (n in sel) { graph.links.removeAll { it.from === n || it.to === n }; n.closing = true; n.pop.target = 0f }
+        }
     }
 
     private fun duplicateSelection() {
         val sel = graph.nodes.filter { it.selected }
         if (sel.isEmpty()) return
-        pushUndo()
-        clearSelection()
-        for (n in sel) graph.spawn(n.type.id, n.x + 18f, n.y + 18f)?.let { copy -> n.copyValuesTo(copy); copy.selected = true }
+        history.record("Duplicate") {
+            clearSelection()
+            for (n in sel) graph.spawn(n.type.id, n.x + 18f, n.y + 18f)?.let { copy -> n.copyValuesTo(copy); copy.selected = true }
+        }
     }
 
     private fun copySelection() {
@@ -292,23 +304,29 @@ class BrassNodeEditor(
 
     private fun paste() {
         val json = clipboard ?: return
-        pushUndo()
-        clearSelection()
-        val tmp = NodeGraph.fromJson(registry, json)
-        for (n in tmp.nodes) graph.spawn(n.type.id, n.x + 24f, n.y + 24f)?.let { copy -> n.copyValuesTo(copy); copy.selected = true }
+        history.record("Paste") {
+            clearSelection()
+            val tmp = NodeGraph.fromJson(registry, json)
+            for (n in tmp.nodes) graph.spawn(n.type.id, n.x + 24f, n.y + 24f)?.let { copy -> n.copyValuesTo(copy); copy.selected = true }
+        }
     }
 
     private fun bringToFront(node: GraphNode) {
         if (graph.nodes.lastOrNull() !== node) { graph.nodes.remove(node); graph.nodes.add(node) }
     }
 
-    // Undo
+    // History
 
-    private fun pushUndo() {
-        undo.addLast(graph.toJson()); if (undo.size > 60) undo.removeFirst(); redo.clear()
+    private fun undo() = history.undo()
+    private fun redo() = history.redo()
+
+    /** Push a [SnapshotCommand] for a live edit that began at [editBefore], if it changed anything. */
+    private fun pushEditSnapshot(label: String) {
+        val before = editBefore ?: return
+        editBefore = null
+        val after = graph.toJson()
+        if (before != after) history.push(SnapshotCommand(before, after, label))
     }
-    private fun undo() { if (undo.isEmpty()) return; redo.addLast(graph.toJson()); graph.load(undo.removeLast()) }
-    private fun redo() { if (redo.isEmpty()) return; undo.addLast(graph.toJson()); graph.load(redo.removeLast()) }
 
     // Context menus
 
@@ -318,16 +336,16 @@ class BrassNodeEditor(
         nodeAt(wx, wy)?.let { node ->
             select(node, additive = false)
             BrassContextMenu(listOf(
-                BrassContextMenu.Item(if (node.collapsed) "Expand" else "Collapse") { node.collapsed = !node.collapsed },
+                BrassContextMenu.Item(if (node.collapsed) "Expand" else "Collapse") { history.record("Collapse") { node.collapsed = !node.collapsed } },
                 BrassContextMenu.Item("Duplicate") { select(node, false); duplicateSelection() },
-                BrassContextMenu.Item("Disconnect") { pushUndo(); graph.links.filter { it.from === node || it.to === node }.forEach { disconnect(it) } },
+                BrassContextMenu.Item("Disconnect") { history.record("Disconnect") { graph.links.filter { it.from === node || it.to === node }.forEach { disconnect(it) } } },
                 BrassContextMenu.Item("Delete") { select(node, false); deleteSelection() },
             )).show(root, sx, sy)
             return
         }
         wireAt(wx, wy)?.let { link ->
             BrassContextMenu(listOf(
-                BrassContextMenu.Item("Delete wire") { pushUndo(); disconnect(link) },
+                BrassContextMenu.Item("Delete wire") { history.record("Delete wire") { disconnect(link) } },
             )).show(root, sx, sy)
             return
         }
@@ -336,7 +354,7 @@ class BrassNodeEditor(
 
     private fun openAddMenu(lx: Float, ly: Float, wx: Float, wy: Float) {
         val items = registry.all().map { type ->
-            BrassContextMenu.Item(type.title) { pushUndo(); graph.spawn(type.id, wx, wy)?.let { select(it, false) } }
+            BrassContextMenu.Item(type.title) { history.record("Add ${type.title}") { graph.spawn(type.id, wx, wy)?.let { select(it, false) } } }
         }
         if (items.isNotEmpty()) BrassContextMenu(items, rowWidth = 120).show(Window.of(this), originX + lx, originY + ly)
     }
