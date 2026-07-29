@@ -49,8 +49,16 @@ jobs:
         if: env.HAS_TOKEN == 'true'
         run: |
           git clone --depth 1 \
-            "https://x-access-token:${{ secrets.BRASSUIREACT_TOKEN }}@github.com/salem-5/BrassUiReact.git" \
+            "https://x-access-token:${{ secrets.BRASSUIREACT_TOKEN }}@github.com/Brassworks-smp/BrassUiReact.git" \
             "${{ github.workspace }}/../BrassUiReact"
+
+      - name: Build brassui-react
+        if: env.HAS_TOKEN == 'true'
+        working-directory: ${{ github.workspace }}/../BrassUiReact
+        run: |
+          npm ci
+          npm run build    # -> dist/ (index.js + index.d.ts), which its package.json points at.
+                           # Its dist is gitignored, so the wiki can't resolve `brassui-react` until it exists.
 
       - name: Build the site
         if: env.HAS_TOKEN == 'true'
