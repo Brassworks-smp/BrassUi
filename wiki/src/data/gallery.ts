@@ -12,16 +12,15 @@
 export type Screen = {
   /** The capture's file stem (its showcaseName) and `public/screenshots/screens/<slug>.png`. */
   slug: string;
+  /** Short label shown under the shot. Not a description - this is a showcase, the picture leads. */
   title: string;
-  blurb: string;
 };
 
 export const SCREENS: Screen[] = [
-  {
-    slug: "gallery",
-    title: "Gallery screen",
-    blurb:
-      "The widget gallery itself - a nav rail of sections over a live overview, every control in the " +
-      "toolkit on one screen. Captured straight off the running UI and cut out onto transparency.",
-  },
+  { slug: "gallery", title: "Gallery screen" },
+  { slug: "exampleteamsui", title: "War room admin" },
+  { slug: "skinchangerui", title: "Skin studio" },
+  { slug: "showcase", title: "Title Machine" },
+  { slug: "prettyinpink", title: "Rose accent" },
+  { slug: "areyousure", title: "Teleport request" },
 ];

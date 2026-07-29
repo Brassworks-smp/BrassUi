@@ -55,112 +55,92 @@ export function DevTools() {
       <PageBody className="stagger">
         <p className="max-w-3xl text-sm leading-relaxed text-ink-600">
           Every <Link to="/elementa" className="text-brass-300 hover:text-brass-200">BrassScreen</Link>{" "}
-          ships with a layout inspector and two ways to photograph what is on it - the same tools that
-          produced the screenshots across this wiki. They work identically in game and in the standalone
-          desktop app, and none of it needs a special build.
+          ships with a layout inspector and two capture tools - the same ones that shot this wiki. They
+          work the same in game and on the desktop, no special build.
         </p>
 
         <Block
           icon={ScanLine}
           title="Layout inspector"
-          lead="A browser-style dev panel: the component tree, a live perf readout, and a Chrome box model on whatever you point at."
+          lead="Browser-style dev panel: component tree, live perf readout, box model on hover."
         >
           <P>
-            Press <Kbd>Ctrl+Shift+D</Kbd> on any screen. A panel docks to the right edge and the content
-            squeezes over to meet it, exactly like a browser&apos;s dev tools. The panel carries a compact
-            performance readout - fps and frame time, painted widgets, quads, components and glyph runs -
-            the full UI tree, colour-tagged by kind and expand/collapse, and a details pane for the
-            selected element. Over the finished frame it draws a box model for whatever is under the
-            cursor: content in blue, padding in green, and the keycap&apos;s bleed as margin in orange.
+            <Kbd>Ctrl+Shift+D</Kbd> docks a panel to the right edge. It shows a perf readout (fps, frame
+            time, painted widgets/quads/components/glyphs), the full UI tree tagged by kind, and details
+            for the selected element. On hover it draws a box model: content blue, padding green, margin
+            orange.
           </P>
           <Figure
             src="screenshots/dev/devmode.png"
             alt="The brassui layout inspector docked to the gallery"
             caption={
               <>
-                The inspector open on the desktop gallery. Right: the docked panel - perf readout, the
-                component tree with a <Mono>BrassButton</Mono> selected, and its details (position, size,
-                flags). Left: every widget outlined, with the picked button&apos;s box model and a metadata
-                tooltip.
+                The inspector on the desktop gallery: docked panel with a <Mono>BrassButton</Mono>{" "}
+                selected, every widget outlined, box model and tooltip on the pick.
               </>
             }
           />
           <P>
-            Two toggles live in the panel header. <strong>Outlines</strong> turns the blue box grid on
-            every widget on and off - on by default, since seeing the whole layout at once is most of the
-            point, off when you want to read one element against the real UI. <strong>Pick</strong> is
-            Chrome&apos;s inspect-element arrow: the next click selects whatever is under the cursor (and
-            still activates it), then reveals it in the tree.
-          </P>
-          <P>
-            It is careful not to lie about its own cost: the panel draws under a layer that pauses the stats
-            collector, so opening the inspector never moves the numbers it reports.
+            Two header toggles: <strong>Outlines</strong> shows the box grid on every widget (on by
+            default); <strong>Pick</strong> is Chrome&apos;s inspect arrow - next click selects and reveals
+            in the tree. The panel pauses the stats collector while it draws, so it never skews its own
+            numbers.
           </P>
         </Block>
 
         <Block
           icon={Camera}
           title="Widget capture - the demo browser"
-          lead="Every widget declares a demo beside itself; the browser stages it live and the shutter reads it back off the frame."
+          lead="Stages a widget's declared demo live; the shutter reads it back off the frame."
         >
           <P>
-            The captures on each widget page come from here. A widget declares a <Mono>BrassDemo</Mono> -
-            how to build one, at what size, on what surface - and the demo browser lays that out live so you
-            can drive it by hand: open the accordion, drag the slider, type in the field, then capture the
-            state you want. Reach it from the gallery&apos;s <Mono>Demos</Mono> section (or{" "}
-            <Mono>/brassui demo &lt;name&gt;</Mono> in game).
+            The per-widget shots come from here. Each widget declares a <Mono>BrassDemo</Mono>; the browser
+            stages it live so you can drive it - open the accordion, drag the slider - then capture. Reach
+            it from the gallery&apos;s <Mono>Demos</Mono> section (or <Mono>/brassui demo &lt;name&gt;</Mono>{" "}
+            in game).
           </P>
           <Figure
             src="screenshots/dev/demo-browser.png"
             alt="The demo browser with a button demo staged"
             caption={
               <>
-                The demo browser: pick a widget on the left, it stages live in the centre, and{" "}
-                <Mono>Screenshot</Mono> / <Mono>Record</Mono> capture it. The caption shows the demo id and
-                its exact size - here <Mono>button · 146 × 36</Mono>.
+                Pick a widget, it stages in the centre, <Mono>Screenshot</Mono> / <Mono>Record</Mono>{" "}
+                capture it - here <Mono>button · 146 × 36</Mono>.
               </>
             }
           />
           <P>
-            <Mono>Screenshot</Mono> (<Kbd>Ctrl+S</Kbd>) writes a PNG of the exact rectangle the widget
-            occupies; <Mono>Record</Mono> (<Kbd>Ctrl+R</Kbd>) captures until you stop - a run that moves
-            becomes a GIF, a run that sits still collapses back to a PNG. It reads the widget straight off
-            the framebuffer rather than re-drawing it offscreen, because a scissor clip is resolved in
-            screen pixels: a widget that masks its contents only comes out right photographed where it
-            actually rendered. The file is named for the demo&apos;s stable id, which is the same id this
-            wiki looks for under <Mono>public/screenshots</Mono>.
+            <Mono>Screenshot</Mono> (<Kbd>Ctrl+S</Kbd>) writes a PNG of the widget&apos;s exact rectangle;{" "}
+            <Mono>Record</Mono> (<Kbd>Ctrl+R</Kbd>) captures until you stop - a moving run becomes a GIF, a
+            still one a PNG. It reads straight off the framebuffer, so clipped widgets come out right. Files
+            are named for the demo id this wiki looks up under <Mono>public/screenshots</Mono>.
           </P>
         </Block>
 
         <Block
           icon={ImageDown}
           title="Showcase capture - a whole screen, isolated"
-          lead="Photograph an entire screen and cut it out onto transparency, background dropped."
+          lead="Photograph an entire screen, cut out onto transparency."
         >
           <P>
-            Where the demo browser captures one widget, the showcase capture takes a <em>whole screen</em>{" "}
-            for a hero shot. Press <Kbd>Ctrl+Shift+S</Kbd> on any screen (or right-click the gallery and
-            choose <Mono>Capture showcase</Mono>). It writes a transparent PNG of just the brassui pixels -
-            the game world, or whatever sat behind the UI, dropped.
+            <Kbd>Ctrl+Shift+S</Kbd> on any screen (or right-click the gallery &rarr;{" "}
+            <Mono>Capture showcase</Mono>) writes a transparent PNG of just the brassui pixels, background
+            dropped - for a hero shot of a whole screen instead of one widget.
           </P>
           <Figure
             src="screenshots/screens/gallery.png"
             alt="The gallery screen isolated onto transparency"
             caption={
               <>
-                The gallery captured this way - the window cut out onto transparency, its own soft shadow
-                and rounded corners preserved in the alpha. The same shot leads the{" "}
-                <Link to="/gallery" className="text-brass-300 hover:text-brass-200">Gallery</Link> page.
+                The gallery cut out onto transparency, shadow and rounded corners kept in the alpha. Leads
+                the <Link to="/gallery" className="text-brass-300 hover:text-brass-200">Gallery</Link> page.
               </>
             }
           />
           <P>
-            The framebuffer has no usable alpha once the GUI has drawn, so the cut-out is not a colour key.
-            The capture repaints the UI twice in one frame - once over black, once over white - and the gap
-            between the two readings is exactly how much background still showed through, which recovers a
-            true per-pixel alpha. Anti-aliased corners and the window&apos;s shadow come out as real partial
-            transparency rather than a hard fringe. Drop the result into{" "}
-            <Mono>public/screenshots/screens/</Mono> and it appears on the gallery page.
+            The GUI leaves no usable alpha, so it isn&apos;t a colour key: the UI is repainted over black
+            and over white in one frame, and the difference recovers true per-pixel alpha - clean corners
+            and shadow, no fringe. Drop the result into <Mono>public/screenshots/screens/</Mono>.
           </P>
           <Code title="capture.kt">{`// point either capture at the wiki, and the files land where the pages look:
 // -Dbrassui.shots.dir=<repo>/wiki/public/screenshots           # widget shots
