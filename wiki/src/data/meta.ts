@@ -3,7 +3,7 @@
 
 export const META = {
   "version": "0.1.0",
-  "elementaVersion": "745",
+  "elementaVersion": "751+fix-basicfontrenderer-elementav9",
   "universalcraftVersion": "505",
   "owner": "Brassworks-smp",
   "repo": "BrassUi",
