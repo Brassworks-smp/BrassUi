@@ -75,4 +75,19 @@ class BrassCommandStackTest {
         stack.push(MoveNodesCommand(listOf(MoveNodesCommand.Move(n.id, 0f, 0f, 80f, 0f))))
         assertFalse(stack.canRedo, "a new edit drops the redo branch")
     }
+
+    @Test
+    fun `command stack reports edits undo and redo for collaboration`() {
+        val g = NodeGraph(registry())
+        val n = g.spawn("time", 0f, 0f)!!
+        val labels = mutableListOf<String>()
+        val stack = CommandStack(g, onChange = labels::add)
+
+        n.x = 20f
+        stack.push(MoveNodesCommand(listOf(MoveNodesCommand.Move(n.id, 0f, 0f, 20f, 0f))))
+        stack.undo()
+        stack.redo()
+
+        assertEquals(listOf("Move", "Undo Move", "Redo Move"), labels)
+    }
 }

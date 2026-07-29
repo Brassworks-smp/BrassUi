@@ -10,6 +10,7 @@ import { WidgetDetail } from "./pages/WidgetDetail";
 import { Gallery } from "./pages/Gallery";
 import { Elementa } from "./pages/Elementa";
 import { DevTools } from "./pages/DevTools";
+import { NodeEditor } from "./pages/NodeEditor";
 
 export function App() {
   return (
@@ -20,6 +21,7 @@ export function App() {
         <Route path="/architecture" element={<Architecture />} />
         <Route path="/elementa" element={<Elementa />} />
         <Route path="/dev-tools" element={<DevTools />} />
+        <Route path="/node-editor" element={<NodeEditor />} />
         <Route path="/design" element={<DesignGuide />} />
         <Route path="/layout" element={<LayoutGuide />} />
         <Route path="/widgets" element={<Widgets />} />

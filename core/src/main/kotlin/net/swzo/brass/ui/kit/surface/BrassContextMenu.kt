@@ -34,6 +34,9 @@ class BrassContextMenu private constructor(
     private val panel = Panel()
     private var root: UIComponent? = null
 
+    /** Optional completion hook for live custom panels such as colour pickers. Called exactly once. */
+    var onDismiss: (() -> Unit)? = null
+
     private val rowH = 17
     private val pad = 3
 
@@ -199,6 +202,7 @@ class BrassContextMenu private constructor(
         val r = root ?: return
         r.removeChild(this)
         root = null
+        onDismiss?.invoke()
     }
 
     /** The menu's keycap backing panel. */

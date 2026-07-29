@@ -5,6 +5,8 @@ import gg.essential.elementa.components.ScrollComponent
 import gg.essential.elementa.components.UIContainer
 import gg.essential.elementa.constraints.CenterConstraint
 import gg.essential.elementa.constraints.SiblingConstraint
+import gg.essential.elementa.dsl.basicHeightConstraint
+import gg.essential.elementa.dsl.basicWidthConstraint
 import gg.essential.elementa.dsl.basicXConstraint
 import gg.essential.elementa.dsl.childOf
 import gg.essential.elementa.dsl.constrain
@@ -127,6 +129,7 @@ class BrassDemoBrowser(
 
     private lateinit var shutter: BrassButton
     private lateinit var record: BrassButton
+    private lateinit var stageCard: Card
 
     init {
         buildChrome()
@@ -172,7 +175,7 @@ class BrassDemoBrowser(
             navRows.add(row)
         }
 
-        val stageCard = Card().constrain {
+        stageCard = Card().constrain {
             x = basicXConstraint { listCard.getRight() + 12f }
             y = 28.pixels()
             width = 100.percent() - (LIST_W + 36f).pixels()
@@ -261,8 +264,16 @@ class BrassDemoBrowser(
     private fun mount() {
         stage.clearChildren()
         stage.constrain {
-            width = current.outerWidth.pixels()
-            height = current.outerHeight.pixels()
+            width = if (current.shrinkToFit) {
+                basicWidthConstraint {
+                    minOf(current.outerWidth, (stageCard.getWidth() - STAGE_MARGIN * 2f).coerceAtLeast(1f))
+                }
+            } else current.outerWidth.pixels()
+            height = if (current.shrinkToFit) {
+                basicHeightConstraint {
+                    minOf(current.outerHeight, (stageCard.getHeight() - STAGE_MARGIN * 2f).coerceAtLeast(1f))
+                }
+            } else current.outerHeight.pixels()
         }
         val content = current.build()
         val root: UIComponent = if (current.card) BrassDemoCard(content, current.fitCard) else content
@@ -495,6 +506,7 @@ class BrassDemoBrowser(
     private companion object {
         const val LIST_W = 150f
         const val BTN_W = 76f
+        const val STAGE_MARGIN = 8f
 
         /**
          * Frames per second a recording captures *and* declares.

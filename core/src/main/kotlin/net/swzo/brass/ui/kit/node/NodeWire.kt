@@ -49,6 +49,8 @@ object NodeWire {
         sel: Float,
         flash: Float,
         dashed: Boolean = false,
+        arrow: Boolean = false,
+        symbol: String? = null,
     ) {
         val h = handle(x0, x3)
         val cx1 = x0 + h; val cy1 = y0
@@ -74,6 +76,21 @@ object NodeWire {
                 val (px, py) = bezier(x0, y0, cx1, cy1, cx2, cy2, x3, y3, t)
                 cell(ctx.m, floor(px - 1f), floor(py - 1f), CORE, mote)
             }
+        }
+
+        if (arrow) {
+            val (ax, ay) = bezier(x0, y0, cx1, cy1, cx2, cy2, x3, y3, 0.76f)
+            NodeGlyph.arrow(ctx.m, ax, ay, left = false, color = Colors.mix(color, Color.WHITE, 0.25f))
+        }
+        if (symbol != null && ctx.zoom > 0.65f) {
+            val (sx, sy) = bezier(x0, y0, cx1, cy1, cx2, cy2, x3, y3, 0.5f)
+            val label = net.swzo.brass.ui.kit.text.BrassFont.fit(ctx.host, symbol, 18f)
+            net.swzo.brass.ui.kit.text.BrassFont.draw(
+                ctx.m, ctx.host, label,
+                sx - net.swzo.brass.ui.kit.text.BrassFont.width(ctx.host, label) / 2f,
+                sy - net.swzo.brass.ui.kit.text.BrassFont.LINE - 2f,
+                Colors.UI_TEXT_DARK,
+            )
         }
     }
 

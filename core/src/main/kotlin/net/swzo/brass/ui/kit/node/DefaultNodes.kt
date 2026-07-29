@@ -18,7 +18,12 @@ object DefaultNodes {
     fun registry(): NodeRegistry = NodeRegistry().apply {
         register(NodeType("time", "Time", BrassAccent.CALM,
             outputs = listOf(Port("value", PortType.NUMBER)),
-            makeFields = { listOf(EnumField("wave", "Wave", listOf("Sine", "Saw", "Square")), SliderField("speed", "Speed", 0.4f)) }))
+            makeFields = { listOf(EnumField("wave", "Wave", listOf("Sine", "Saw", "Square")), SliderField("speed", "Speed", 0.4f)) },
+            executor = NodeExecutor { ctx ->
+                java.util.concurrent.CompletableFuture.completedFuture(
+                    NodeResult(outputs = mapOf(0 to ((ctx.field("speed") as? Number)?.toFloat() ?: 0f))),
+                )
+            }))
 
         register(NodeType("noise", "Noise", BrassAccent.DEFAULT,
             inputs = listOf(Port("seed", PortType.NUMBER)), outputs = listOf(Port("n", PortType.NUMBER)),
@@ -32,6 +37,13 @@ object DefaultNodes {
                     ToggleField("ridged", "Ridged", true).onlyWhen { type.current != "Worley" },
                     StepperField("cells", "Cells", 4, 1, 16).onlyWhen { type.current == "Worley" },
                 )
+            },
+            executor = NodeExecutor { ctx ->
+                val seed = (ctx.inputs.first(0) as? Number)?.toDouble() ?: 0.0
+                val scale = (ctx.field("scale") as? Number)?.toDouble() ?: 0.5
+                java.util.concurrent.CompletableFuture.completedFuture(
+                    NodeResult(outputs = mapOf(0 to ((kotlin.math.sin(seed * 12.9898) + 1.0) * 0.5 * scale))),
+                )
             }))
 
         register(NodeType("gradient", "Gradient", BrassAccent.BRASS,
@@ -42,10 +54,18 @@ object DefaultNodes {
                     ColorField("b", "B", Colors.PATINA_400),
                     EnumField("ease", "Ease", listOf("Linear", "Smooth", "Steps")),
                 )
+            },
+            executor = NodeExecutor { ctx ->
+                val t = ((ctx.inputs.first(0) as? Number)?.toFloat() ?: 0f).coerceIn(0f, 1f)
+                val a = java.awt.Color((ctx.field("a") as? Number)?.toInt() ?: Colors.BRASS_400.rgb, true)
+                val b = java.awt.Color((ctx.field("b") as? Number)?.toInt() ?: Colors.PATINA_400.rgb, true)
+                java.util.concurrent.CompletableFuture.completedFuture(
+                    NodeResult(outputs = mapOf(0 to Colors.mix(a, b, t))),
+                )
             }))
 
         register(NodeType("transform", "Transform", BrassAccent.DEFAULT,
-            inputs = listOf(Port("pos", PortType.VECTOR), Port("amount", PortType.NUMBER)),
+            inputs = listOf(Port("pos", PortType.VECTOR, optional = true), Port("amount", PortType.NUMBER, optional = true)),
             outputs = listOf(Port("out", PortType.VECTOR)),
             makeFields = {
                 val space = EnumField("space", "Space", listOf("Local", "World"))
@@ -55,10 +75,23 @@ object DefaultNodes {
                     StepperField("octaves", "Octaves", 3, 1, 8),
                     ToggleField("clamp", "Clamp", false).onlyWhen { space.current == "World" },
                 )
+            },
+            executor = NodeExecutor { ctx ->
+                java.util.concurrent.CompletableFuture.completedFuture(
+                    NodeResult(outputs = mapOf(0 to (ctx.inputs.first(0) ?: ctx.field("offset")))),
+                )
             }))
 
         register(NodeType("output", "Output", BrassAccent.DANGER,
             inputs = listOf(Port("colour", PortType.COLOR), Port("displace", PortType.VECTOR)),
-            makeFields = { listOf(ToggleField("preview", "Preview", true), SliderField("exposure", "Exposure", 0.5f)) }))
+            makeFields = { listOf(ToggleField("preview", "Preview", true), SliderField("exposure", "Exposure", 0.5f)) },
+            executor = NodeExecutor { java.util.concurrent.CompletableFuture.completedFuture(NodeResult()) }))
+
+        register(NodeType("sequence", "Sequence", BrassAccent.CALM,
+            inputs = listOf(Port("in", PortType.FLOW, shape = PortShape.DOT, optional = true, showLabel = false)),
+            outputs = listOf(Port("then", PortType.FLOW, shape = PortShape.CROSS, maxConnections = 8, showLabel = false)),
+            executor = NodeExecutor {
+                java.util.concurrent.CompletableFuture.completedFuture(NodeResult(eventOutputs = setOf(0)))
+            }))
     }
 }

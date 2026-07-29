@@ -3,9 +3,11 @@ package net.swzo.brass.ui.kit.node
 import gg.essential.elementa.UIComponent
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
+import net.swzo.brass.ui.kit.base.BrassAmbientFade
 import net.swzo.brass.ui.kit.base.BrassEased
 import net.swzo.brass.ui.kit.input.BrassColorPicker
 import net.swzo.brass.ui.kit.paint.BrassCard
+import net.swzo.brass.ui.kit.paint.BrassKeycap
 import net.swzo.brass.ui.kit.paint.BrassPaint
 import net.swzo.brass.ui.kit.paint.BrassSwatch
 import net.swzo.brass.ui.kit.surface.BrassContextMenu
@@ -61,6 +63,8 @@ abstract class NodeField(val key: String, val label: String) {
     /** Eased hover / press, driven by the editor and read by [drawControl] - the same feel as a keycap. */
     val hover = BrassEased(0f, speed = 14f)
     val press = BrassEased(0f, speed = 26f)
+    /** 0 = folded out of the node, 1 = fully present. Drives row reflow and card height together. */
+    val reveal = BrassEased(1f, speed = 16f)
 
     /** Gate this field's visibility on a predicate (usually another field's value). Chains. */
     fun onlyWhen(predicate: () -> Boolean): NodeField {
@@ -77,6 +81,9 @@ abstract class NodeField(val key: String, val label: String) {
      * returns a drag handler that keeps scrubbing as the cursor moves.
      */
     open fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit)? = null
+
+    /** Finish a live interaction. Sliders use this to resume eased programmatic motion after scrubbing. */
+    open fun onRelease() {}
 
     /** Whether a press should open a floating editor instead - a colour swatch, a text field. */
     open val opensEditor: Boolean get() = false
@@ -100,16 +107,59 @@ abstract class NodeField(val key: String, val label: String) {
     }
 }
 
+/**
+ * The raised chrome shared by every inline node control. It is the same [BrassKeycap] stack as a
+ * normal widget and [BrassSwatch], including the outer ring, bottom lip, eased hover colours and
+ * one-pixel press travel.
+ */
+private object NodeControlChrome {
+    data class Bounds(val x1: Float, val y1: Float, val x2: Float, val y2: Float)
+
+    fun draw(
+        ctx: NodeDrawCtx,
+        x1: Float,
+        y1: Float,
+        x2: Float,
+        y2: Float,
+        hover: Float,
+        press: Float,
+    ): Bounds {
+        val travel = press.coerceIn(0f, 1f)
+        val top = y1 + travel
+        val bottom = y2 + travel
+        val bg = Colors.mix(Colors.UI_ELEMENT_BG, Colors.UI_ELEMENT_BG_HOVER, hover)
+        val border = Colors.mix(Colors.UI_ELEMENT_BORDER, Colors.UI_ELEMENT_BORDER_HOVER, hover)
+        BrassKeycap.draw(
+            ctx.m, x1, top, x2 - x1, bottom - top,
+            bg = bg,
+            border = border,
+            outer = Colors.UI_OUTER_BORDER,
+            bottom = Colors.mix(bg, Color.BLACK, 0.45f),
+            defaultAccent = true,
+            lip = travel,
+        )
+        return Bounds(x1, top, x2, bottom)
+    }
+}
+
 /** An on/off switch, drawn as a miniature toggle track + grip. */
 class ToggleField(key: String, label: String, var on: Boolean = false) : NodeField(key, label) {
+    private val slide = BrassEased(if (on) 1f else 0f, speed = 15f)
+
     override fun drawControl(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, h: Float, p: Float) {
-        val tw = 22f
+        slide.target = if (on) 1f else 0f
+        val amount = slide.advance()
+        val tw = 30f
         val t1 = x2 - tw
-        val (cy1, cy2) = centre(y1, y2, 12f)
-        BrassCard.trackShell(ctx.m, t1, cy1, x2, cy2, track = if (on) Colors.BRASS_700 else Colors.UI_ELEMENT_BG)
-        val kw = (x2 - t1) / 2f
-        val kx = if (on) x2 - kw else t1
-        BrassCard.grip(ctx.m, kx, cy1 - 1f, kx + kw, cy2 + 1f, glow = if (on) 1f else h)
+        val (cy1, cy2) = centre(y1, y2, NodeLayout.FIELD_CONTROL_H)
+        val b = NodeControlChrome.draw(ctx, t1, cy1, x2, cy2, h, p)
+        val ix1 = b.x1 + 3f; val ix2 = b.x2 - 3f
+        val iy1 = b.y1 + 3f; val iy2 = b.y2 - 3f
+        BrassCard.filledTrack(ctx.m, ix1, iy1, ix2, iy2, amount)
+        val knob = (iy2 - iy1).coerceAtLeast(4f)
+        val travel = (ix2 - ix1 - knob).coerceAtLeast(0f)
+        val kx = ix1 + travel * amount
+        BrassCard.grip(ctx.m, kx, iy1 - 1f, kx + knob, iy2 + 1f, glow = maxOf(h, amount * 0.65f))
     }
     override fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit)? { on = !on; return null }
     override fun tip() = "$label: ${if (on) "on" else "off"}"
@@ -129,22 +179,33 @@ class SliderField(
     var value: Float = 0.5f,
     private val readout: (Float) -> String = { "" },
 ) : NodeField(key, label) {
+    private val displayed = BrassEased(value.coerceIn(0f, 1f), speed = 18f)
+    private var scrubbing = false
+
     override fun drawControl(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, h: Float, p: Float) {
-        val (cy1, cy2) = centre(y1, y2, 12f)
-        BrassCard.filledTrack(ctx.m, x1, cy1, x2, cy2, value)
-        val kx = x1 + 1f + (x2 - x1 - 2f) * value.coerceIn(0f, 1f)
-        BrassCard.grip(ctx.m, kx - 2f, cy1 - 1f, kx + 2f, cy2 + 1f, glow = 0.5f + 0.5f * maxOf(h, p))
+        displayed.target = value.coerceIn(0f, 1f)
+        if (scrubbing) displayed.snapTo(displayed.target) else displayed.advance()
+        val amount = displayed.value
+        val (cy1, cy2) = centre(y1, y2, NodeLayout.FIELD_CONTROL_H)
+        val b = NodeControlChrome.draw(ctx, x1, cy1, x2, cy2, h, p)
+        val ix1 = b.x1 + 3f; val ix2 = b.x2 - 3f
+        val iy1 = b.y1 + 3f; val iy2 = b.y2 - 3f
+        BrassCard.filledTrack(ctx.m, ix1, iy1, ix2, iy2, amount)
+        val kx = ix1 + (ix2 - ix1) * amount
+        BrassCard.grip(ctx.m, kx - 2f, iy1 - 1f, kx + 2f, iy2 + 1f, glow = maxOf(h, p))
         val txt = readout(value)
         if (txt.isNotEmpty() && ctx.zoom > 0.6f) {
             BrassFont.draw(ctx.m, ctx.host, txt, x2 - BrassFont.width(ctx.host, txt) - 3f,
-                (cy1 + cy2) / 2f - BrassFont.LINE / 2f, Colors.UI_TEXT_HOVER)
+                (b.y1 + b.y2) / 2f - BrassFont.LINE / 2f, Colors.UI_TEXT_HOVER)
         }
     }
     override fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit) {
-        val set = { w: Float -> value = ((w - (x1 + 1f)) / (x2 - x1 - 2f)).coerceIn(0f, 1f) }
+        scrubbing = true
+        val set = { w: Float -> value = ((w - (x1 + 3f)) / (x2 - x1 - 6f)).coerceIn(0f, 1f) }
         set(wx)
         return set
     }
+    override fun onRelease() { scrubbing = false }
     override fun tip() = "$label: ${(value * 100).toInt()}%"
     override fun encode(): Any = value
     override fun decode(v: Any?) { value = (v as? Number)?.toFloat() ?: value }
@@ -152,17 +213,31 @@ class SliderField(
 
 /** A cycler over [options], drawn as a mini keycap with prev/next arrows. */
 class EnumField(key: String, label: String, val options: List<String>, var index: Int = 0) : NodeField(key, label) {
+    private val change = BrassEased(1f, speed = 22f)
+    private var previous = current
+
     val current: String get() = options[index.coerceIn(0, options.size - 1)]
-    fun next() { index = (index + 1) % options.size }
-    fun prev() { index = (index - 1 + options.size) % options.size }
+    fun next() = changeTo((index + 1) % options.size)
+    fun prev() = changeTo((index - 1 + options.size) % options.size)
+
+    private fun changeTo(next: Int) {
+        if (next == index) return
+        previous = current
+        index = next
+        change.snapTo(0f)
+        change.target = 1f
+    }
+
     override fun drawControl(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, h: Float, p: Float) {
-        val (cy1, cy2) = centre(y1, y2, 13f)
-        BrassCard.miniKeycap(ctx.m, x1, cy1, x2, cy2, hot = h > 0.4f || p > 0.2f)
-        NodeGlyph.arrow(ctx.m, x1 + 4f, (cy1 + cy2) / 2f, left = true)
-        NodeGlyph.arrow(ctx.m, x2 - 4f, (cy1 + cy2) / 2f, left = false)
-        val txt = BrassFont.fit(ctx.host, current, x2 - x1 - 16f)
-        BrassFont.draw(ctx.m, ctx.host, txt, (x1 + x2) / 2f - BrassFont.width(ctx.host, txt) / 2f,
-            (cy1 + cy2) / 2f - BrassFont.LINE / 2f + p * 1f, Colors.UI_TEXT)
+        val (cy1, cy2) = centre(y1, y2, NodeLayout.FIELD_CONTROL_H)
+        val b = NodeControlChrome.draw(ctx, x1, cy1, x2, cy2, h, p)
+        NodeGlyph.arrow(ctx.m, x1 + 4f, (b.y1 + b.y2) / 2f, left = true)
+        NodeGlyph.arrow(ctx.m, x2 - 4f, (b.y1 + b.y2) / 2f, left = false)
+        val amount = change.advance()
+        animatedValueText(
+            ctx, previous, current, amount,
+            x1 + 8f, x2 - 8f, (b.y1 + b.y2) / 2f,
+        )
     }
     override fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit)? {
         if (wx < (x1 + x2) / 2f) prev() else next(); return null
@@ -172,6 +247,8 @@ class EnumField(key: String, label: String, val options: List<String>, var index
     override fun decode(v: Any?) {
         val i = options.indexOf(v as? String)
         index = if (i >= 0) i else ((v as? Number)?.toInt() ?: index).coerceIn(0, options.size - 1)
+        previous = current
+        change.snapTo(1f)
     }
 }
 
@@ -180,24 +257,67 @@ class StepperField(
     key: String, label: String,
     var value: Int = 0, val min: Int = 0, val max: Int = 9, val step: Int = 1,
 ) : NodeField(key, label) {
-    fun inc() { value = (value + step).coerceAtMost(max) }
-    fun dec() { value = (value - step).coerceAtLeast(min) }
+    private val change = BrassEased(1f, speed = 22f)
+    private var previous = value.toString()
+
+    fun inc() = changeTo((value + step).coerceAtMost(max))
+    fun dec() = changeTo((value - step).coerceAtLeast(min))
+
+    private fun changeTo(next: Int) {
+        if (next == value) return
+        previous = value.toString()
+        value = next
+        change.snapTo(0f)
+        change.target = 1f
+    }
+
     override fun drawControl(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, h: Float, p: Float) {
-        val (cy1, cy2) = centre(y1, y2, 13f)
-        val cy = (cy1 + cy2) / 2f
-        BrassCard.miniKeycap(ctx.m, x1, cy1, x2, cy2, hot = h > 0.4f || p > 0.2f)
+        val (cy1, cy2) = centre(y1, y2, NodeLayout.FIELD_CONTROL_H)
+        val b = NodeControlChrome.draw(ctx, x1, cy1, x2, cy2, h, p)
+        val cy = (b.y1 + b.y2) / 2f
         BrassFont.draw(ctx.m, ctx.host, "-", x1 + 4f, cy - BrassFont.LINE / 2f, Colors.UI_TEXT)
         BrassFont.draw(ctx.m, ctx.host, "+", x2 - 6f, cy - BrassFont.LINE / 2f, Colors.UI_TEXT)
-        val txt = value.toString()
-        BrassFont.draw(ctx.m, ctx.host, txt, (x1 + x2) / 2f - BrassFont.width(ctx.host, txt) / 2f,
-            cy - BrassFont.LINE / 2f + p * 1f, Colors.UI_TEXT)
+        animatedValueText(ctx, previous, value.toString(), change.advance(), x1 + 10f, x2 - 10f, cy)
     }
     override fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit)? {
         if (wx < (x1 + x2) / 2f) dec() else inc(); return null
     }
     override fun tip() = "$label: $value"
     override fun encode(): Any = value
-    override fun decode(v: Any?) { value = (v as? Number)?.toInt()?.coerceIn(min, max) ?: value }
+    override fun decode(v: Any?) {
+        value = (v as? Number)?.toInt()?.coerceIn(min, max) ?: value
+        previous = value.toString()
+        change.snapTo(1f)
+    }
+}
+
+private fun animatedValueText(
+    ctx: NodeDrawCtx,
+    previous: String,
+    current: String,
+    amount: Float,
+    x1: Float,
+    x2: Float,
+    cy: Float,
+) {
+    fun draw(text: String, y: Float, alpha: Float) {
+        if (alpha <= 0.01f) return
+        val fitted = BrassFont.fit(ctx.host, text, x2 - x1)
+        val saved = BrassAmbientFade.current
+        BrassAmbientFade.current = saved * alpha
+        BrassFont.draw(
+            ctx.m, ctx.host, fitted,
+            (x1 + x2) / 2f - BrassFont.width(ctx.host, fitted) / 2f,
+            y - BrassFont.LINE / 2f, Colors.UI_TEXT,
+        )
+        BrassAmbientFade.current = saved
+    }
+
+    // One label occupies the slot at a time. The previous slide animation drew two pixel-font words
+    // through each other, which reads as a smear at this scale; a brisk hand-off stays crisp.
+    val split = 0.42f
+    if (amount < split) draw(previous, cy, 1f - amount / split)
+    else draw(current, cy, ((amount - split) / (1f - split)).coerceIn(0f, 1f))
 }
 
 /**
@@ -207,10 +327,12 @@ class StepperField(
  */
 class ColorField(key: String, label: String, var color: Color) : NodeField(key, label) {
     override fun drawControl(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, h: Float, p: Float) {
-        val (cy1, cy2) = centre(y1, y2, 13f)
+        val (baseY1, baseY2) = centre(y1, y2, NodeLayout.FIELD_CONTROL_H)
+        val cy1 = baseY1 + p
+        val cy2 = baseY2 + p
         // A clean colour keycap, the way the theme swatches read; the hex lives in the tooltip so the
         // chip stays pixel-clean rather than carrying text that fights the pixel-art surface.
-        BrassSwatch.draw(ctx.m, x1, cy1, x2, cy2, color, hot = maxOf(h, p), lip = p * 1.5f)
+        BrassSwatch.draw(ctx.m, x1, cy1, x2, cy2, color, hot = maxOf(h, p), lip = p)
     }
     override val opensEditor: Boolean get() = true
     override fun showEditor(root: UIComponent, host: UIComponent, sx: Float, sy: Float) {
@@ -236,17 +358,17 @@ class Vec2Field(
     private var comp = 0
 
     override fun drawControl(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, h: Float, p: Float) {
-        val (cy1, cy2) = centre(y1, y2, 13f)
+        val (cy1, cy2) = centre(y1, y2, NodeLayout.FIELD_CONTROL_H)
         val mid = (x1 + x2) / 2f
         half(ctx, x1, cy1, mid - 1f, cy2, x, h, p)
         half(ctx, mid + 1f, cy1, x2, cy2, y, h, p)
     }
 
     private fun half(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, v: Float, h: Float, p: Float) {
-        BrassCard.miniKeycap(ctx.m, x1, y1, x2, y2, hot = h > 0.4f)
+        val b = NodeControlChrome.draw(ctx, x1, y1, x2, y2, h, p)
         val txt = BrassFont.fit(ctx.host, fmt(v), x2 - x1 - 4f)
         BrassFont.draw(ctx.m, ctx.host, txt, (x1 + x2) / 2f - BrassFont.width(ctx.host, txt) / 2f,
-            (y1 + y2) / 2f - BrassFont.LINE / 2f + p * 1f, Colors.UI_TEXT)
+            (b.y1 + b.y2) / 2f - BrassFont.LINE / 2f, Colors.UI_TEXT)
     }
 
     override fun onPress(wx: Float, x1: Float, x2: Float): (Float) -> Unit {
@@ -278,11 +400,12 @@ class Vec2Field(
 class ButtonField(key: String, label: String, private val text: String, private val onClick: () -> Unit) :
     NodeField(key, label) {
     override fun drawControl(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, h: Float, p: Float) {
-        val (cy1, cy2) = centre(y1, y2, 13f)
-        BrassCard.miniKeycap(ctx.m, x1, cy1, x2, cy2, hot = h > 0.4f || p > 0.2f)
+        val (cy1, cy2) = centre(y1, y2, NodeLayout.FIELD_CONTROL_H)
+        val b = NodeControlChrome.draw(ctx, x1, cy1, x2, cy2, h, p)
         val txt = BrassFont.fit(ctx.host, text, x2 - x1 - 6f)
         BrassFont.draw(ctx.m, ctx.host, txt, (x1 + x2) / 2f - BrassFont.width(ctx.host, txt) / 2f,
-            (cy1 + cy2) / 2f - BrassFont.LINE / 2f + p * 1f, if (h > 0.4f) Colors.UI_TEXT_HOVER else Colors.UI_TEXT)
+            (b.y1 + b.y2) / 2f - BrassFont.LINE / 2f,
+            Colors.mix(Colors.UI_TEXT, Colors.UI_TEXT_HOVER, h))
     }
     override fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit)? { onClick(); return null }
     override fun tip() = label

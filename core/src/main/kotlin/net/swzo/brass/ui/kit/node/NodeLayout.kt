@@ -9,39 +9,50 @@ object NodeLayout {
 
     const val HEADER = 18f
     const val PORT_ROW = 15f
-    const val FIELD_ROW = 16f
+    const val FIELD_ROW = 22f
+    const val FIELD_CONTROL_H = 16f
     const val PAD = 8f
     const val CTRL_W = 66f
     const val GRID = 24f
     const val PORT_R = 4f
     const val PORT_HIT = 7f
 
-    fun portRows(node: GraphNode): Int = maxOf(node.type.inputs.size, node.type.outputs.size)
+    fun portRows(node: GraphNode): Int = maxOf(
+        node.type.inputs.count { !it.hidden },
+        node.type.outputs.count { !it.hidden },
+    )
 
     /** Height of the header + ports band (never folds). */
     fun baseHeight(node: GraphNode): Float = HEADER + 4f + portRows(node) * PORT_ROW + 6f
 
-    private fun visN(node: GraphNode): Int = node.visibleFields().size
-
     /** Height of the fields block when fully expanded, or 0 when there are none. */
     fun fieldsHeight(node: GraphNode): Float {
-        val n = visN(node)
-        return if (n > 0) 1f + 5f + n * FIELD_ROW + 4f else 0f
+        val rows = node.fields.sumOf { it.reveal.value.toDouble() }.toFloat()
+        val presence = node.fields.maxOfOrNull { it.reveal.value } ?: 0f
+        return (1f + 5f + 4f) * presence + rows * FIELD_ROW
     }
 
     /** Live height, folding the fields block away as the node rolls up. */
     fun height(node: GraphNode): Float = baseHeight(node) + fieldsHeight(node) * (1f - node.roll.value)
 
-    fun portY(node: GraphNode, i: Int): Float = node.y + HEADER + 4f + i * PORT_ROW + PORT_ROW / 2f
+    private fun portY(node: GraphNode, ports: List<Port>, i: Int): Float {
+        val row = ports.take(i).count { !it.hidden }
+        return node.y + HEADER + 4f + row * PORT_ROW + PORT_ROW / 2f
+    }
+
+    fun inputY(node: GraphNode, i: Int): Float = portY(node, node.type.inputs, i)
+    fun outputY(node: GraphNode, i: Int): Float = portY(node, node.type.outputs, i)
     fun inputX(node: GraphNode): Float = node.x
     fun outputX(node: GraphNode): Float = node.x + node.width
 
     fun fieldsTop(node: GraphNode): Float = node.y + baseHeight(node) + 1f + 5f
 
-    /** The full row rect of visible field [row]: `[x1,y1,x2,y2]` in world units. */
-    fun fieldRow(node: GraphNode, row: Int): FloatArray {
-        val y1 = fieldsTop(node) + row * FIELD_ROW
-        return floatArrayOf(node.x + PAD, y1, node.x + node.width - PAD, y1 + FIELD_ROW - 3f)
+    /** The animated row rect for [field], after every preceding row has reflowed. */
+    fun fieldRow(node: GraphNode, field: NodeField): FloatArray {
+        val index = node.fields.indexOf(field).coerceAtLeast(0)
+        val offset = node.fields.take(index).sumOf { it.reveal.value.toDouble() }.toFloat() * FIELD_ROW
+        val y1 = fieldsTop(node) + offset
+        return floatArrayOf(node.x + PAD, y1, node.x + node.width - PAD, y1 + FIELD_CONTROL_H)
     }
 
     /** Left edge of a field row's control area (the right [CTRL_W] of the row). */

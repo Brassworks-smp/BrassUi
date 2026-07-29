@@ -65,7 +65,11 @@ class MoveNodesCommand(private val moves: List<Move>, override val label: String
  * The undo/redo history for a [graph]. Commands are pushed already-applied; [undo] reverts the newest and
  * parks it for [redo], and any fresh [push] clears the redo branch - the usual linear history.
  */
-class CommandStack(private val graph: NodeGraph, private val limit: Int = 120) {
+class CommandStack(
+    private val graph: NodeGraph,
+    private val limit: Int = 120,
+    private val onChange: (String) -> Unit = {},
+) {
     private val undoStack = ArrayDeque<GraphCommand>()
     private val redoStack = ArrayDeque<GraphCommand>()
 
@@ -77,18 +81,21 @@ class CommandStack(private val graph: NodeGraph, private val limit: Int = 120) {
         undoStack.addLast(command)
         while (undoStack.size > limit) undoStack.removeFirst()
         redoStack.clear()
+        onChange(command.label)
     }
 
     fun undo() {
         val c = undoStack.removeLastOrNull() ?: return
         c.revert(graph)
         redoStack.addLast(c)
+        onChange("Undo ${c.label}")
     }
 
     fun redo() {
         val c = redoStack.removeLastOrNull() ?: return
         c.apply(graph)
         undoStack.addLast(c)
+        onChange("Redo ${c.label}")
     }
 
     fun clear() { undoStack.clear(); redoStack.clear() }

@@ -75,6 +75,11 @@ class BrassDemo(
      */
     val fitCard: Boolean = false,
     /**
+     * Allow the browser stage to become smaller than the declared capture size when its available
+     * panel shrinks. Intended for viewport-style widgets such as editors, not fixed-size controls.
+     */
+    val shrinkToFit: Boolean = false,
+    /**
      * Whether this demo needs a loaded world to render.
      *
      * The entity, block and player-head widgets draw through the game's entity renderer and skin

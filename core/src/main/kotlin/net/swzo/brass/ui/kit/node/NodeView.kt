@@ -23,6 +23,10 @@ import java.awt.Color
 object NodeView {
 
     fun draw(ctx: NodeDrawCtx, graph: NodeGraph, node: GraphNode) {
+        node.type.renderer?.let { renderer ->
+            renderer.draw(ctx, graph, node)
+            return
+        }
         val m = ctx.m
         val pop = node.pop.value
         if (pop <= 0.001f) return
@@ -71,13 +75,14 @@ object NodeView {
         // Fields fold as the node rolls up: clip them to the animating body so they scissor away from the
         // bottom edge rather than fading in place. The clip is only needed mid-animation.
         val roll = node.roll.value
-        if (roll < 0.985f && node.visibleFields().isNotEmpty()) {
+        if (roll < 0.985f && node.fields.any { it.reveal.value > 0.01f }) {
             val rolling = roll > 0.001f
-            val clip = if (rolling) {
+            val reflowing = node.fields.any { !it.reveal.settled }
+            val clip = if (rolling || reflowing) {
                 ScissorEffect(ctx.screenX(x1) - 2f, ctx.screenY(y1), ctx.screenX(x2) + 2f, ctx.screenY(y2), true)
             } else null
             clip?.beforeDraw(m)
-            for ((row, f) in node.visibleFields().withIndex()) drawField(ctx, node, f, row, dy)
+            for (f in node.fields) if (f.reveal.value > 0.01f) drawField(ctx, node, f, dy)
             clip?.afterDraw(m)
         }
 
@@ -89,21 +94,27 @@ object NodeView {
         val m = ctx.m
         for (i in node.type.inputs.indices) {
             val p = node.type.inputs[i]
+            if (p.hidden) continue
             val cx = NodeLayout.inputX(node)
-            val cy = NodeLayout.portY(node, i) + dy
+            val cy = NodeLayout.inputY(node, i) + dy
             val connected = graph.links.any { it.to === node && it.toPort == i && !it.closing }
-            nub(m, cx, cy, p.type, connected, node.glowIn.getOrElse(i) { 0f }, node.rejectIn.getOrElse(i) { 0f }, ctx.time)
-            BrassFont.draw(m, ctx.host, BrassFont.fit(ctx.host, p.name, 52f), cx + 7f, cy - BrassFont.LINE / 2f,
-                Colors.UI_TEXT_DARK)
+            nub(m, cx, cy, p, connected, node.glowIn.getOrElse(i) { 0f }, node.rejectIn.getOrElse(i) { 0f }, ctx.time)
+            if (p.showLabel) {
+                BrassFont.draw(m, ctx.host, BrassFont.fit(ctx.host, p.name, 52f), cx + 7f,
+                    cy - BrassFont.LINE / 2f, Colors.UI_TEXT_DARK)
+            }
         }
         for (i in node.type.outputs.indices) {
             val p = node.type.outputs[i]
+            if (p.hidden) continue
             val cx = NodeLayout.outputX(node)
-            val cy = NodeLayout.portY(node, i) + dy
+            val cy = NodeLayout.outputY(node, i) + dy
             val connected = graph.links.any { it.from === node && it.fromPort == i && !it.closing }
-            nub(m, cx, cy, p.type, connected, node.glowOut.getOrElse(i) { 0f }, node.rejectOut.getOrElse(i) { 0f }, ctx.time)
-            val tw = BrassFont.width(ctx.host, p.name)
-            BrassFont.draw(m, ctx.host, p.name, cx - 7f - tw, cy - BrassFont.LINE / 2f, Colors.UI_TEXT_DARK)
+            nub(m, cx, cy, p, connected, node.glowOut.getOrElse(i) { 0f }, node.rejectOut.getOrElse(i) { 0f }, ctx.time)
+            if (p.showLabel) {
+                val tw = BrassFont.width(ctx.host, p.name)
+                BrassFont.draw(m, ctx.host, p.name, cx - 7f - tw, cy - BrassFont.LINE / 2f, Colors.UI_TEXT_DARK)
+            }
         }
     }
 
@@ -113,14 +124,15 @@ object NodeView {
      * invalid drop for the wire being dragged ([reject]) - a distinct "no" against the satisfying "yes".
      */
     private fun nub(
-        m: UMatrixStack, cx: Float, cy: Float, type: PortType, connected: Boolean,
+        m: UMatrixStack, cx: Float, cy: Float, port: Port, connected: Boolean,
         glow: Float, reject: Float, time: Float,
     ) {
+        val type = port.type
         val col = type.color()
         val jitter = if (reject > 0.01f) kotlin.math.sin(time * 34f) * reject * 1.2f else 0f
         val x = cx + jitter
         // A valid target grows; a rejected one shrinks a touch.
-        val r = NodeLayout.PORT_R + glow * 1.7f - reject * 1.2f
+        val r = NodeLayout.PORT_R * port.size + glow * 1.7f - reject * 1.2f
         val bg = when {
             reject > 0.01f -> Colors.mix(Colors.INK_900, Colors.DANGER, reject)
             connected || glow > 0.35f -> col
@@ -142,16 +154,38 @@ object NodeView {
             flat = false,
             defaultAccent = false,
         )
+        when (port.shape) {
+            PortShape.ROUND -> Unit
+            PortShape.SQUARE -> BrassPaint.border(m, x - 1.5f, cy - 1.5f, x + 1.5f, cy + 1.5f, edge)
+            PortShape.DIAMOND -> {
+                BrassPaint.rect(m, x, cy - 2f, x + 1f, cy + 3f, edge)
+                BrassPaint.rect(m, x - 2f, cy, x + 3f, cy + 1f, edge)
+            }
+            PortShape.DOT -> {
+                val ink = if (connected) Colors.INK_900 else edge
+                BrassPaint.rect(m, x - 1f, cy - 1f, x + 1f, cy + 1f, ink)
+            }
+            PortShape.CROSS -> {
+                val ink = if (connected) Colors.INK_900 else edge
+                BrassPaint.rect(m, x - 0.5f, cy - 2.5f, x + 0.5f, cy + 2.5f, ink)
+                BrassPaint.rect(m, x - 2.5f, cy - 0.5f, x + 2.5f, cy + 0.5f, ink)
+            }
+        }
     }
 
-    private fun drawField(ctx: NodeDrawCtx, node: GraphNode, f: NodeField, row: Int, dy: Float) {
-        val r = NodeLayout.fieldRow(node, row)
-        val y1 = r[1] + dy; val y2 = r[3] + dy
+    private fun drawField(ctx: NodeDrawCtx, node: GraphNode, f: NodeField, dy: Float) {
+        val r = NodeLayout.fieldRow(node, f)
+        val reveal = f.reveal.value
+        val y1 = r[1] + dy + (1f - reveal) * 3f
+        val y2 = r[3] + dy + (1f - reveal) * 3f
         val cy = (y1 + y2) / 2f
         val ctrlL = NodeLayout.controlLeft(node)
         val labelW = ctrlL - r[0] - 4f
-        BrassFont.draw(ctx.m, ctx.host, BrassFont.fit(ctx.host, f.label, labelW), r[0], cy - BrassFont.LINE / 2f,
-            Colors.UI_TEXT_DARK)
+        val savedFade = BrassAmbientFade.current
+        BrassAmbientFade.current = savedFade * reveal
+        BrassFont.draw(ctx.m, ctx.host, BrassFont.fit(ctx.host, f.label, labelW), r[0],
+            cy - BrassFont.LINE / 2f, Colors.UI_TEXT_DARK)
         f.drawControl(ctx, ctrlL, y1, r[2], y2, f.hover.value, f.press.value)
+        BrassAmbientFade.current = savedFade
     }
 }

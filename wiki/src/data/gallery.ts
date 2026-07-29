@@ -17,6 +17,7 @@ export type Screen = {
 };
 
 export const SCREENS: Screen[] = [
+  { slug: "node-editor", title: "Node editor" },
   { slug: "gallery", title: "Gallery screen" },
   { slug: "exampleteamsui", title: "War room admin" },
   { slug: "skinchangerui", title: "Skin studio" },

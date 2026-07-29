@@ -56,6 +56,21 @@ class BrassTextArea(
     /** The field's contents. Alias of [value]. */
     val text: String get() = holder.value
 
+    /** Select the complete note/body so the next typed character replaces placeholder-like content. */
+    fun selectAll() = edit.selectAll()
+
+    /**
+     * Scale the text metrics and padding together. Normally 1; immediate-mode canvases can match their
+     * own zoom so entering edit mode does not make the same text visibly change size.
+     */
+    var contentScale: Float = 1f
+        set(value) {
+            val next = value.coerceIn(0.4f, 2.2f)
+            if (field == next) return
+            field = next
+            invalidateWrap()
+        }
+
     /**
      * Set this to make the field a **composer**: Enter submits and Shift+Enter inserts the newline.
      *
@@ -134,7 +149,7 @@ class BrassTextArea(
         onMouseRelease { selecting = false }
 
         onMouseScroll { e ->
-            scrollY = bar.clamp(scrollY - e.delta.toFloat() * BrassFont.LINE * 2f)
+            scrollY = bar.clamp(scrollY - e.delta.toFloat() * lineHeight() * 2f)
             e.stopPropagation()
         }
 
@@ -240,7 +255,7 @@ class BrassTextArea(
                 var remaining = word
                 while (remaining.isNotEmpty()) {
                     val candidate = line.toString() + remaining
-                    if (BrassFont.width(this, candidate) <= width) {
+                    if (textWidth(candidate) <= width) {
                         if (line.isEmpty()) lineStart = cursor
                         line.append(remaining)
                         cursor += remaining.length
@@ -279,7 +294,7 @@ class BrassTextArea(
         var n = 0
         var acc = 0f
         while (n < s.length) {
-            val next = acc + BrassFont.width(this, s[n].toString())
+            val next = acc + textWidth(s[n].toString())
             if (next > width && n > 0) break
             acc = next
             n++
@@ -330,28 +345,32 @@ class BrassTextArea(
         val lines = layout(width)
         if (lines.isEmpty()) return 0
         val s = lineStartsList(width)
-        val row = floor((localY - PAD + scrollY) / BrassFont.LINE).toInt()
+        val row = floor((localY - scaledPad() + scrollY) / lineHeight()).toInt()
             .coerceIn(0, (lines.size - 1).coerceAtLeast(0))
         val line = lines[row]
         var best = 0
         var bestDist = Float.MAX_VALUE
         for (i in 0..line.length) {
-            val d = kotlin.math.abs(BrassFont.width(this, line.substring(0, i)) - (localX - PAD))
+            val d = kotlin.math.abs(textWidth(line.substring(0, i)) - (localX - scaledPad()))
             if (d < bestDist) { bestDist = d; best = i }
         }
         return (s[row] + best).coerceIn(0, text.length)
     }
 
-    private fun innerWidth(): Float = (bw - PAD * 2 - GRIP_W - 2f).coerceAtLeast(1f)
+    private fun innerWidth(): Float = (bw - scaledPad() * 2f - GRIP_W - 2f).coerceAtLeast(1f)
+    private fun scaledPad(): Float = PAD * contentScale
+    private fun lineHeight(): Float = BrassFont.LINE * contentScale
+    private fun textWidth(value: String): Float = BrassFont.width(this, value) * contentScale
 
     /** Scroll so the caret's line is inside the viewport, after a keystroke moved it. */
     private fun revealCaret() {
         val width = innerWidth()
         val row = lineOf(edit.caret, width)
-        val top = row * BrassFont.LINE.toFloat()
+        val lineHeight = lineHeight()
+        val top = row * lineHeight
         val viewport = bar.viewport
         if (top < scrollY) scrollY = top
-        else if (top + BrassFont.LINE > scrollY + viewport) scrollY = top + BrassFont.LINE - viewport
+        else if (top + lineHeight > scrollY + viewport) scrollY = top + lineHeight - viewport
         scrollY = bar.clamp(scrollY)
     }
 
@@ -364,25 +383,27 @@ class BrassTextArea(
         val width = innerWidth()
         val lines = layout(width)
         val s = lineStartsList(width)
+        val pad = scaledPad()
+        val lineHeight = lineHeight()
 
-        bar.viewport = h - PAD * 2
-        bar.content = lines.size * BrassFont.LINE.toFloat()
+        bar.viewport = h - pad * 2f
+        bar.content = lines.size * lineHeight
         scrollY = bar.clamp(scrollY)
 
         val showPlaceholder = text.isEmpty() && placeholder.isNotEmpty()
         val body = if (showPlaceholder) listOf(placeholder) else lines
         val tint = if (showPlaceholder) Colors.UI_TEXT_DARK else textColor
 
-        var ly = y + PAD - scrollY
+        var ly = y + pad - scrollY
         for ((row, line) in body.withIndex()) {
             // Only the lines actually in the viewport are drawn — the field may hold far more.
-            if (ly + BrassFont.LINE >= y && ly <= y + h) {
+            if (ly + lineHeight >= y && ly <= y + h) {
                 if (!showPlaceholder && edit.hasSelection) {
                     paintSelection(m, row, line, s, x, ly)
                 }
-                BrassFont.draw(m, this, line, x + PAD, ly, tint, true)
+                BrassFont.draw(m, this, line, x + pad, ly, tint, true, scale = contentScale)
             }
-            ly += BrassFont.LINE
+            ly += lineHeight
         }
 
         // A caret would be ambiguous next to a selection highlight, so it only shows for a plain
@@ -400,25 +421,25 @@ class BrassTextArea(
                 val cx: Float
                 val cy: Float
                 if (showPlaceholder) {
-                    cx = x + PAD
-                    cy = y + PAD - scrollY
+                    cx = x + pad
+                    cy = y + pad - scrollY
                 } else {
                     val row = lineOf(edit.caret, width)
                     val column = (edit.caret - s.getOrElse(row) { 0 }).coerceAtLeast(0)
                     val lineText = lines.getOrElse(row) { "" }
-                    cx = x + PAD + BrassFont.width(this, lineText.take(column.coerceAtMost(lineText.length)))
-                    cy = y + PAD - scrollY + row * BrassFont.LINE
+                    cx = x + pad + textWidth(lineText.take(column.coerceAtMost(lineText.length)))
+                    cy = y + pad - scrollY + row * lineHeight
                 }
-                if (cy >= y && cy <= y + h - BrassFont.LINE) {
-                    BrassPaint.rect(m, cx, cy, cx + 1f, cy + BrassFont.LINE, Colors.UI_ACCENT_BRIGHT)
+                if (cy >= y && cy <= y + h - lineHeight) {
+                    BrassPaint.rect(m, cx, cy, cx + 1f, cy + lineHeight, Colors.UI_ACCENT_BRIGHT)
                 }
             }
         }
 
         if (bar.scrollable) {
             val gx = x + w - GRIP_W - 2f
-            val gy = y + PAD + bar.gripTop(scrollY)
-            BrassPaint.rect(m, gx, y + PAD, gx + GRIP_W, y + h - PAD, TRACK)
+            val gy = y + pad + bar.gripTop(scrollY)
+            BrassPaint.rect(m, gx, y + pad, gx + GRIP_W, y + h - pad, TRACK)
             net.swzo.brass.ui.kit.paint.BrassCard.grip(m, gx, gy, gx + GRIP_W, gy + bar.gripHeight())
         }
     }
@@ -437,12 +458,13 @@ class BrassTextArea(
         val to = minOf(edit.selEnd, lineEnd)
         if (to < from) return
 
-        val sx = x + PAD + BrassFont.width(this, line.take((from - lineStart).coerceIn(0, line.length)))
-        val ex = x + PAD + BrassFont.width(this, line.take((to - lineStart).coerceIn(0, line.length)))
+        val pad = scaledPad()
+        val sx = x + pad + textWidth(line.take((from - lineStart).coerceIn(0, line.length)))
+        val ex = x + pad + textWidth(line.take((to - lineStart).coerceIn(0, line.length)))
         // A selection that runs *through* this line (rather than ending on it) covers the newline too,
         // so a sliver past the last glyph is what shows the line break is included.
-        val tail = if (edit.selEnd > lineEnd) NEWLINE_SLIVER else 0f
-        if (ex + tail > sx) BrassPaint.rect(m, sx, ly, ex + tail, ly + BrassFont.LINE, SELECTION)
+        val tail = if (edit.selEnd > lineEnd) NEWLINE_SLIVER * contentScale else 0f
+        if (ex + tail > sx) BrassPaint.rect(m, sx, ly, ex + tail, ly + lineHeight(), SELECTION)
     }
 
     companion object : BrassDemoSource {

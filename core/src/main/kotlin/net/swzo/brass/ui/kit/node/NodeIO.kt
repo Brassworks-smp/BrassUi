@@ -12,7 +12,7 @@ import com.google.gson.JsonPrimitive
  *
  * ```json
  * {
- *   "version": 1,
+ *   "version": 5,
  *   "nodes": [ { "id": 1, "type": "time", "x": 0.0, "y": 40.0, "collapsed": false,
  *               "fields": { "wave": "Sine", "speed": 0.4 } } ],
  *   "links": [ { "from": 1, "fromPort": 0, "to": 2, "toPort": 0 } ]
@@ -26,17 +26,36 @@ import com.google.gson.JsonPrimitive
  * layout come back correct) and hands each field its saved value through [NodeField.decode]. Custom node
  * types and custom fields ride the same path with no special case - a field the reader does not
  * recognise is simply skipped, so an older build opens a newer file without crashing.
+ * [compatibility] lets a host warn before that tolerant future-version read, while versions
+ * [OLDEST_SUPPORTED_VERSION] through [CURRENT_VERSION] are the explicit compatibility contract.
  *
  * Uses Gson, already on the classpath (see [net.swzo.brass.ui.kit.media.BrassIcons]); no new dependency.
  */
 object NodeIO {
 
-    private const val VERSION = 1
+    const val CURRENT_VERSION = 5
+    const val OLDEST_SUPPORTED_VERSION = 1
     private val gson = GsonBuilder().setPrettyPrinting().create()
+
+    enum class Compatibility { CURRENT, LEGACY, FUTURE, INVALID }
+
+    fun compatibility(json: String): Compatibility {
+        val root = runCatching { JsonParser.parseString(json).asJsonObject }.getOrNull()
+            ?: return Compatibility.INVALID
+        if (!root.has("nodes")) return Compatibility.INVALID
+        val version = runCatching {
+            root.get("version")?.asInt ?: OLDEST_SUPPORTED_VERSION
+        }.getOrElse { return Compatibility.INVALID }
+        return when {
+            version > CURRENT_VERSION -> Compatibility.FUTURE
+            version < CURRENT_VERSION -> Compatibility.LEGACY
+            else -> Compatibility.CURRENT
+        }
+    }
 
     fun toJson(graph: NodeGraph): String {
         val root = JsonObject()
-        root.addProperty("version", VERSION)
+        root.addProperty("version", CURRENT_VERSION)
 
         val nodes = JsonArray()
         for (n in graph.nodes) {
@@ -69,9 +88,61 @@ object NodeIO {
             o.addProperty("fromPort", l.fromPort)
             o.addProperty("to", l.to.id)
             o.addProperty("toPort", l.toPort)
+            if (l.reroutes.isNotEmpty()) {
+                val reroutes = JsonArray()
+                for (point in l.reroutes) {
+                    val p = JsonObject()
+                    p.addProperty("x", point.x)
+                    p.addProperty("y", point.y)
+                    reroutes.add(p)
+                }
+                o.add("reroutes", reroutes)
+            }
             links.add(o)
         }
         root.add("links", links)
+
+        val frames = JsonArray()
+        for (frame in graph.frames) {
+            val o = JsonObject()
+            o.addProperty("id", frame.id)
+            o.addProperty("title", frame.title)
+            o.addProperty("tone", frame.tone.name)
+            frame.customColor?.let { o.addProperty("customColor", it) }
+            o.addProperty("autoResize", frame.autoResize)
+            frame.parentFrameId?.let { o.addProperty("parent", it) }
+            o.addProperty("x", frame.x); o.addProperty("y", frame.y)
+            o.addProperty("width", frame.width); o.addProperty("height", frame.height)
+            val ids = JsonArray()
+            frame.nodeIds.forEach(ids::add)
+            o.add("nodes", ids)
+            frames.add(o)
+        }
+        root.add("frames", frames)
+
+        val comments = JsonArray()
+        for (comment in graph.comments) {
+            val o = JsonObject()
+            o.addProperty("id", comment.id)
+            o.addProperty("text", comment.text)
+            o.addProperty("x", comment.x); o.addProperty("y", comment.y)
+            o.addProperty("width", comment.width)
+            o.addProperty("height", comment.height)
+            o.addProperty("tone", comment.tone.name)
+            comment.customColor?.let { o.addProperty("customColor", it) }
+            comments.add(o)
+        }
+        root.add("comments", comments)
+
+        val bookmarks = JsonArray()
+        for (bookmark in graph.bookmarks) {
+            val o = JsonObject()
+            o.addProperty("name", bookmark.name)
+            o.addProperty("panX", bookmark.panX); o.addProperty("panY", bookmark.panY)
+            o.addProperty("zoom", bookmark.zoom)
+            bookmarks.add(o)
+        }
+        root.add("bookmarks", bookmarks)
 
         return gson.toJson(root)
     }
@@ -101,7 +172,57 @@ object NodeIO {
             val o = el.asJsonObject
             val from = graph.byId(o.get("from")?.asInt ?: return@forEach) ?: return@forEach
             val to = graph.byId(o.get("to")?.asInt ?: return@forEach) ?: return@forEach
-            graph.link(from, o.get("fromPort")?.asInt ?: 0, to, o.get("toPort")?.asInt ?: 0)
+            graph.link(from, o.get("fromPort")?.asInt ?: 0, to, o.get("toPort")?.asInt ?: 0)?.let { link ->
+                o.getAsJsonArray("reroutes")?.forEach { point ->
+                    val p = point.asJsonObject
+                    graph.reroute(link, p.get("x")?.asFloat ?: 0f, p.get("y")?.asFloat ?: 0f)
+                }
+            }
+        }
+
+        root.getAsJsonArray("frames")?.forEach { el ->
+            val o = el.asJsonObject
+            val ids = o.getAsJsonArray("nodes")?.mapNotNull { it.asInt.takeIf { id -> graph.byId(id) != null } }
+                ?.toMutableSet() ?: mutableSetOf()
+            graph.adoptFrame(GraphFrame(
+                id = o.get("id")?.asInt ?: return@forEach,
+                title = o.get("title")?.asString ?: "Group",
+                nodeIds = ids,
+                tone = runCatching { FrameTone.valueOf(o.get("tone")?.asString ?: "") }
+                    .getOrDefault(FrameTone.BRASS),
+                autoResize = o.get("autoResize")?.asBoolean ?: true,
+                parentFrameId = o.get("parent")?.asInt,
+                x = o.get("x")?.asFloat ?: 0f,
+                y = o.get("y")?.asFloat ?: 0f,
+                width = o.get("width")?.asFloat ?: 160f,
+                height = o.get("height")?.asFloat ?: 100f,
+                customColor = o.get("customColor")?.asInt,
+            ))
+        }
+
+        root.getAsJsonArray("comments")?.forEach { el ->
+            val o = el.asJsonObject
+            graph.adoptComment(GraphComment(
+                id = o.get("id")?.asInt ?: return@forEach,
+                text = o.get("text")?.asString ?: "",
+                x = o.get("x")?.asFloat ?: 0f,
+                y = o.get("y")?.asFloat ?: 0f,
+                width = o.get("width")?.asFloat ?: 132f,
+                height = o.get("height")?.asFloat ?: 48f,
+                tone = runCatching { FrameTone.valueOf(o.get("tone")?.asString ?: "") }
+                    .getOrDefault(FrameTone.PATINA),
+                customColor = o.get("customColor")?.asInt,
+            ))
+        }
+
+        root.getAsJsonArray("bookmarks")?.forEach { el ->
+            val o = el.asJsonObject
+            graph.bookmark(
+                o.get("name")?.asString ?: return@forEach,
+                o.get("panX")?.asFloat ?: 0f,
+                o.get("panY")?.asFloat ?: 0f,
+                o.get("zoom")?.asFloat ?: 1f,
+            )
         }
     }
 
