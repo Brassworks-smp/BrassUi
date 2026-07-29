@@ -41,6 +41,22 @@ pipeline that produced every image here.
 
 <p align="center"><sub>Left: the layout inspector (Ctrl+Shift+D). Right: the demo browser, where the widget shots come from.</sub></p>
 
+## Showcase
+
+<p align="center">
+  <img src="wiki/public/screenshots/screens/exampleteamsui.png" width="80%" alt="War room admin" />
+</p>
+
+<p align="center">
+  <img src="wiki/public/screenshots/screens/skinchangerui.png" width="49%" alt="Skin studio" />
+  <img src="wiki/public/screenshots/screens/prettyinpink.png" width="49%" alt="Rose accent" />
+</p>
+
+<p align="center">
+  <img src="wiki/public/screenshots/screens/showcase.png" width="32%" alt="Title Machine" />
+  <img src="wiki/public/screenshots/screens/areyousure.png" width="32%" alt="Teleport request" />
+</p>
+
 ## Highlights
 
 - **89 widgets**, from buttons and sliders to tables, charts, trees, a chat box, a command palette, and inventory grids.
@@ -63,11 +79,27 @@ repositories {
         }
         content { includeGroup("net.swzo.brass") }
     }
+    // Elementa + UniversalCraft (brassui's API is built on them) come from here.
+    maven("https://repo.essential.gg/repository/maven-public") {
+        content { includeGroup("gg.essential") }
+    }
 }
 
 dependencies {
-    implementation("net.swzo.brass:brassui:0.1.0")
+    // The mod jar folds in the toolkit and bundles Elementa/UniversalCraft jar-in-jar, but its POM still
+    // lists them (and demo) as runtime deps — pull none of them: demo isn't published, and the rest are
+    // already inside the jar.
+    implementation("net.swzo.brass:brassui:0.1.0") {
+        exclude(group = "net.swzo.brass", module = "brassui-core")
+        exclude(group = "net.swzo.brass", module = "demo")
+        exclude(group = "gg.essential")
+    }
     jarJar("net.swzo.brass:brassui:0.1.0") { isTransitive = false }
+
+    // brassui's API extends Elementa/UniversalCraft, so they're needed to compile; at runtime they load
+    // from brassui's own jar-in-jar.
+    compileOnly("gg.essential:elementa:745") { isTransitive = false }
+    compileOnly("gg.essential:universalcraft-1.21-neoforge:505") { isTransitive = false }
 }
 ```
 
