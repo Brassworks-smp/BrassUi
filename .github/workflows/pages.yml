@@ -24,31 +24,36 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+# Read the secret once here so the steps below can be skipped (a green run) rather than failed when it
+# is absent. The gh-pages branch just keeps whatever was last deployed until the token is added.
+env:
+  HAS_TOKEN: ${{ secrets.BRASSUIREACT_TOKEN != '' }}
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Note when the token is missing
+        if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::BRASSUIREACT_TOKEN is not set — skipping the wiki rebuild. Add a secret with read access to the private BrassUiReact repo to enable auto-deploy."
+
       - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
 
       - uses: actions/setup-node@v4
+        if: env.HAS_TOKEN == 'true'
         with:
           node-version: "20"
 
-      - name: Check for the BrassUiReact token
-        run: |
-          if [ -z "${{ secrets.BRASSUIREACT_TOKEN }}" ]; then
-            echo "::error::BRASSUIREACT_TOKEN is not set. Add a secret with read access to the private" \
-                 "BrassUiReact repo so the wiki's file: dependency can be fetched."
-            exit 1
-          fi
-
       - name: Fetch the private brassui-react dependency
+        if: env.HAS_TOKEN == 'true'
         run: |
           git clone --depth 1 \
             "https://x-access-token:${{ secrets.BRASSUIREACT_TOKEN }}@github.com/salem-5/BrassUiReact.git" \
             "${{ github.workspace }}/../BrassUiReact"
 
       - name: Build the site
+        if: env.HAS_TOKEN == 'true'
         working-directory: wiki
         run: |
           npm ci
@@ -56,6 +61,7 @@ jobs:
           npm run build    # -> wiki/dist
 
       - name: Publish to gh-pages
+        if: env.HAS_TOKEN == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
