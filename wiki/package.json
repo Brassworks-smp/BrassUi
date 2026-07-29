@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:sites": "npm run build && node scripts/prepare-sites.mjs",
     "preview": "vite preview",
     "gen": "node scripts/gen-widgets.mjs"
   },
