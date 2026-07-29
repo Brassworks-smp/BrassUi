@@ -1,0 +1,111 @@
+// Shared plugin versions, declared once for the whole build.
+//
+// A subproject that writes `plugins { id 'x' version 'y' }` gets its **own classloader** for that
+// plugin — Gradle says so explicitly, and warns that this happens "even if the versions are equal".
+// Three subprojects each declared moddev 2.0.74, so three separate copies of the plugin class were
+// loaded, and each one applied org.jetbrains.gradle.ext to the root project. The first registered the
+// `settings` extension; the second was a different Class from a different loader, so Gradle did not
+// recognise it as already applied and tried to register `settings` again:
+//
+//     Cannot add extension with name 'settings', as there is an extension already registered
+//
+// That only surfaced in IntelliJ, because ModDevGradle applies the IDEA plugin during a sync and not
+// during a plain CLI build — which is why `./gradlew build` was green while project import failed.
+//
+// Declaring the versions here (and nowhere else) puts one copy of each plugin in the root
+// classloader, shared by every subproject. Subprojects apply them without a version.
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '2.0.21' apply false
+    id 'net.neoforged.moddev' version '2.0.74' apply false
+    id 'com.gradleup.shadow' version '8.3.6' apply false
+}
+
+subprojects {
+    apply plugin: 'java-library'
+
+    group = rootProject.group
+    version = rootProject.version
+
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(21)
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release.set(21)
+    }
+}
+
+// ---- publishing ---------------------------------------------------------------------------------
+//
+// Only the two artifacts another project would ever depend on are published:
+//
+//   • `brassui-core` — the toolkit library, for a mod that wants the widgets and is doing its own
+//     Elementa/UniversalCraft bundling.
+//   • `brassui`      — the self-contained NeoForge mod, for a mod that just wants working UI and
+//     would rather jar-in-jar one thing than solve the module-layer problem itself (see mod/build.gradle).
+//
+// `:demo` and `:desktop` are development surfaces, not something to depend on, so they stay unpublished.
+//
+// GitHub Packages requires authentication even to *read* a public package, which is a real cost to
+// consumers — a build depending on this needs a token with `read:packages` in gradle.properties or the
+// environment. The README says so where someone will actually hit it.
+configure([project(':core'), project(':mod')]) {
+    apply plugin: 'maven-publish'
+
+    java {
+        withSourcesJar()
+    }
+
+    publishing {
+        publications {
+            maven(MavenPublication) {
+                from components.java
+                artifactId = project.name == 'core' ? 'brassui-core' : 'brassui'
+
+                pom {
+                    name = artifactId
+                    description = project.name == 'core'
+                        ? 'Elementa widget toolkit for Minecraft in the Brassworks launcher idiom.'
+                        : 'brassui as a self-contained NeoForge mod, Elementa/UniversalCraft included.'
+                    url = 'https://github.com/Brassworks-smp/BrassUi'
+                    licenses {
+                        license {
+                            // Source-available, not open source: noncommercial use is granted, commercial
+                            // use by anyone else is not. See LICENSE.md and the README's licence note.
+                            name = 'PolyForm Noncommercial License 1.0.0'
+                            url = 'https://polyformproject.org/licenses/noncommercial/1.0.0'
+                        }
+                    }
+                    developers {
+                        developer {
+                            id = 'swzo'
+                            name = 'swzo'
+                        }
+                    }
+                    scm {
+                        url = 'https://github.com/Brassworks-smp/BrassUi'
+                        connection = 'scm:git:https://github.com/Brassworks-smp/BrassUi.git'
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                name = 'GitHubPackages'
+                url = 'https://maven.pkg.github.com/Brassworks-smp/BrassUi'
+                credentials {
+                    // Gradle property first so a token can live in ~/.gradle/gradle.properties and stay
+                    // out of this repo; environment second for CI.
+                    username = project.findProperty('gpr.user') ?: System.getenv('GITHUB_ACTOR')
+                    password = project.findProperty('gpr.token') ?: System.getenv('GITHUB_TOKEN')
+                }
+            }
+        }
+    }
+}

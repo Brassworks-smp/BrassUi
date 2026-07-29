@@ -1,0 +1,46 @@
+[package]
+name = "jvm-bootstrap"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Ship a JVM application as a native executable: find or download a JRE, then launch an embedded jar."
+repository = "https://github.com/Brassworks-smp/BrassUi"
+# PolyForm Noncommercial is not an SPDX identifier, so crates.io needs the file rather than a name.
+# Consequence worth knowing: this crate is source-available, not open source — noncommercial use is
+# granted, commercial use by anyone else is not.
+license-file = "LICENSE.md"
+keywords = ["jvm", "java", "launcher", "bootstrap", "jre"]
+categories = ["development-tools", "os"]
+readme = "README.md"
+# The starter app lives inside this crate's directory so the two are picked up together, but it is a
+# package in its own right that depends on the published crate — not a workspace member.
+exclude = ["template"]
+
+[dependencies]
+# Blocking HTTP with rustls, so a build needs no system OpenSSL. Only pulled in when a JRE actually
+# has to be fetched, but the dependency is unconditional because feature-gating the download would
+# leave the crate unable to do the one thing it exists for.
+ureq = { version = "2.10", default-features = false, features = ["tls", "json", "gzip"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+flate2 = "1"
+tar = "0.4"
+dirs = "5"
+
+# The optional progress window. Off by default: a launcher whose JRE is already present shows nothing
+# at all, and a crate that only ever launches should not pay for a windowing stack it never opens.
+#
+# Just a window and a pixel buffer — no rasteriser, no GPU stack, no font crate. What the window draws
+# is filled rectangles and a 5x7 bitmap font defined in `window.rs`, which is all a progress bar and a
+# one-line status need, and which keeps this feature from doubling the dependency tree.
+winit = { version = "0.30", optional = true }
+softbuffer = { version = "0.4", optional = true }
+
+[features]
+default = []
+# A small window with a progress bar, for the first run where a JRE has to be downloaded.
+window = ["dep:winit", "dep:softbuffer"]
+
+[package.metadata.docs.rs]
+all-features = true

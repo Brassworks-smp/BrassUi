@@ -1,0 +1,125 @@
+// brassui (desktop): a standalone JVM application that runs the brassui Elementa toolkit OUTSIDE
+// Minecraft, as a functional widget demo. It works because the toolkit (`:mod:brass-ui`) is game-free —
+// it uses only Essential's UniversalCraft + Elementa API — and Essential publishes a Minecraft-free
+// UniversalCraft (`universalcraft-standalone`) that provides a real GLFW/LWJGL window, an OpenGL render
+// loop, input, and NanoVG text (with a bundled Minecraft font), all behind the SAME `gg.essential.universal`
+// API the toolkit compiles against. So core's bytecode runs here unchanged; this module just supplies the
+// standalone UC + Elementa at runtime and opens a window. Approach mirrors SparkUniverse/EssentialInstaller.
+//
+// The widget gallery it shows lives in :demo, shared with the in-game showcase. Shared versions come
+// from the root gradle.properties. Not published — this is a development surface, not a dependency.
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+    id 'application'
+    // Fat jar for the native launcher (launcher/) to embed and hand to a JRE.
+    id 'com.gradleup.shadow'
+}
+
+kotlin {
+    jvmToolchain(21)
+    // universalcraft-standalone is built with a newer Kotlin (2.3.x metadata) than our 2.0.21 compiler
+    // can read by default. We reference only its simple API (runUniversalCraft / UCWindow / UScreen), so
+    // reading the newer metadata is safe — skip the version gate rather than lock-step our compiler to
+    // Essential's. (The NeoForge UC core compiles against is an older build without this issue.)
+    compilerOptions {
+        freeCompilerArgs.add('-Xskip-metadata-version-check')
+    }
+}
+
+repositories {
+    // Elementa + the standalone UniversalCraft.
+    maven {
+        url = 'https://repo.essential.gg/repository/maven-public'
+        content { includeGroup 'gg.essential' }
+    }
+}
+
+// The LWJGL native-library classifier for the machine running the demo.
+def osArch = System.getProperty('os.arch')
+def currentOs = org.gradle.internal.os.OperatingSystem.current()
+def lwjglNatives
+if (currentOs.macOsX) {
+    lwjglNatives = (osArch.startsWith('aarch64') || osArch.startsWith('arm')) ? 'natives-macos-arm64' : 'natives-macos'
+} else if (currentOs.windows) {
+    lwjglNatives = 'natives-windows'
+} else {
+    lwjglNatives = (osArch.startsWith('aarch64') || osArch.startsWith('arm')) ? 'natives-linux-arm64' : 'natives-linux'
+}
+
+dependencies {
+    // The toolkit itself. It is compiled (in :mod:brass-ui) against the NeoForge UniversalCraft +
+    // Minecraft, but those are compileOnly there and must NOT reach this runtime — the standalone UC
+    // below is what satisfies core's gg.essential.universal.* references on the desktop. Exclude them
+    // defensively in case moddev's module metadata exposes them.
+    // The gallery, shared with the in-game showcase. Brings :core with it (it is an api dependency).
+    implementation(project(':demo')) {
+        exclude group: 'gg.essential', module: 'universalcraft-1.21-neoforge'
+        exclude group: 'net.neoforged'
+    }
+    implementation(project(':core')) {
+        exclude group: 'gg.essential', module: 'universalcraft-1.21-neoforge'
+        exclude group: 'net.neoforged'
+    }
+
+    // Standalone UniversalCraft: window + GL + input + NanoVG fonts, no Minecraft. Pulls LWJGL
+    // (core/glfw/opengl/nanovg, with natives) and kotlinx-coroutines transitively — exactly what a
+    // desktop Elementa app needs. Same version (505) as the NeoForge UC core is compiled against, so it
+    // pairs with the same elementa:745 and is binary-compatible with core's bytecode.
+    implementation "gg.essential:universalcraft-standalone:${project.universalcraft_version}"
+    implementation "gg.essential:elementa:${project.elementa_version}"
+
+    // LWJGL brings its Java bindings transitively (via elementa/UC) but NOT the per-platform native
+    // libraries GLFW/OpenGL/NanoVG/STB load at runtime — those are classifier artifacts the consumer
+    // adds. Pick the set matching whatever machine runs the demo. Version is BOM-managed to match the
+    // bindings already on the classpath (LWJGL 3.3.3).
+    runtimeOnly platform('org.lwjgl:lwjgl-bom:3.3.3')
+    ['org.lwjgl:lwjgl', 'org.lwjgl:lwjgl-glfw', 'org.lwjgl:lwjgl-opengl', 'org.lwjgl:lwjgl-nanovg', 'org.lwjgl:lwjgl-stb'].each {
+        runtimeOnly "$it::$lwjglNatives"
+    }
+    // The LWJGL Java bindings arrive transitively via Elementa/UC, but DesktopDemoCapture calls GL11
+    // directly — declare the API jars at compile time so that reference is guaranteed to resolve.
+    compileOnly 'org.lwjgl:lwjgl:3.3.3'
+    compileOnly 'org.lwjgl:lwjgl-opengl:3.3.3'
+}
+
+// universalcraft-standalone is compiled with Kotlin 2.3.x, and its suspend-function bytecode references
+// kotlin.coroutines.jvm.internal.SpillingKt — a class our Kotlin plugin's pinned 2.0.21 kotlin-stdlib
+// does not ship. Bump only the RUNTIME stdlib to 2.3.0 so the class is present; compilation stays on
+// 2.0.21 (bumping the Kotlin *plugin* would clash with the 2.0.21 core/mod use in this one build). Newer
+// stdlib is backward compatible, so core's 2.0.21-compiled bytecode runs on it unchanged.
+configurations.named('runtimeClasspath') {
+    resolutionStrategy.eachDependency {
+        if (requested.group == 'org.jetbrains.kotlin' && requested.name.startsWith('kotlin-stdlib')) {
+            useVersion '2.3.0'
+        }
+    }
+}
+
+// The single jar the native launcher embeds (see launcher/, and the reusable `jvm-bootstrap` crate it
+// is built on). Contains the toolkit, the gallery, standalone UC, Elementa, Kotlin's runtime and the
+// LWJGL natives for THIS machine — so the launcher only has to supply a JRE.
+tasks.named('shadowJar') {
+    archiveFileName = 'brassui-desktop-all.jar'
+    // Standalone UC finds its render/font backends through ServiceLoader; without merging, the
+    // per-jar META-INF/services entries overwrite each other and the window comes up blank.
+    mergeServiceFiles()
+}
+
+application {
+    mainClass = 'net.swzo.brass.ui.desktop.MainKt'
+    // GLFW on macOS must own the process's first thread, or glfwInit aborts. Harmless elsewhere is
+    // avoided by only adding it on macOS.
+    if (org.gradle.internal.os.OperatingSystem.current().macOsX) {
+        applicationDefaultJvmArgs = ['-XstartOnFirstThread']
+    }
+}
+
+// Forward the app's own -Dui.* settings from the Gradle command line into the JVM that actually runs it:
+//   ./gradlew :desktop:run -Dui.section=Chat -Dui.width=900
+// `run` is a forked JavaExec and inherits nothing, so without this the properties Main.kt and
+// BrassGalleryScreen already read stop at the Gradle daemon and silently do nothing. Read through
+// `providers` rather than System.getProperties() so the configuration cache tracks them as inputs.
+def uiProperties = providers.systemPropertiesPrefixedBy('ui.')
+tasks.named('run', JavaExec) {
+    systemProperties uiProperties.get()
+}

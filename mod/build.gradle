@@ -1,0 +1,100 @@
+// brassui (the mod): a self-contained NeoForge mod that ships the brassui Elementa toolkit and its
+// /brassui showcase. It bundles Elementa + UniversalCraft as jar-in-jar game libraries and declares
+// Kotlin-For-Forge, so any host mod only has to jar-in-jar THIS one to get a working in-game UI.
+//
+// Shared versions come from the root gradle.properties; the root subprojects{} block supplies
+// group/version + the Java 21 toolchain. This is what gets published as `net.swzo.brass:brassui`, and
+// what a host mod jar-in-jars.
+//
+// ### Why the toolkit's classes are FOLDED in, not jar-in-jar'd
+//
+// The toolkit library (:core) is a plain LIBRARY. In a packaged jar-in-jar launch FML puts each
+// embedded jar in its own JPMS module: a LIBRARY module cannot read a GAMELIBRARY module (Elementa /
+// UniversalCraft, which sit in the game layer so they can reach net.minecraft), so
+// `BrassScreen extends WindowScreen` would throw `IllegalAccessError: ... does not read module elementa`.
+// Folding the library's compiled classes straight into THIS mod jar puts them in the mod module, which
+// reads the elementa/universalcraft gamelibraries the same way it reads minecraft. Elementa/UC ARE
+// jar-in-jar'd (as-is), because Essential ships them as GAMELIBRARY and that is what lets UniversalCraft
+// read `minecraft`.
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+    id 'net.neoforged.moddev'
+}
+
+kotlin {
+    jvmToolchain(21)
+}
+
+// The library subproject must be evaluated first so its sourceSets exist for the mods{} merge and the
+// jar fold below.
+evaluationDependsOn(':core')
+evaluationDependsOn(':demo')
+
+repositories {
+    // Elementa + UniversalCraft.
+    maven {
+        url = 'https://repo.essential.gg/repository/maven-public'
+        content { includeGroup 'gg.essential' }
+    }
+    // Kotlin For Forge — the Kotlin runtime provider for NeoForge.
+    maven {
+        url = 'https://thedarkcolour.github.io/KotlinForForge/'
+        content { includeGroup 'thedarkcolour' }
+    }
+}
+
+neoForge {
+    version = project.neo_version
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+    mods {
+        brassui {
+            sourceSet sourceSets.main
+            // Dev-run only: associate the toolkit library's classes with this mod so they load in the
+            // same module (otherwise a dev run can't load e.g. BrassScreen: NoClassDefFoundError at
+            // construction). Packaging is handled by the jar fold below, not this.
+            sourceSet project(':core').sourceSets.main
+            sourceSet project(':demo').sourceSets.main
+        }
+    }
+    runs {
+        // `/brassui` is testable straight from this project: ./gradlew :mod:runClient
+        client {
+            client()
+        }
+    }
+}
+
+dependencies {
+    // The toolkit library, for compilation. Its classes are folded into the jar below (see the header).
+    implementation project(':core')
+    // The gallery the /brassui command opens. Folded into the jar alongside the toolkit, for the same
+    // module-layer reason — see the header.
+    implementation project(':demo')
+
+    // Elementa/UniversalCraft on the compile+runtime classpath. transitive=false keeps UniversalCraft's
+    // own NeoForge coordinate out of resolution (moddev already provides the game).
+    implementation("gg.essential:elementa:${project.elementa_version}") { transitive = false }
+    implementation("gg.essential:universalcraft-1.21-neoforge:${project.universalcraft_version}") { transitive = false }
+
+    // Kotlin For Forge provides the Kotlin runtime AND the FML wiring that makes kotlin.* readable to
+    // this mod's module. runtimeOnly: we reference none of its classes, and keeping it off the compile
+    // classpath avoids a Kotlin-metadata version clash (KFF 5.12 is built with a newer Kotlin than our
+    // compiler). NOT bundled — a client running this jar needs KFF installed (declared in the toml).
+    runtimeOnly "thedarkcolour:kotlinforforge-neoforge:${project.kff_version}"
+
+    // Bundle Elementa + UniversalCraft AS-IS (Essential ships them with FMLModType: GAMELIBRARY, which
+    // is what lets UniversalCraft read the minecraft module). The base game ships neither.
+    jarJar("gg.essential:elementa:${project.elementa_version}") { transitive = false }
+    jarJar("gg.essential:universalcraft-1.21-neoforge:${project.universalcraft_version}") { transitive = false }
+}
+
+// Fold the toolkit library's compiled classes (and its resources — icons.png, syntax_rules.json) into
+// this mod jar rather than jar-in-jar'ing it as a separate LIBRARY module. See the header for why.
+tasks.named('jar') {
+    from(project(':core').sourceSets.main.output)
+    from(project(':demo').sourceSets.main.output)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}

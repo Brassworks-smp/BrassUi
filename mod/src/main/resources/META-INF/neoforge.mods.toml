@@ -1,0 +1,43 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "GPL-3.0"
+issueTrackerURL = "https://brassworks.opnsoc.org"
+
+[[mods]]
+modId = "brassui"
+version = "2.0.0"
+# Cosmetic client toolkit — never rejects a server for a version mismatch.
+displayTest = "IGNORE_ALL_VERSION"
+displayName = "brassui"
+displayURL = "https://brassworks.opnsoc.org"
+credits = "swzo"
+authors = "swzo"
+description = '''In-game Elementa UI toolkit (the BrassWorks launcher look) plus its /brassui showcase.'''
+
+[[dependencies.brassui]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.128,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.brassui]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21,1.21.3)"
+ordering = "NONE"
+side = "BOTH"
+
+# Kotlin For Forge — the Kotlin runtime, and the FML module wiring that makes kotlin.* readable to this
+# mod. Deliberately NOT bundled: KFF is a library mod that has to own that module wiring, and
+# jar-in-jar'ing a bare kotlin-stdlib without it leaves kotlin.enums unreadable.
+#
+# CLIENT only: every Kotlin class in this jar sits behind BrassUiClientCommands, which is
+# @EventBusSubscriber(Dist.CLIENT), so a dedicated server loads only the Java @Mod entry and must not be
+# made to install a Kotlin runtime it will not use.
+[[dependencies.brassui]]
+modId = "kotlinforforge"
+type = "required"
+versionRange = "[5.12.0,6.0.0)"
+ordering = "NONE"
+side = "CLIENT"

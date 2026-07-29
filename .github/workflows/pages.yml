@@ -1,0 +1,62 @@
+# Build the wiki and publish it to GitHub Pages (the gh-pages branch).
+#
+# The wiki depends on brassui-react via `file:../../BrassUiReact`, a private sibling repo, so building it
+# in CI needs a token that can read that repo. Add a secret named BRASSUIREACT_TOKEN (a PAT, or a
+# fine-grained token, with read access to Brassworks-smp/BrassUiReact — or salem-5/BrassUiReact while it
+# lives there) and this rebuilds and redeploys on every change to the wiki or the versions it shows. If
+# the secret is absent the build step fails fast with a clear message; the site can still be deployed by
+# hand with `cd wiki && npm run gen && npm run build` and pushing wiki/dist.
+name: Deploy Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "wiki/**"
+      - "gradle.properties"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check for the BrassUiReact token
+        run: |
+          if [ -z "${{ secrets.BRASSUIREACT_TOKEN }}" ]; then
+            echo "::error::BRASSUIREACT_TOKEN is not set. Add a secret with read access to the private" \
+                 "BrassUiReact repo so the wiki's file: dependency can be fetched."
+            exit 1
+          fi
+
+      - name: Fetch the private brassui-react dependency
+        run: |
+          git clone --depth 1 \
+            "https://x-access-token:${{ secrets.BRASSUIREACT_TOKEN }}@github.com/salem-5/BrassUiReact.git" \
+            "${{ github.workspace }}/../BrassUiReact"
+
+      - name: Build the site
+        working-directory: wiki
+        run: |
+          npm ci
+          npm run gen      # regenerate widgets.ts + meta.ts from the current build
+          npm run build    # -> wiki/dist
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: wiki/dist

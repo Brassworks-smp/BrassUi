@@ -1,0 +1,27 @@
+{
+  "texture": "assets/brassui/textures/gui/icons.png",
+  "width": 64,
+  "height": 32,
+  "cell": 8,
+  "sprites": {
+    "check": { "x": 32, "y": 0, "w": 8, "h": 8 },
+    "chevron_down": { "x": 16, "y": 16, "w": 8, "h": 8 },
+    "chevron_left": { "x": 56, "y": 8, "w": 8, "h": 8 },
+    "chevron_right": { "x": 0, "y": 16, "w": 8, "h": 8 },
+    "chevron_up": { "x": 8, "y": 16, "w": 8, "h": 8 },
+    "close": { "x": 0, "y": 0, "w": 8, "h": 8 },
+    "dots": { "x": 48, "y": 8, "w": 8, "h": 8 },
+    "folder": { "x": 8, "y": 8, "w": 8, "h": 8 },
+    "gear": { "x": 0, "y": 8, "w": 8, "h": 8 },
+    "heart": { "x": 16, "y": 8, "w": 8, "h": 8 },
+    "info": { "x": 32, "y": 8, "w": 8, "h": 8 },
+    "maximize": { "x": 16, "y": 0, "w": 8, "h": 8 },
+    "minimize": { "x": 8, "y": 0, "w": 8, "h": 8 },
+    "minus": { "x": 48, "y": 0, "w": 8, "h": 8 },
+    "play": { "x": 24, "y": 8, "w": 8, "h": 8 },
+    "plus": { "x": 40, "y": 0, "w": 8, "h": 8 },
+    "restore": { "x": 24, "y": 0, "w": 8, "h": 8 },
+    "search": { "x": 56, "y": 0, "w": 8, "h": 8 },
+    "warn": { "x": 40, "y": 8, "w": 8, "h": 8 }
+  }
+}

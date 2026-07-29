@@ -1,0 +1,45 @@
+# Regenerate the wiki's data from the sources whenever they change.
+#
+# `wiki/scripts/gen-widgets.mjs` reads the Kotlin widget sources and gradle.properties and writes
+# src/data/widgets.ts and src/data/meta.ts (the versions the Getting Started page shows). It uses only
+# Node built-ins, so this needs no install and no secrets. When a widget's KDoc changes, or the Elementa
+# / brassui version is bumped (including by the Update Elementa job), this commits the regenerated data
+# back to main, keeping the docs' source of truth in step with the build. The site is rebuilt from that
+# by the Deploy Pages job.
+name: Refresh docs
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "core/src/main/kotlin/**"
+      - "gradle.properties"
+      - "wiki/scripts/gen-widgets.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Regenerate widget + meta data
+        run: node wiki/scripts/gen-widgets.mjs
+
+      - name: Commit if anything changed
+        run: |
+          if [ -n "$(git status --porcelain wiki/src/data)" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -am "regenerate wiki data"
+            git push
+          else
+            echo "No data changes."
+          fi

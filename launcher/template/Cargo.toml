@@ -1,0 +1,18 @@
+[package]
+name = "my-app-launcher"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Drop the `window` feature for a launcher that reports to the console instead — smaller binary, no
+# windowing dependencies, and worth doing if your app ships its own JRE and never downloads one.
+jvm-bootstrap = { version = "0.1", features = ["window"] }
+
+[profile.release]
+# A launcher is a few hundred lines wrapping a jar; optimise it for size, not speed. The JVM starting
+# up dwarfs anything this binary does.
+opt-level = "z"
+strip = true
+lto = true
+panic = "abort"

@@ -1,0 +1,46 @@
+# Publish brassui-core and brassui to GitHub Packages when a GitHub Release is published.
+#
+# ### Why release-triggered rather than on every push to main
+#
+# A published package version is immutable on GitHub Packages — you cannot overwrite `0.1.0` once it is
+# up. Tying publication to cutting a Release makes the act of publishing deliberate: bump `version` in
+# gradle.properties, tag it, draft the release, and only then does a version leave the machine. A push
+# trigger would try to republish the same version on every commit and fail the moment it is taken.
+#
+# ### Credentials
+#
+# The build's `GitHubPackages` repository reads `GITHUB_ACTOR` / `GITHUB_TOKEN` from the environment
+# (see the publishing block in build.gradle). Actions injects `secrets.GITHUB_TOKEN` automatically —
+# no secret to configure — and `packages: write` is what lets that token push a package.
+name: Publish
+
+on:
+  release:
+    types: [ published ]
+  # Allow a manual run from the Actions tab, for republishing after a failed release job.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Publish
+        run: ./gradlew publish --stacktrace
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

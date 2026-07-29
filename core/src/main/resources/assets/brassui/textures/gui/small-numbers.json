@@ -1,0 +1,17 @@
+{
+  "cellWidth": 4,
+  "cellHeight": 9,
+  "count": 10,
+  "glyphs": [
+    { "char": "0", "index": 0, "advance": 4 },
+    { "char": "1", "index": 1, "advance": 4 },
+    { "char": "2", "index": 2, "advance": 4 },
+    { "char": "3", "index": 3, "advance": 4 },
+    { "char": "4", "index": 4, "advance": 4 },
+    { "char": "5", "index": 5, "advance": 4 },
+    { "char": "6", "index": 6, "advance": 4 },
+    { "char": "7", "index": 7, "advance": 4 },
+    { "char": "8", "index": 8, "advance": 4 },
+    { "char": "9", "index": 9, "advance": 4 }
+  ]
+}

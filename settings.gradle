@@ -1,0 +1,31 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        maven { url = 'https://maven.neoforged.net/releases' }
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+}
+
+rootProject.name = 'brassui'
+
+// The toolkit LIBRARY. Game-free in spirit — it compiles against Elementa + UniversalCraft and needs
+// mapped Minecraft on the compile classpath (UC's API exposes a few net.minecraft types), but it ships
+// no mod of its own and its bytecode runs unchanged off-game (see :desktop).
+include 'core'
+
+// The widget gallery, hosted by both :desktop and :mod. It is its own module so that adding a widget
+// means demoing it ONCE: the desktop demo and the in-game showcase used to be near-duplicate screens
+// that drifted apart. Game-free — anything that needs Minecraft goes through a BrassDemoHost seam.
+include 'demo'
+
+// The NeoForge MOD: folds the library's classes in, jar-in-jars Elementa/UniversalCraft, and owns the
+// /brassui command that opens the gallery in game. Host mods jar-in-jar this one.
+include 'mod'
+
+// A standalone JVM app that runs the toolkit OUTSIDE Minecraft, on Essential's Minecraft-free
+// UniversalCraft. `./gradlew :desktop:run`. The Rust launcher that wraps it lives in ../launcher.
+include 'desktop'

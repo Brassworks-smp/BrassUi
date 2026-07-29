@@ -1,0 +1,17 @@
+[package]
+name = "brassui-desktop-launcher"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Native launcher for the brassui desktop gallery."
+
+[dependencies]
+# The generic bootstrap crate, from this repository. Published to crates.io as `jvm-bootstrap`;
+# referenced by path here so a change to the crate is testable against a real app without a release.
+jvm-bootstrap = { path = "../../launcher", features = ["window"] }
+
+[profile.release]
+opt-level = "z"
+strip = true
+lto = true
+panic = "abort"

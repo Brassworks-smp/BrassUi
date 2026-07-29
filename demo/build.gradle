@@ -1,0 +1,57 @@
+// brassui (demo): the widget gallery, hosted by BOTH :desktop and :mod.
+//
+// ### Why this is its own module
+//
+// There used to be two of these — `BrassDesktopDemoScreen` (848 lines) in :desktop and
+// `BrassUiShowcaseScreen` (1112 lines) in :mod — and they were near-duplicates that had drifted:
+// same twenty-odd sections, same helper functions, different subsets of the toolkit. A widget added
+// to one was routinely missing from the other, so neither screen was a trustworthy answer to "what
+// does the toolkit look like right now". One gallery, two hosts, demoed once.
+//
+// ### Why it needs Minecraft on the compile classpath
+//
+// It does not use Minecraft, and that is enforced — see BrassDemoHost, which is the seam everything
+// game-specific goes through. But it extends BrassScreen, which extends Elementa's WindowScreen,
+// which extends UniversalCraft's UScreen, whose NeoForge build has net.minecraft in its signatures.
+// So the same moddev setup as :core, for the same reason: to *compile* against UC, not to use MC.
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+    id 'net.neoforged.moddev'
+}
+
+kotlin {
+    jvmToolchain(21)
+}
+
+repositories {
+    maven {
+        url = 'https://repo.essential.gg/repository/maven-public'
+        content { includeGroup 'gg.essential' }
+    }
+}
+
+neoForge {
+    version = project.neo_version
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+    // Not a runnable mod; declaring the sourceset is what puts mapped Minecraft on the compile
+    // classpath for the UniversalCraft types above.
+    mods {
+        brassuidemo {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+dependencies {
+    // The toolkit. api, not implementation: a host module opening the gallery also touches the
+    // toolkit's own types (BrassPlatform.bind, BrassScreen), so they belong on its compile classpath.
+    api project(':core')
+
+    // Same compileOnly treatment as :core — whichever host runs the gallery supplies these at
+    // runtime (the mod jar-in-jars them, the desktop app uses the standalone UniversalCraft).
+    compileOnly "gg.essential:elementa:${project.elementa_version}"
+    compileOnly "gg.essential:universalcraft-1.21-neoforge:${project.universalcraft_version}"
+}

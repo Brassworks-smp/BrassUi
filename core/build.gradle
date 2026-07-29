@@ -1,0 +1,73 @@
+// brassui: the reusable in-game UI toolkit — a set of Elementa components that reproduce the
+// BrassWorks launcher's look (see the React frontend) in Minecraft's own pixel idiom: square panels
+// with the corner pixels notched out instead of smooth rounded corners.
+//
+// The sibling :mod project depends on it with project(:…), merges its classes into the mod module for
+// dev runs, and folds them into the packaged mod jar. Elementa is Kotlin on top of Essential's
+// UniversalCraft (a Minecraft abstraction), so this is a Kotlin module and needs Minecraft on its
+// compile classpath — hence NeoForge moddev. It ships no mod of its own.
+//
+// Shared versions (neo_version, elementa_version, …) come from the root gradle.properties. The root
+// build's subprojects{} block applies java-library + the Java 21 toolchain and sets group/version.
+// Published as `net.swzo.brass:brassui-core`.
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+    id 'net.neoforged.moddev'
+}
+
+kotlin {
+    jvmToolchain(21)
+}
+
+repositories {
+    // Elementa + UniversalCraft live here.
+    maven {
+        url = 'https://repo.essential.gg/repository/maven-public'
+        content { includeGroup 'gg.essential' }
+    }
+}
+
+neoForge {
+    version = project.neo_version
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+    // Not a runnable mod, but declaring the sourceset puts the mapped Minecraft classes on the
+    // compile classpath (UniversalCraft's API exposes a few net.minecraft types).
+    mods {
+        brassui {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+dependencies {
+    // Compile-only: platform-neoforge provides these at runtime (jar-in-jar), and keeping them off our
+    // runtime classpath avoids dragging UniversalCraft's transitive NeoForge coordinate into resolution.
+    compileOnly "gg.essential:elementa:${project.elementa_version}"
+    compileOnly "gg.essential:universalcraft-1.21-neoforge:${project.universalcraft_version}"
+
+    // Tests cover the toolkit's *pure* logic only — parsing, wrapping, geometry, easing. None of it
+    // needs Elementa, a GL context or Minecraft, which is exactly why it is the part worth testing:
+    // it is where the bugs the comments describe actually lived, and it runs in milliseconds.
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // GLFW, for BrassKeyChordTest. Key codes are the one piece of "pure logic" in the toolkit that
+    // names a native library: a binding *is* a GLFW code. Minecraft puts LWJGL on the compile
+    // classpath, but not on the test one, and writing the tests against raw ints instead would mean
+    // asserting that 294 is "F5" — true, and unreadable, and no longer checking the thing that
+    // actually breaks. Only the key-name lookup is ever called; nothing here initialises GLFW.
+    // No natives: BrassKeyChord catches the one native call it makes (glfwGetKeyName) precisely so
+    // this classpath can stay platform-independent.
+    testImplementation "org.lwjgl:lwjgl-glfw:${project.lwjgl_version}"
+}
+
+repositories { mavenCentral() }
+
+tasks.named('test') {
+    useJUnitPlatform()
+    testLogging { events 'failed' }
+}

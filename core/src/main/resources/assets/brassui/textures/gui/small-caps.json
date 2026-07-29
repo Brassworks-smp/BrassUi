@@ -1,0 +1,33 @@
+        {
+          "cellWidth": 6,
+          "cellHeight": 9,
+          "count": 26,
+          "glyphs": [
+            { "char": "\u1d00", "index": 0, "advance": 6 },
+{ "char": "\u0299", "index": 1, "advance": 6 },
+{ "char": "\u1d04", "index": 2, "advance": 6 },
+{ "char": "\u1d05", "index": 3, "advance": 6 },
+{ "char": "\u1d07", "index": 4, "advance": 6 },
+{ "char": "\ua730", "index": 5, "advance": 6 },
+{ "char": "\u0262", "index": 6, "advance": 6 },
+{ "char": "\u029c", "index": 7, "advance": 6 },
+{ "char": "\u026a", "index": 8, "advance": 4 },
+{ "char": "\u1d0a", "index": 9, "advance": 6 },
+{ "char": "\u1d0b", "index": 10, "advance": 6 },
+{ "char": "\u029f", "index": 11, "advance": 6 },
+{ "char": "\u1d0d", "index": 12, "advance": 6 },
+{ "char": "\u0274", "index": 13, "advance": 6 },
+{ "char": "\u1d0f", "index": 14, "advance": 6 },
+{ "char": "\u1d18", "index": 15, "advance": 6 },
+{ "char": "\u01eb", "index": 16, "advance": 6 },
+{ "char": "\u0280", "index": 17, "advance": 6 },
+{ "char": "\u0455", "index": 18, "advance": 6 },
+{ "char": "\u1d1b", "index": 19, "advance": 6 },
+{ "char": "\u1d1c", "index": 20, "advance": 6 },
+{ "char": "\u1d20", "index": 21, "advance": 6 },
+{ "char": "\u1d21", "index": 22, "advance": 6 },
+{ "char": "\u0078", "index": 23, "advance": 6 },
+{ "char": "\u028f", "index": 24, "advance": 6 },
+{ "char": "\u1d22", "index": 25, "advance": 6 }
+          ]
+        }
