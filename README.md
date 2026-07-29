@@ -44,6 +44,14 @@ pipeline that produced every image here.
 ## Showcase
 
 <p align="center">
+  <a href="https://brassworks-smp.github.io/BrassUi/#/node-editor">
+    <img src="wiki/public/screenshots/screens/node-editor.png" width="80%" alt="The BrassUi node editor" />
+  </a>
+</p>
+
+<p align="center"><sub>The node editor: typed graphs, animated inline controls, reroutable wires, notes, groups, execution and debugging.</sub></p>
+
+<p align="center">
   <img src="wiki/public/screenshots/screens/exampleteamsui.png" width="80%" alt="War room admin" />
 </p>
 
@@ -62,6 +70,7 @@ pipeline that produced every image here.
 - **89 widgets**, from buttons and sliders to tables, charts, trees, a chat box, a command palette, and inventory grids.
 - **One brass accent, themed by role.** No widget stores a colour. It stores the name of a role and asks the live theme every frame, so a theme swap retints everything at once and animates while it does.
 - **Layout that wraps by default.** Panels, scroll areas, and a flow container mean a screen reflows instead of overflowing when the window gets tight.
+- **A complete node editor.** Typed ports and reroutable wires, animated fields, notes and nested groups, undo/redo, templates, JSON/SVG export, execution, debugging, plugins, and collaboration.
 - **Runs off-game.** The core links against no Minecraft classes, so the desktop app runs the real widgets with a native window under them.
 - **Built-in dev tools.** A Chrome-style inspector, a demo browser for per-widget captures, and a whole-screen showcase capture that cuts the UI out onto transparency.
 
@@ -129,6 +138,7 @@ The full wiki lives at **[brassworks-smp.github.io/BrassUi](https://brassworks-s
 - [Getting started](https://brassworks-smp.github.io/BrassUi/#/getting-started) walks the first screen end to end.
 - [Using Elementa](https://brassworks-smp.github.io/BrassUi/#/elementa) covers components, constraints, drawing, events, and where it runs.
 - [All widgets](https://brassworks-smp.github.io/BrassUi/#/widgets) has a page per widget with usage and parameters.
+- [Node editor](https://brassworks-smp.github.io/BrassUi/#/node-editor) documents its features, interaction model, runtime, extension APIs, persistence, collaboration, and architecture.
 - [Dev tools](https://brassworks-smp.github.io/BrassUi/#/dev-tools) explains the inspector and the capture tools.
 
 ## Building from source
@@ -145,4 +155,6 @@ or not they have Java installed.
 ## License
 
 Source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). Noncommercial use is
-granted; commercial use by anyone else is not.
+granted; commercial use by anyone other than the copyright holder requires a separate commercial
+license. The copyright holder retains the right to use BrassUi commercially and offer it under
+additional license terms.
