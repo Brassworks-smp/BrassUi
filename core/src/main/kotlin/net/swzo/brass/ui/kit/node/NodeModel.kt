@@ -91,6 +91,10 @@ class GraphNode internal constructor(
     val glowIn = FloatArray(type.inputs.size)
     val glowOut = FloatArray(type.outputs.size)
 
+    /** Per-port rejection glow, raised while a dragged wire hovers this port but cannot connect to it. */
+    val rejectIn = FloatArray(type.inputs.size)
+    val rejectOut = FloatArray(type.outputs.size)
+
     /** True once the node is animating out; the editor removes it when [pop] reaches 0. */
     var closing: Boolean = false
 
@@ -112,6 +116,11 @@ class Link(val from: GraphNode, val fromPort: Int, val to: GraphNode, val toPort
     var selected: Boolean = false
     val sel = BrassEased(0f, speed = 14f)
     var flash: Float = 0f
+
+    /** True once the wire is animating out; the editor removes it when [fade] reaches 0. */
+    var closing: Boolean = false
+    /** 1 = present, eased to 0 as the wire disconnects, so a cut retracts rather than blinking out. */
+    val fade = BrassEased(1f, speed = 11f)
 
     fun portType(): PortType = from.type.outputs[fromPort].type
 }

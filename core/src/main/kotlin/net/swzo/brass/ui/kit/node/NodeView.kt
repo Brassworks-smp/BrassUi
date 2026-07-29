@@ -91,8 +91,8 @@ object NodeView {
             val p = node.type.inputs[i]
             val cx = NodeLayout.inputX(node)
             val cy = NodeLayout.portY(node, i) + dy
-            val connected = graph.links.any { it.to === node && it.toPort == i }
-            nub(m, cx, cy, p.type, connected, node.glowIn.getOrElse(i) { 0f })
+            val connected = graph.links.any { it.to === node && it.toPort == i && !it.closing }
+            nub(m, cx, cy, p.type, connected, node.glowIn.getOrElse(i) { 0f }, node.rejectIn.getOrElse(i) { 0f }, ctx.time)
             BrassFont.draw(m, ctx.host, BrassFont.fit(ctx.host, p.name, 52f), cx + 7f, cy - BrassFont.LINE / 2f,
                 Colors.UI_TEXT_DARK)
         }
@@ -100,24 +100,45 @@ object NodeView {
             val p = node.type.outputs[i]
             val cx = NodeLayout.outputX(node)
             val cy = NodeLayout.portY(node, i) + dy
-            val connected = graph.links.any { it.from === node && it.fromPort == i }
-            nub(m, cx, cy, p.type, connected, node.glowOut.getOrElse(i) { 0f })
+            val connected = graph.links.any { it.from === node && it.fromPort == i && !it.closing }
+            nub(m, cx, cy, p.type, connected, node.glowOut.getOrElse(i) { 0f }, node.rejectOut.getOrElse(i) { 0f }, ctx.time)
             val tw = BrassFont.width(ctx.host, p.name)
             BrassFont.draw(m, ctx.host, p.name, cx - 7f - tw, cy - BrassFont.LINE / 2f, Colors.UI_TEXT_DARK)
         }
     }
 
-    /** A port nub, drawn as a tiny colour-tinted keycap that grows and lights as the cursor nears it. */
-    private fun nub(m: UMatrixStack, cx: Float, cy: Float, type: PortType, connected: Boolean, glow: Float) {
+    /**
+     * A port nub - a tiny colour-tinted keycap. It grows and lights as a valid target ([glow]) with a
+     * ring that blooms when the cursor is over it, and shrinks, reddens and jitters when it is an
+     * invalid drop for the wire being dragged ([reject]) - a distinct "no" against the satisfying "yes".
+     */
+    private fun nub(
+        m: UMatrixStack, cx: Float, cy: Float, type: PortType, connected: Boolean,
+        glow: Float, reject: Float, time: Float,
+    ) {
         val col = type.color()
-        val r = NodeLayout.PORT_R + glow * 1.2f
-        val hot = connected || glow > 0.35f
+        val jitter = if (reject > 0.01f) kotlin.math.sin(time * 34f) * reject * 1.2f else 0f
+        val x = cx + jitter
+        // A valid target grows; a rejected one shrinks a touch.
+        val r = NodeLayout.PORT_R + glow * 1.7f - reject * 1.2f
+        val bg = when {
+            reject > 0.01f -> Colors.mix(Colors.INK_900, Colors.DANGER, reject)
+            connected || glow > 0.35f -> col
+            else -> Colors.INK_900
+        }
+        val edge = if (reject > 0.01f) Colors.mix(col, Colors.DANGER, reject) else col
+        // Valid-target bloom: a soft coloured ring one cell out, growing with the glow.
+        if (glow > 0.35f && reject < 0.01f) {
+            val rr = r + 1f + glow * 1.5f
+            BrassPaint.border(m, x - rr, cy - rr, x + rr, cy + rr,
+                Colors.withAlpha(Colors.mix(col, Color.WHITE, 0.4f), (150 * glow).toInt()))
+        }
         BrassKeycap.draw(
-            m, cx - r, cy - r, r * 2f, r * 2f,
-            bg = if (hot) col else Colors.INK_900,
-            border = col,
+            m, x - r, cy - r, r * 2f, r * 2f,
+            bg = bg,
+            border = edge,
             outer = Colors.UI_OUTER_BORDER,
-            bottom = Colors.mix(col, Color.BLACK, 0.45f),
+            bottom = Colors.mix(edge, Color.BLACK, 0.45f),
             flat = false,
             defaultAccent = false,
         )

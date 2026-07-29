@@ -24,9 +24,11 @@ object DefaultNodes {
             inputs = listOf(Port("seed", PortType.NUMBER)), outputs = listOf(Port("n", PortType.NUMBER)),
             makeFields = {
                 val type = EnumField("type", "Type", listOf("Perlin", "Simplex", "Worley"))
+                val scale = SliderField("scale", "Scale", 0.6f)
                 listOf(
                     type,
-                    SliderField("scale", "Scale", 0.6f),
+                    scale,
+                    ButtonField("roll", "Seed", "Roll") { scale.value = Math.random().toFloat() },
                     ToggleField("ridged", "Ridged", true).onlyWhen { type.current != "Worley" },
                     StepperField("cells", "Cells", 4, 1, 16).onlyWhen { type.current == "Worley" },
                 )
@@ -47,7 +49,12 @@ object DefaultNodes {
             outputs = listOf(Port("out", PortType.VECTOR)),
             makeFields = {
                 val space = EnumField("space", "Space", listOf("Local", "World"))
-                listOf(space, StepperField("octaves", "Octaves", 3, 1, 8), ToggleField("clamp", "Clamp", false).onlyWhen { space.current == "World" })
+                listOf(
+                    space,
+                    Vec2Field("offset", "Offset", 0f, 0f),
+                    StepperField("octaves", "Octaves", 3, 1, 8),
+                    ToggleField("clamp", "Clamp", false).onlyWhen { space.current == "World" },
+                )
             }))
 
         register(NodeType("output", "Output", BrassAccent.DANGER,

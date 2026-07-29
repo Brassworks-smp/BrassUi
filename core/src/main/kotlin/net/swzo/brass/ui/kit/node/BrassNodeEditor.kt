@@ -6,6 +6,7 @@ import gg.essential.universal.UKeyboard
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.kit.base.BrassAccent
+import net.swzo.brass.ui.kit.base.BrassAmbientFade
 import net.swzo.brass.ui.kit.base.BrassChrome
 import net.swzo.brass.ui.kit.base.BrassClock
 import net.swzo.brass.ui.kit.base.BrassEased
@@ -269,7 +270,7 @@ class BrassNodeEditor(
         val selLinks = graph.links.filter { it.selected }
         if (sel.isEmpty() && selLinks.isEmpty()) return
         pushUndo()
-        graph.links.removeAll(selLinks.toSet())
+        selLinks.forEach { disconnect(it) }
         for (n in sel) { graph.links.removeAll { it.from === n || it.to === n }; n.closing = true; n.pop.target = 0f }
     }
 
@@ -319,14 +320,14 @@ class BrassNodeEditor(
             BrassContextMenu(listOf(
                 BrassContextMenu.Item(if (node.collapsed) "Expand" else "Collapse") { node.collapsed = !node.collapsed },
                 BrassContextMenu.Item("Duplicate") { select(node, false); duplicateSelection() },
-                BrassContextMenu.Item("Disconnect") { pushUndo(); graph.links.removeAll { it.from === node || it.to === node } },
+                BrassContextMenu.Item("Disconnect") { pushUndo(); graph.links.filter { it.from === node || it.to === node }.forEach { disconnect(it) } },
                 BrassContextMenu.Item("Delete") { select(node, false); deleteSelection() },
             )).show(root, sx, sy)
             return
         }
         wireAt(wx, wy)?.let { link ->
             BrassContextMenu(listOf(
-                BrassContextMenu.Item("Delete wire") { pushUndo(); graph.links.remove(link) },
+                BrassContextMenu.Item("Delete wire") { pushUndo(); disconnect(link) },
             )).show(root, sx, sy)
             return
         }
@@ -408,6 +409,7 @@ class BrassNodeEditor(
     private fun wireAt(wx: Float, wy: Float): Link? {
         var best: Link? = null; var bestD = 6f
         for (l in graph.links) {
+            if (l.closing) continue
             val d = NodeWire.distanceTo(wx, wy,
                 NodeLayout.outputX(l.from), NodeLayout.portY(l.from, l.fromPort),
                 NodeLayout.inputX(l.to), NodeLayout.portY(l.to, l.toPort))
@@ -427,6 +429,7 @@ class BrassNodeEditor(
         updateTip()
 
         val draggingNode = (mode as? Mode.DragNode)?.node
+        val wiring = mode as? Mode.Wire
         val ct = (14f * BrassClock.dt).coerceAtMost(1f)
         for (n in graph.nodes) {
             n.hover.target = if (n === hoverNode && !n.closing) 1f else 0f
@@ -434,8 +437,24 @@ class BrassNodeEditor(
             n.sel.target = if (n.selected) 1f else 0f
             n.roll.target = if (n.collapsed) 1f else 0f
             n.hover.advance(); n.lift.advance(); n.sel.advance(); n.roll.advance(); n.pop.advance()
-            for (i in n.glowIn.indices) n.glowIn[i] += ((if (hoverPort?.let { it.first === n && it.second == i && !it.third } == true) 1f else 0f) - n.glowIn[i]) * ct
-            for (i in n.glowOut.indices) n.glowOut[i] += ((if (hoverPort?.let { it.first === n && it.second == i && it.third } == true) 1f else 0f) - n.glowOut[i]) * ct
+            // Inputs: a hovered input glows green when the dragged wire could land there, reddens when it
+            // could not. With no wire in flight, any hovered port simply glows.
+            for (i in n.glowIn.indices) {
+                val hovered = hoverPort?.let { it.first === n && it.second == i && !it.third } == true
+                val valid = hovered && (wiring == null || canConnect(wiring.node, wiring.port, n, i))
+                val reject = hovered && wiring != null && !valid
+                n.glowIn[i] += ((if (valid) 1f else 0f) - n.glowIn[i]) * ct
+                n.rejectIn[i] += ((if (reject) 1f else 0f) - n.rejectIn[i]) * ct
+            }
+            // Outputs are never a valid drop for a wire dragged from an output, so they reject while wiring.
+            for (i in n.glowOut.indices) {
+                val hovered = hoverPort?.let { it.first === n && it.second == i && it.third } == true
+                val self = wiring != null && wiring.node === n && wiring.port == i
+                val valid = hovered && wiring == null
+                val reject = hovered && wiring != null && !self
+                n.glowOut[i] += ((if (valid) 1f else 0f) - n.glowOut[i]) * ct
+                n.rejectOut[i] += ((if (reject) 1f else 0f) - n.rejectOut[i]) * ct
+            }
             for (f in n.fields) {
                 f.hover.target = if (f === hoverField) 1f else 0f
                 f.press.target = if (f === pressedField) 1f else 0f
@@ -445,9 +464,23 @@ class BrassNodeEditor(
         for (l in graph.links) {
             l.sel.target = if (l.selected || l === hoverWire) 1f else 0f
             l.sel.advance(); l.flash = (l.flash - BrassClock.dt * 2f).coerceAtLeast(0f)
+            if (l.closing) l.fade.target = 0f
+            l.fade.advance()
         }
+        graph.links.removeAll { it.closing && it.fade.value < 0.02f }
         graph.nodes.removeAll { it.closing && it.pop.value < 0.02f }
     }
+
+    /** Whether an output port could legally wire to an input port - the rule [NodeGraph.link] enforces. */
+    private fun canConnect(from: GraphNode, fromPort: Int, to: GraphNode, toPort: Int): Boolean {
+        if (from === to) return false
+        val out = from.type.outputs.getOrNull(fromPort) ?: return false
+        val inp = to.type.inputs.getOrNull(toPort) ?: return false
+        return out.type == inp.type
+    }
+
+    /** Begin a wire's disconnect animation; [advance] removes it once it has retracted. */
+    private fun disconnect(link: Link) { link.closing = true; link.selected = false }
 
     private fun updateTip() {
         hoverPort?.let { (n, i, out) ->
@@ -483,24 +516,37 @@ class BrassNodeEditor(
 
         drawGrid(m, w.toFloat(), h.toFloat())
         for (link in graph.links) drawLink(ctx, link)
-        (mode as? Mode.Wire)?.let {
-            NodeWire.draw(ctx, NodeLayout.outputX(it.node), NodeLayout.portY(it.node, it.port), wireEndWx, wireEndWy,
-                it.node.type.outputs[it.port].type.color(), 0f, 0f, dashed = true)
+        (mode as? Mode.Wire)?.let { wm ->
+            val base = wm.node.type.outputs[wm.port].type.color()
+            val over = hoverPort
+            val col = when {
+                over != null && !over.third && canConnect(wm.node, wm.port, over.first, over.second) ->
+                    Colors.mix(base, Colors.UI_ACCENT_BRIGHT, 0.55f)
+                over != null && over.first !== wm.node -> Colors.mix(base, Colors.DANGER, 0.6f)
+                else -> base
+            }
+            NodeWire.draw(ctx, NodeLayout.outputX(wm.node), NodeLayout.portY(wm.node, wm.port), wireEndWx, wireEndWy,
+                col, 0f, 0f, dashed = true)
         }
         for (node in graph.nodes) NodeView.draw(ctx, graph, node)
         (mode as? Mode.Box)?.let { drawBox(m, it) }
         m.pop()
 
-        drawHud(m, l, b)
+        drawHud(m, l, t)
     }
 
     private fun drawLink(ctx: NodeDrawCtx, link: Link) {
+        val fade = link.fade.value
+        if (fade <= 0.001f) return
+        val saved = BrassAmbientFade.current
+        BrassAmbientFade.current = saved * fade
         NodeWire.draw(
             ctx,
             NodeLayout.outputX(link.from), NodeLayout.portY(link.from, link.fromPort),
             NodeLayout.inputX(link.to), NodeLayout.portY(link.to, link.toPort),
             link.portType().color(), link.sel.value, link.flash,
         )
+        BrassAmbientFade.current = saved
     }
 
     private fun drawBox(m: UMatrixStack, box: Mode.Box) {
@@ -522,10 +568,15 @@ class BrassNodeEditor(
         while (k * step <= wb) { val gy = k * step; BrassPaint.rect(m, wl, gy, wr, gy + 1f, if (k % 4 == 0) major else minor); k++ }
     }
 
-    private fun drawHud(m: UMatrixStack, l: Float, b: Float) {
-        BrassFont.draw(m, this, "${(zoom * 100).roundToInt()}%", l + 6f, b - BrassFont.LINE * 2 - 9f, Colors.UI_TEXT_DARK)
-        BrassFont.draw(m, this, "drag ports to wire   scroll to zoom   right-click to add",
-            l + 6f, b - BrassFont.LINE - 5f, Colors.UI_TEXT_DARK)
+    /**
+     * The zoom readout and a one-line hint, pinned to the **top-left** of the canvas. Kept off the
+     * bottom edge so it never lands under a host's own footer chrome (the demo browser's button bar),
+     * and short enough that it cannot run past the canvas' right edge at any width.
+     */
+    private fun drawHud(m: UMatrixStack, l: Float, t: Float) {
+        BrassFont.draw(m, this, "${(zoom * 100).roundToInt()}%", l + 6f, t + 6f, Colors.UI_TEXT_DARK)
+        BrassFont.draw(m, this, "drag ports to wire · scroll to zoom · right-click to add",
+            l + 6f, t + 6f + BrassFont.LINE + 2f, Colors.UI_TEXT_DARK)
     }
 
     // Demo + default registry
