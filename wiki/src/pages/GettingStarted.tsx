@@ -15,12 +15,27 @@ const KTS = `repositories {
         }
         content { includeGroup("net.swzo.brass") }
     }
+    // Elementa + UniversalCraft (brassui's API is built on them) come from here.
+    maven("https://repo.essential.gg/repository/maven-public") {
+        content { includeGroup("gg.essential") }
+    }
 }
 
 dependencies {
-    // the mod jar bundles the toolkit + its game libraries, jar-in-jar
-    implementation("net.swzo.brass:brassui:${META.version}")
+    // The mod jar folds in the toolkit and bundles Elementa/UniversalCraft jar-in-jar, but its POM still
+    // lists them (and demo) as runtime deps — pull none of them: demo isn't published, and the rest are
+    // already inside the jar.
+    implementation("net.swzo.brass:brassui:${META.version}") {
+        exclude(group = "net.swzo.brass", module = "brassui-core")
+        exclude(group = "net.swzo.brass", module = "demo")
+        exclude(group = "gg.essential")
+    }
     jarJar("net.swzo.brass:brassui:${META.version}") { isTransitive = false }
+
+    // brassui's API extends Elementa/UniversalCraft, so they're needed to compile; at runtime they load
+    // from brassui's own jar-in-jar. transitive = false keeps UniversalCraft's game deps out.
+    compileOnly("gg.essential:elementa:${META.elementaVersion}") { isTransitive = false }
+    compileOnly("gg.essential:universalcraft-1.21-neoforge:${META.universalcraftVersion}") { isTransitive = false }
 }`;
 
 const GROOVY = `repositories {
@@ -32,12 +47,28 @@ const GROOVY = `repositories {
         }
         content { includeGroup 'net.swzo.brass' }
     }
+    // Elementa + UniversalCraft (brassui's API is built on them) come from here.
+    maven {
+        url = 'https://repo.essential.gg/repository/maven-public'
+        content { includeGroup 'gg.essential' }
+    }
 }
 
 dependencies {
-    // the mod jar bundles the toolkit + its game libraries, jar-in-jar
-    implementation 'net.swzo.brass:brassui:${META.version}'
+    // The mod jar folds in the toolkit and bundles Elementa/UniversalCraft jar-in-jar, but its POM still
+    // lists them (and demo) as runtime deps — pull none of them: demo isn't published, and the rest are
+    // already inside the jar.
+    implementation('net.swzo.brass:brassui:${META.version}') {
+        exclude group: 'net.swzo.brass', module: 'brassui-core'
+        exclude group: 'net.swzo.brass', module: 'demo'
+        exclude group: 'gg.essential'
+    }
     jarJar('net.swzo.brass:brassui:${META.version}') { transitive = false }
+
+    // brassui's API extends Elementa/UniversalCraft, so they're needed to compile; at runtime they load
+    // from brassui's own jar-in-jar. transitive = false keeps UniversalCraft's game deps out.
+    compileOnly('gg.essential:elementa:${META.elementaVersion}') { transitive = false }
+    compileOnly('gg.essential:universalcraft-1.21-neoforge:${META.universalcraftVersion}') { transitive = false }
 }`;
 
 export function GettingStarted() {

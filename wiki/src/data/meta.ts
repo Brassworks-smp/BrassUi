@@ -4,6 +4,7 @@
 export const META = {
   "version": "0.1.0",
   "elementaVersion": "745",
+  "universalcraftVersion": "505",
   "owner": "Brassworks-smp",
   "repo": "BrassUi",
   "repoUrl": "https://github.com/Brassworks-smp/BrassUi",

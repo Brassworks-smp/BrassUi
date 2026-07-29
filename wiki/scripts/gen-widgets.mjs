@@ -32,6 +32,7 @@ function writeMeta() {
   const meta = {
     version: gradleProp(props, "version"),
     elementaVersion: gradleProp(props, "elementa_version"),
+    universalcraftVersion: gradleProp(props, "universalcraft_version"),
     owner: OWNER,
     repo: REPO,
     repoUrl: `https://github.com/${OWNER}/${REPO}`,
