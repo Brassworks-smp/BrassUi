@@ -98,12 +98,12 @@ dependencies {
     // The mod jar folds in the toolkit and bundles Elementa/UniversalCraft jar-in-jar, but its POM still
     // lists them (and demo) as runtime deps — pull none of them: demo isn't published, and the rest are
     // already inside the jar.
-    implementation("net.swzo.brass:brassui:0.1.0") {
+    implementation("net.swzo.brass:brassui:0.1.1") {
         exclude(group = "net.swzo.brass", module = "brassui-core")
         exclude(group = "net.swzo.brass", module = "demo")
         exclude(group = "gg.essential")
     }
-    jarJar("net.swzo.brass:brassui:0.1.0") { isTransitive = false }
+    jarJar("net.swzo.brass:brassui:0.1.1") { isTransitive = false }
 
     // brassui's API extends Elementa/UniversalCraft, so they're needed to compile; at runtime they load
     // from brassui's own jar-in-jar.
