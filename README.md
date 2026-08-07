@@ -71,21 +71,68 @@ pipeline that produced every image here.
 - **One brass accent, themed by role.** No widget stores a colour. It stores the name of a role and asks the live theme every frame, so a theme swap retints everything at once and animates while it does.
 - **Layout that wraps by default.** Panels, scroll areas, and a flow container mean a screen reflows instead of overflowing when the window gets tight.
 - **A complete node editor.** Typed ports and reroutable wires, animated fields, notes and nested groups, undo/redo, templates, JSON/SVG export, execution, debugging, plugins, and collaboration.
+- **UI → server logic, no registration.** Actions are declared inline beside a screen and run on the
+  server automatically: the same single jar discovers them on the client and on a dedicated server,
+  serializes them as JSON, authorizes them by op level, rate-limits them, and pushes state changes
+  back to every subscribed screen. No packets, no codecs, no `register` calls.
 - **Runs off-game.** The core links against no Minecraft classes, so the desktop app runs the real widgets with a native window under them.
 - **Built-in dev tools.** A Chrome-style inspector, a demo browser for per-widget captures, and a whole-screen showcase capture that cuts the UI out onto transparency.
+
+## Networking
+
+UI actions are the one part of a mod that used to mean writing packet classes, a registry, an
+authorization check and a state-sync path by hand. In BrassUi they are one object per file, declared
+inline next to the screen that uses them:
+
+```kotlin
+@BrassActionSet
+object TeamActions {
+    val rename = brassAction<RenameTeam>(
+        id = "brassui.team.rename",
+        permission = "brassui.team.rename",
+        minOpLevel = 3,
+    ) { ctx, input ->
+        Teams.get(input.teamId)?.name = input.name
+        ctx.publish("brassui.team.name", input.name)
+        ok()
+    }
+}
+
+// in the screen:
+actionButton("Rename", TeamActions.rename) {
+    RenameTeam(teamId, field.text)
+}
+```
+
+The mod discovers `@BrassActionSet` objects on its own — via FML scan data in game, the classpath on
+the desktop — on **both** the client and a dedicated server, so one jar covers the whole round trip:
+the action is serialized as JSON (Gson, no codecs), authorized by the declared op level before the
+handler runs, rate-limited when asked, and its failures come back as toasts with the button
+automatically disabled while it is in flight. `brassValue(...)` gives you server-pushed state with
+snapshot-on-subscribe: set `.value` in a handler and every open screen bound to that id updates.
+
+The module goes further out of the box: **async handlers** (`brassAsyncAction`) keep slow work off the
+server thread, **permission sync** makes button state reflect the server's real decisions (PermissionAPI
+included), **optimistic updates** reconcile against authoritative pushes, **coalesced values** throttle
+high-frequency state, **targeted publishes** reach one player, protocol versioning rejects mixed
+client/server versions with a `version.mismatch` error, payloads compress past 1 KB, disconnects fail
+in-flight requests cleanly, and an audit hook logs every executed action. `/brassui action <id> <json>`
+fires any action from chat for testing. Errors translate through Minecraft's language system in game,
+with a built-in catalog and host-side overrides on every platform.
+
+See it live in the gallery's **Networking** section (`/brassui` in game, or the desktop app) — the
+same screen and the same action set run against the in-game server and in-process on the desktop.
+Desktop identity is configurable for testing the authorization mirror:
+`-Dbrassui.net.user=Steve -Dbrassui.net.op=4`.
 
 ## Quick start
 
 BrassUi ships as a self-contained NeoForge mod jar, with Elementa and UniversalCraft folded in, from
-GitHub Packages. Add the repository with a token that has `read:packages`, then depend on it:
+the public Brassworks SMP Maven repository. Add it and depend on the mod—no download token required:
 
 ```kotlin
 repositories {
-    maven("https://maven.pkg.github.com/Brassworks-smp/BrassUi") {
-        credentials {
-            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
-        }
+    maven("https://maven.opnsoc.org/releases") {
         content { includeGroup("net.swzo.brass") }
     }
     // Elementa + UniversalCraft (brassui's API is built on them) come from here.
@@ -98,12 +145,12 @@ dependencies {
     // The mod jar folds in the toolkit and bundles Elementa/UniversalCraft jar-in-jar, but its POM still
     // lists them (and demo) as runtime deps — pull none of them: demo isn't published, and the rest are
     // already inside the jar.
-    implementation("net.swzo.brass:brassui:0.1.1") {
+    implementation("net.swzo.brass:brassui:0.2.0") {
         exclude(group = "net.swzo.brass", module = "brassui-core")
         exclude(group = "net.swzo.brass", module = "demo")
         exclude(group = "gg.essential")
     }
-    jarJar("net.swzo.brass:brassui:0.1.1") { isTransitive = false }
+    jarJar("net.swzo.brass:brassui:0.2.0") { isTransitive = false }
 
     // brassui's API extends Elementa/UniversalCraft, so they're needed to compile; at runtime they load
     // from brassui's own jar-in-jar.
@@ -147,6 +194,24 @@ The full wiki lives at **[brassworks-smp.github.io/BrassUi](https://brassworks-s
 ./gradlew build            # build every module
 ./gradlew :desktop:run     # launch the standalone desktop gallery
 ```
+
+## Publishing
+
+`./gradlew publish` uploads the two publishable artifacts — `brassui-core` (the toolkit library) and
+`brassui` (the self-contained NeoForge mod) — to `https://maven.opnsoc.org/releases`. Reading from
+that repository is public; publishing requires a key.
+
+Publishing credentials live in the gitignored `.env` at the repo root (copy `.env.example`):
+
+```bash
+BRASSWORKS_MAVEN_USER=brassui
+BRASSWORKS_MAVEN_KEY=<your key>
+```
+
+`build.gradle` reads the file directly, so a release is one command — no `source .env` needed. Real
+environment variables or `-P` properties override the file when set. The version comes from
+`gradle.properties` (single source of truth); the repository does not allow overwriting a published
+version, so bump it before each release.
 
 The desktop launcher is wrapped by `launcher/`, a small Rust program that bakes the app jar into a
 native executable, finds or downloads a JRE, and runs it, so a user can double-click one file whether

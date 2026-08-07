@@ -64,11 +64,11 @@ dependencies {
     // this classpath can stay platform-independent.
     testImplementation "org.lwjgl:lwjgl-glfw:${project.lwjgl_version}"
 
-    // Gson, for BrassNodeGraphTest. The node graph's save/load (NodeIO) uses it, as does BrassIcons;
-    // at runtime it arrives transitively with Elementa/UniversalCraft (and is bundled by the desktop
-    // app and the mod), but the pure-logic test classpath needs it named explicitly. The node model is
-    // plain data, so its serialization is exactly the kind of thing worth testing off-game.
-    testImplementation 'com.google.code.gson:gson:2.10.1'
+    // Gson: BrassIcons, the node graph's save/load (NodeIO), and the networking module's JSON action
+    // bus all serialise through it. implementation so the networking module (and its tests) compile
+    // against it; at runtime it arrives transitively with Elementa/UniversalCraft and ships with the
+    // game, but a module that references Gson directly should say so in its POM.
+    implementation 'com.google.code.gson:gson:2.10.1'
 }
 
 repositories { mavenCentral() }

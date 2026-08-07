@@ -9,10 +9,6 @@ import { META } from "../data/meta";
 // here follow the real build automatically — a release just needs the site regenerated, which CI does.
 const KTS = `repositories {
     maven("${META.packagesUrl}") {
-        credentials {
-            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
-        }
         content { includeGroup("net.swzo.brass") }
     }
     // Elementa + UniversalCraft (brassui's API is built on them) come from here.
@@ -41,10 +37,6 @@ dependencies {
 const GROOVY = `repositories {
     maven {
         url = '${META.packagesUrl}'
-        credentials {
-            username = project.findProperty('gpr.user') ?: System.getenv('GITHUB_ACTOR')
-            password = project.findProperty('gpr.token') ?: System.getenv('GITHUB_TOKEN')
-        }
         content { includeGroup 'net.swzo.brass' }
     }
     // Elementa + UniversalCraft (brassui's API is built on them) come from here.
@@ -82,8 +74,8 @@ export function GettingStarted() {
             <Card title="1 · Depend on the toolkit">
               <p className="text-sm leading-relaxed text-ink-600">
                 brassui ships as a self-contained NeoForge mod jar, with Elementa and UniversalCraft
-                folded in, from a private GitHub Packages repo. Add the repository with a token that has{" "}
-                <Mono>read:packages</Mono>, then depend on it. Pick your build dialect:
+                folded in, from the public Brassworks SMP Maven repository. Add it with no download
+                token, then depend on it. Pick your build dialect:
               </p>
               <GradleBlock kotlin={KTS} groovy={GROOVY} />
             </Card>

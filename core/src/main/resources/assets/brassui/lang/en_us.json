@@ -1,0 +1,14 @@
+{
+  "brassui.net.error.action.unknown": "Unknown action: %s",
+  "brassui.net.error.denied": "You don't have permission to do that (%s)",
+  "brassui.net.error.rate.limited": "Too many requests - try again shortly",
+  "brassui.net.error.action.malformed": "That request could not be understood",
+  "brassui.net.error.action.failed": "Something went wrong running that action (%s)",
+  "brassui.net.error.net.unavailable": "Networking isn't set up here",
+  "brassui.net.error.send.failed": "The action could not be sent (%s)",
+  "brassui.net.error.wire.bad": "The server sent an unreadable reply",
+  "brassui.net.error.timeout": "The server took too long to reply after %s seconds",
+  "brassui.net.error.action.disabled": "That action is currently disabled",
+  "brassui.net.error.no.connection": "Not connected to a server",
+  "brassui.net.error.version.mismatch": "Networking version mismatch: client %s, server %s"
+}

@@ -67,6 +67,11 @@ dependencies {
     // pairs with the same elementa:745 and is binary-compatible with core's bytecode.
     implementation "gg.essential:universalcraft-standalone:${project.universalcraft_version}"
     implementation "gg.essential:elementa:${project.elementa_version}"
+    // UniversalCraft runs its render loop on kotlinx-coroutines' Main dispatcher (the standalone UC
+    // registers it via ServiceLoader). The networking transport marshals replies and state updates
+    // back to the render thread through Dispatchers.Main - declare the dependency it compiles against
+    // (already on the runtime classpath transitively via UC).
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC'
 
     // LWJGL brings its Java bindings transitively (via elementa/UC) but NOT the per-platform native
     // libraries GLFW/OpenGL/NanoVG/STB load at runtime — those are classifier artifacts the consumer
@@ -114,12 +119,16 @@ application {
     }
 }
 
-// Forward the app's own -Dui.* settings from the Gradle command line into the JVM that actually runs it:
+// Forward the app's own -Dui.* and -Dbrassui.* settings from the Gradle command line into the JVM that
+// actually runs it:
 //   ./gradlew :desktop:run -Dui.section=Chat -Dui.width=900
+//   ./gradlew :desktop:run -Dbrassui.net.user=Steve -Dbrassui.net.op=4
 // `run` is a forked JavaExec and inherits nothing, so without this the properties Main.kt and
 // BrassGalleryScreen already read stop at the Gradle daemon and silently do nothing. Read through
 // `providers` rather than System.getProperties() so the configuration cache tracks them as inputs.
 def uiProperties = providers.systemPropertiesPrefixedBy('ui.')
+def brassuiProperties = providers.systemPropertiesPrefixedBy('brassui.')
 tasks.named('run', JavaExec) {
     systemProperties uiProperties.get()
+    systemProperties brassuiProperties.get()
 }

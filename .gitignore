@@ -23,5 +23,6 @@ target/
 # Shared Rust target dir for launcher/ and desktop/launcher/
 target-rust/
 
-# Claude Code local project settings
 .claude/
+AGENTS.md
+ARCHITECTURE.md

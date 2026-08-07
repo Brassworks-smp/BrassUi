@@ -5,8 +5,11 @@ import gg.essential.universal.UResolution
 import gg.essential.universal.UScreen
 import gg.essential.universal.standalone.runUniversalCraft
 import net.swzo.brass.ui.demo.BrassGalleryScreen
+import net.swzo.brass.ui.desktop.net.DesktopNetDiscovery
+import net.swzo.brass.ui.desktop.net.LocalBrassNetTransport
 import net.swzo.brass.ui.kit.demo.BrassDemoBrowser
 import net.swzo.brass.ui.kit.demo.BrassDemoCapture
+import net.swzo.brass.ui.kit.net.BrassNet
 import net.swzo.brass.ui.kit.platform.BrassPlatform
 import org.lwjgl.glfw.GLFW
 
@@ -53,6 +56,12 @@ fun main() {
         // Bind the capture seam too, so the demo browser's shutter works off-game: it reads the region
         // straight off the GL framebuffer. Point output at the wiki with -Dbrassui.shots.dir=...
         BrassDemoCapture.bind(DesktopDemoCapture())
+
+        // Networking: discover the demo's @BrassActionSet objects and run their handlers in-process.
+        // -Dbrassui.net.user=Steve -Dbrassui.net.op=4 control the pretend identity; the same action
+        // sets run against a real server in game.
+        DesktopNetDiscovery.discoverAndLoad()
+        BrassNet.bind(LocalBrassNetTransport())
 
         // -Dui.demo=<name> jumps straight into the demo browser on that widget (like -Dui.section does
         // for the gallery); -Dui.shot=<name> does the same, captures a PNG and quits. Both are for

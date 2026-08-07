@@ -1,9 +1,11 @@
 package net.swzo.brass.ui.neoforge;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -11,6 +13,7 @@ import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.swzo.brass.ui.demo.BrassGalleryScreen;
 import net.swzo.brass.ui.kit.demo.BrassDemoCapture;
 import net.swzo.brass.ui.kit.platform.BrassPlatform;
+import net.swzo.brass.ui.neoforge.net.NeoForgeNetCommands;
 import net.swzo.brass.ui.neoforge.shot.NeoForgeDemoCapture;
 import net.swzo.brass.ui.kit.text.BrassSyntax;
 
@@ -45,6 +48,19 @@ public final class BrassUiClientCommands {
 
         CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
         dispatcher.register(Commands.literal("brassui")
+                // /brassui action <id> <json> — fire any registered action from chat, no UI needed.
+                // Prints the translated outcome when the server replies.
+                .then(Commands.literal("action")
+                        .then(Commands.argument("id", StringArgumentType.string())
+                                .then(Commands.argument("json", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            String id = StringArgumentType.getString(ctx, "id");
+                                            String json = StringArgumentType.getString(ctx, "json");
+                                            ctx.getSource().sendSuccess(
+                                                    () -> Component.literal(NeoForgeNetCommands.INSTANCE.sendAction(id, json)),
+                                                    false);
+                                            return 1;
+                                        }))))
                 .executes(ctx -> {
                     Minecraft mc = Minecraft.getInstance();
                     // Defer to the next client tick so the closing chat screen doesn't clobber ours.

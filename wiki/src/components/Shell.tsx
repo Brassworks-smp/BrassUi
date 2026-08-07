@@ -12,6 +12,7 @@ import {
   Images,
   Wrench,
   Workflow,
+  Radio,
   ExternalLink,
 } from "lucide-react";
 import { inputCls, cx } from "brassui-react";
@@ -31,6 +32,7 @@ const GUIDE = [
   { to: "/gallery", label: "Gallery", icon: Images, end: true },
   { to: "/dev-tools", label: "Dev tools", icon: Wrench },
   { to: "/node-editor", label: "Node editor", icon: Workflow },
+  { to: "/networking", label: "Networking", icon: Radio },
 ];
 
 function itemCls(active: boolean) {

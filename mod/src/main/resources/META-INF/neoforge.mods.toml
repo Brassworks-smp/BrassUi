@@ -32,12 +32,13 @@ side = "BOTH"
 # mod. Deliberately NOT bundled: KFF is a library mod that has to own that module wiring, and
 # jar-in-jar'ing a bare kotlin-stdlib without it leaves kotlin.enums unreadable.
 #
-# CLIENT only: every Kotlin class in this jar sits behind BrassUiClientCommands, which is
-# @EventBusSubscriber(Dist.CLIENT), so a dedicated server loads only the Java @Mod entry and must not be
-# made to install a Kotlin runtime it will not use.
+# BOTH sides: the networking module (BrassNetNeoForgeEvents, NeoForgeBrassNet) is deliberately not
+# Dist-gated so the same single jar registers payloads, discovers @BrassActionSet objects and runs
+# action handlers on a dedicated server as well as on a client. That means the server now loads Kotlin
+# classes, so the runtime has to be present there too.
 [[dependencies.brassui]]
 modId = "kotlinforforge"
 type = "required"
 versionRange = "[5.12.0,6.0.0)"
 ordering = "NONE"
-side = "CLIENT"
+side = "BOTH"

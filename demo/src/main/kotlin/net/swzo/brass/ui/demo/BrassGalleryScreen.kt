@@ -17,6 +17,7 @@ import net.swzo.brass.ui.BrassScreen
 import net.swzo.brass.ui.BrassThemes
 import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.component.BrassText
+import net.swzo.brass.ui.demo.net.BrassNetDemoSection
 import net.swzo.brass.ui.kit.base.BrassAccent
 import net.swzo.brass.ui.kit.base.BrassState
 import net.swzo.brass.ui.kit.base.BrassTree
@@ -236,6 +237,9 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             // tucked away: this is the one section that is guaranteed to match the captured
             // documentation, because it is running the same scripts.
             add("Demos" to { openDemos() })
+            // UI -> server logic, the whole pipeline: inline action declarations, authorization,
+            // rate limiting, pending states and server-pushed values. Same action set on both hosts.
+            add("Networking" to { openNetworking() })
             // Only where the platform can actually draw game content. Off-game these widgets have
             // nothing to render, and a section of empty boxes demos nothing — it reads as a bug.
             if (host.gameWidgets) add("Items" to { openItems() })
@@ -618,6 +622,14 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         // Closing the browser comes straight back to a fresh gallery, so the section reads as a
         // round trip rather than a dead end.
         host.open(BrassDemoBrowser(onExit = { host.open(BrassGalleryScreen(host)) }))
+    }
+
+    /**
+     * The networking showcase: actions declared beside this screen, dispatched to the server (or run
+     * in-process on the desktop), authorized, rate-limited and mirrored back as pushed state.
+     */
+    private fun openNetworking() {
+        BrassNetDemoSection.open(background, popupBounds(440f, 580f))
     }
 
     private fun openTable() {

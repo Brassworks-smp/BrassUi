@@ -11,6 +11,7 @@ import { Gallery } from "./pages/Gallery";
 import { Elementa } from "./pages/Elementa";
 import { DevTools } from "./pages/DevTools";
 import { NodeEditor } from "./pages/NodeEditor";
+import { Networking } from "./pages/Networking";
 
 export function App() {
   return (
@@ -22,6 +23,7 @@ export function App() {
         <Route path="/elementa" element={<Elementa />} />
         <Route path="/dev-tools" element={<DevTools />} />
         <Route path="/node-editor" element={<NodeEditor />} />
+        <Route path="/networking" element={<Networking />} />
         <Route path="/design" element={<DesignGuide />} />
         <Route path="/layout" element={<LayoutGuide />} />
         <Route path="/widgets" element={<Widgets />} />
