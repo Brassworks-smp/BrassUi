@@ -19,6 +19,12 @@
 plugins {
     id 'org.jetbrains.kotlin.jvm'
     id 'net.neoforged.moddev'
+    id 'me.modmuss50.mod-publish-plugin'
+}
+
+// `brassui-<version>.jar` on disk — matches the maven coordinate and what Modrinth/CurseForge show.
+base {
+    archivesName = 'brassui'
 }
 
 kotlin {
@@ -64,6 +70,10 @@ neoForge {
         client {
             client()
         }
+        // Headless dedicated-server boot for the CI smoke test: ./gradlew :mod:runServer.
+        server {
+            server()
+        }
     }
 }
 
@@ -97,4 +107,48 @@ tasks.named('jar') {
     from(project(':core').sourceSets.main.output)
     from(project(':demo').sourceSets.main.output)
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// The mod POM is deliberately dependency-free (see the root build's publication block), so the
+// Gradle module metadata must not smuggle the runtime deps back in. Consumers fall back to the POM,
+// which is exactly what we want them to see.
+tasks.withType(GenerateModuleMetadata).configureEach { enabled = false }
+
+// ---- Modrinth / CurseForge / GitHub releases ----------------------------------------------------
+//
+// `./gradlew :mod:publishMods` uploads the mod jar to every configured destination in one run.
+// Project IDs come from gradle properties (`modrinth.projectId`, `curseforge.projectId`); tokens come
+// from environment variables (CI secrets). When a token is missing the destination falls back to
+// `dryRun`, which stages the release under build/ instead of hitting the API, so a local build never
+// accidentally publishes.
+publishMods {
+    file = tasks.named('jar').flatMap { it.archiveFile }
+    changelog = providers.gradleProperty('changelog').getOrElse('See the GitHub releases page for the changelog.')
+    displayName = "BrassUi ${project.version}"
+    type = STABLE
+    modLoaders.add('neoforge')
+
+    curseforge {
+        projectId = providers.gradleProperty('curseforge.projectId').getOrElse('000000')
+        projectSlug = providers.gradleProperty('curseforge.projectSlug').getOrElse('brassui')
+        accessToken = providers.environmentVariable('CURSEFORGE_TOKEN')
+        minecraftVersions.add(project.minecraft_version)
+        dryRun = providers.environmentVariable('CURSEFORGE_TOKEN').getOrNull() == null
+    }
+
+    modrinth {
+        projectId = providers.gradleProperty('modrinth.projectId').getOrElse('00000000')
+        accessToken = providers.environmentVariable('MODRINTH_TOKEN')
+        minecraftVersions.add(project.minecraft_version)
+        dryRun = providers.environmentVariable('MODRINTH_TOKEN').getOrNull() == null
+        // brassui declares Kotlin-For-Forge as a runtime requirement (see neoforge.mods.toml).
+        requires { slug = 'kotlinforforge' }
+    }
+
+    github {
+        repository = 'Brassworks-smp/BrassUi'
+        accessToken = providers.environmentVariable('GITHUB_TOKEN')
+        commitish = 'main'
+        dryRun = providers.environmentVariable('GITHUB_TOKEN').getOrNull() == null
+    }
 }

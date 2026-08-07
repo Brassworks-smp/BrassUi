@@ -36,7 +36,7 @@ function writeMeta() {
     owner: OWNER,
     repo: REPO,
     repoUrl: `https://github.com/${OWNER}/${REPO}`,
-    packagesUrl: `https://maven.pkg.github.com/${OWNER}/${REPO}`,
+    packagesUrl: "https://maven.opnsoc.org/releases",
   };
   writeFileSync(
     META_OUT,

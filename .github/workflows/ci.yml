@@ -32,3 +32,11 @@ jobs:
 
       - name: Build
         run: ./gradlew build --stacktrace
+
+      # Boot smoke tests: the mod must actually start (dedicated server, then the client under xvfb)
+      # or CI fails. See scripts/smoke-boot.sh.
+      - name: Boot smoke test (dedicated server)
+        run: ./scripts/smoke-boot.sh :mod:runServer server 600
+
+      - name: Boot smoke test (client)
+        run: xvfb-run -a ./scripts/smoke-boot.sh :mod:runClient client 900

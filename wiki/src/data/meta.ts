@@ -2,11 +2,11 @@
 // Source: the build's gradle.properties. Re-run `node scripts/gen-widgets.mjs` to refresh.
 
 export const META = {
-  "version": "0.1.1",
+  "version": "0.2.0",
   "elementaVersion": "751+fix-basicfontrenderer-elementav9",
   "universalcraftVersion": "505",
   "owner": "Brassworks-smp",
   "repo": "BrassUi",
   "repoUrl": "https://github.com/Brassworks-smp/BrassUi",
-  "packagesUrl": "https://maven.pkg.github.com/Brassworks-smp/BrassUi"
+  "packagesUrl": "https://maven.opnsoc.org/releases"
 } as const;
