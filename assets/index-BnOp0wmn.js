@@ -841,41 +841,22 @@ BrassTimeAgo(listedAt, suffix = false)     // "12m"`,"BrassTimeAgo(System.curren
         it.row(18f, editButton, copyButton, deleteButton)
     },
 )`})]}),n.jsx("h2",{className:"mb-3 mt-8 font-mc text-xs uppercase tracking-widest text-brass-300",children:"Read next"}),n.jsx("div",{className:"grid grid-cols-1 gap-3 sm:grid-cols-2",children:wv.map(u=>n.jsxs(_e,{to:u.to,className:"hover-lift group flex items-start gap-3 rounded-xl border border-edge bg-ink-900/50 p-4",children:[n.jsx("div",{className:"grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brass-500/12 text-brass-300",children:n.jsx(u.icon,{size:16})}),n.jsxs("div",{className:"min-w-0",children:[n.jsxs("div",{className:"flex items-center gap-1.5 font-mc text-sm text-gray-100",children:[u.title,n.jsx(Yy,{size:13,className:"opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100"})]}),n.jsx("p",{className:"mt-1 text-xs leading-relaxed text-ink-600",children:u.body})]})]},u.to))}),n.jsx("h2",{className:"mb-3 mt-8 font-mc text-xs uppercase tracking-widest text-brass-300",children:"The catalog"}),n.jsx("div",{className:"grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3",children:Di.map(u=>{const d=wt.filter(c=>c.categoryDir===u.dir).length;return n.jsxs(_e,{to:"/widgets",className:"hover-lift rounded-xl border border-edge bg-ink-900/50 p-4",children:[n.jsxs("div",{className:"flex items-baseline justify-between",children:[n.jsx("span",{className:"font-mc text-sm text-gray-100",children:u.label}),n.jsx("span",{className:"font-mc text-xs tabular-nums text-brass-300",children:d})]}),n.jsx("p",{className:"mt-1.5 text-xs leading-relaxed text-ink-600",children:u.blurb})]},u.dir)})})]})})}function uc({n:r,label:u}){return n.jsxs("div",{className:"rounded-lg border border-edge bg-ink-950/40 px-4 py-2",children:[n.jsx("div",{className:"font-mc text-xl tabular-nums text-brass-300",children:r}),n.jsx("div",{className:"text-[11px] uppercase tracking-wide text-ink-600",children:u})]})}function le({name:r,fallback:u}){const d=wt.some(h=>h.slug===r),c=u??r;return d?n.jsx(_e,{to:`/widgets/${r}`,className:"font-mc text-brass-300 underline-offset-2 hover:underline",children:c}):n.jsx("span",{className:"font-mc text-brass-300",children:c})}const Nv=`repositories {
-    maven("${yl.packagesUrl}") {
-        content { includeGroup("net.swzo.brass") }
-    }
-    // Elementa + UniversalCraft (brassui's API is built on them) come from here.
-    maven("https://repo.essential.gg/repository/maven-public") {
-        content { includeGroup("gg.essential") }
-    }
+    maven("${yl.packagesUrl}")
+    mavenCentral()
 }
 
 dependencies {
-    // One line is all it takes. implementation pulls brassui + Elementa/UniversalCraft (the POM
-    // exposes them for compile); jarJar bundles brassui into your mod, with Elementa/UC riding
-    // inside it — nothing else is needed at runtime. The empty {} keeps the default (transitive)
-    // resolution: isTransitive = false would also starve the compile classpath. (Kotlin For Forge is
-    // a separate required mod; add it the way your Kotlin setup already does.)
     implementation(jarJar("net.swzo.brass:brassui:${yl.version}") {})
 }`,Tv=`repositories {
     maven {
         url = '${yl.packagesUrl}'
-        content { includeGroup 'net.swzo.brass' }
     }
-    // Elementa + UniversalCraft (brassui's API is built on them) come from here.
-    maven {
-        url = 'https://repo.essential.gg/repository/maven-public'
-        content { includeGroup 'gg.essential' }
-    }
+    mavenCentral()
 }
 
 dependencies {
-    // One line is all it takes. implementation pulls brassui + Elementa/UniversalCraft (the POM
-    // exposes them for compile); jarJar bundles brassui into your mod, with Elementa/UC riding
-    // inside it — nothing else is needed at runtime. (Kotlin For Forge is a separate required mod;
-    // add it the way your Kotlin setup already does.)
     implementation(jarJar('net.swzo.brass:brassui:${yl.version}'))
-}`;function Av(){return n.jsxs(Nt,{children:[n.jsx(Gt,{title:"Getting started",subtitle:"From zero to a screen on the display"}),n.jsx(Tt,{className:"stagger",children:n.jsxs("div",{className:"grid grid-cols-1 gap-6 lg:grid-cols-[1fr_18rem]",children:[n.jsxs("div",{className:"flex min-w-0 flex-col gap-4",children:[n.jsxs(fe,{title:"1 · Depend on the toolkit",children:[n.jsx("p",{className:"text-sm leading-relaxed text-ink-600",children:"brassui ships as a self-contained NeoForge mod jar, with Elementa and UniversalCraft bundled in, from the public Brassworks SMP Maven repository. Add it with no download token, then depend on it — one line pulls the toolkit and Elementa. Pick your build dialect:"}),n.jsx(Bv,{kotlin:Nv,groovy:Tv})]}),n.jsxs(fe,{title:"2 · Put a screen on the display",children:[n.jsxs("p",{className:"text-sm leading-relaxed text-ink-600",children:["Extend ",n.jsx(le,{name:"BrassScreen",fallback:"BrassScreen"}),", an Elementa"," ",n.jsx(S,{children:"WindowScreen"})," that hands you a ",n.jsx(S,{children:"background"})," root, the theme, the cursor, and the entrance cascade. Parent your widgets to it and you are done."]}),n.jsx(oe,{title:"HelloScreen.kt",children:`class HelloScreen : BrassScreen() {
+}`;function Av(){return n.jsxs(Nt,{children:[n.jsx(Gt,{title:"Getting started",subtitle:"From zero to a screen on the display"}),n.jsx(Tt,{className:"stagger",children:n.jsxs("div",{className:"grid grid-cols-1 gap-6 lg:grid-cols-[1fr_18rem]",children:[n.jsxs("div",{className:"flex min-w-0 flex-col gap-4",children:[n.jsxs(fe,{title:"1 · Depend on the toolkit",children:[n.jsx("p",{className:"text-sm leading-relaxed text-ink-600",children:"brassui ships as a self-contained NeoForge mod jar, with Elementa and UniversalCraft bundled in, from the Brassworks SMP Maven repository — Elementa and UniversalCraft are mirrored there too, so one repository and one line pull the whole toolkit. Add it with no download token. Pick your build dialect:"}),n.jsx(Bv,{kotlin:Nv,groovy:Tv})]}),n.jsxs(fe,{title:"2 · Put a screen on the display",children:[n.jsxs("p",{className:"text-sm leading-relaxed text-ink-600",children:["Extend ",n.jsx(le,{name:"BrassScreen",fallback:"BrassScreen"}),", an Elementa"," ",n.jsx(S,{children:"WindowScreen"})," that hands you a ",n.jsx(S,{children:"background"})," root, the theme, the cursor, and the entrance cascade. Parent your widgets to it and you are done."]}),n.jsx(oe,{title:"HelloScreen.kt",children:`class HelloScreen : BrassScreen() {
     init {
         BrassPanel("HELLO").add(
             BrassLabel("Welcome to brassui"),
