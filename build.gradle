@@ -90,15 +90,22 @@ configure([project(':core'), project(':mod')]) {
                 from components.java
                 artifactId = project.name == 'core' ? 'brassui-core' : 'brassui'
 
-                // The mod jar is self-contained: core + demo classes are folded in and
-                // Elementa/UniversalCraft ride as jar-in-jar, so the POM must not advertise runtime
-                // dependencies (one of them, `demo`, is not even published). An empty POM is what
-                // lets a consumer write `implementation("net.swzo.brass:brassui:<version>")` with no
-                // exclusions and no Essential repository. `brassui-core` keeps its (honest) deps.
+                // The mod jar is self-contained at runtime: core + demo classes are folded in and
+                // Elementa/UniversalCraft ride as jar-in-jar. The POM deliberately carries Elementa +
+                // UniversalCraft as compile-scope dependencies (so consumers compile against them
+                // without adding anything). KFF is a required *mod* (neoforge.mods.toml), not a
+                // library: Kotlin consumers already declare it themselves and it lives on a repo we
+                // shouldn't force them to add, so it is kept out of the POM. `brassui-core` keeps its
+                // (honest) deps.
                 if (project.name == 'mod') {
                     pom.withXml {
-                        def dependencies = asNode().dependencies
-                        if (dependencies != null) dependencies.replaceNode {}
+                        def deps = asNode().dependencies?.get(0)
+                        if (deps != null) {
+                            deps.children().removeAll {
+                                it.name().localPart == 'dependency' &&
+                                    it.groupId.text() == 'thedarkcolour'
+                            }
+                        }
                     }
                 }
 

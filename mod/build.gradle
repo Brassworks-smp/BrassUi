@@ -2,6 +2,15 @@
 // /brassui showcase. It bundles Elementa + UniversalCraft as jar-in-jar game libraries and declares
 // Kotlin-For-Forge, so any host mod only has to jar-in-jar THIS one to get a working in-game UI.
 //
+// How a host mod consumes it (see the wiki's Getting Started page for the full snippet):
+//
+//     implementation("net.swzo.brass:brassui:<version>")
+//     jarJar("net.swzo.brass:brassui:<version>") { isTransitive = false }
+//
+// That works because the published POM exposes Elementa + UniversalCraft as compile-scope
+// dependencies (so the consumer's code can see BrassScreen's Elementa base classes without listing
+// them) while the jar itself carries Elementa/UC jar-in-jar (so nothing extra is needed at runtime).
+//
 // Shared versions come from the root gradle.properties; the root subprojects{} block supplies
 // group/version + the Java 21 toolchain. This is what gets published as `net.swzo.brass:brassui`, and
 // what a host mod jar-in-jars.
@@ -78,27 +87,41 @@ neoForge {
 }
 
 dependencies {
-    // The toolkit library, for compilation. Its classes are folded into the jar below (see the header).
-    implementation project(':core')
-    // The gallery the /brassui command opens. Folded into the jar alongside the toolkit, for the same
-    // module-layer reason — see the header.
-    implementation project(':demo')
+    // The toolkit library and gallery, for compilation only. Their classes are FOLDED into the jar
+    // below (see the header), so they must not appear in the published POM — a consumer depending on
+    // `brassui` would otherwise have to exclude them (and `demo` isn't even published).
+    compileOnly project(':core')
+    compileOnly project(':demo')
 
-    // Elementa/UniversalCraft on the compile+runtime classpath. transitive=false keeps UniversalCraft's
-    // own NeoForge coordinate out of resolution (moddev already provides the game).
-    implementation("gg.essential:elementa:${project.elementa_version}") { transitive = false }
-    implementation("gg.essential:universalcraft-1.21-neoforge:${project.universalcraft_version}") { transitive = false }
+    // Elementa/UniversalCraft: `api` so the published POM exposes them as compile-scope dependencies
+    // and a consumer's `implementation("net.swzo.brass:brassui")` pulls them without any extra lines.
+    // transitive=false keeps UniversalCraft's own transitive deps out of resolution (moddev already
+    // provides the game, and the consumer's build gets nothing but the two jars — elementa's POM is
+    // empty and UC's only extra is a kotlin-stdlib that Kotlin mods already have).
+    api("gg.essential:elementa:${project.elementa_version}") { transitive = false }
+    api("gg.essential:universalcraft-1.21-neoforge:${project.universalcraft_version}") { transitive = false }
 
     // Kotlin For Forge provides the Kotlin runtime AND the FML wiring that makes kotlin.* readable to
     // this mod's module. runtimeOnly: we reference none of its classes, and keeping it off the compile
     // classpath avoids a Kotlin-metadata version clash (KFF 5.12 is built with a newer Kotlin than our
-    // compiler). NOT bundled — a client running this jar needs KFF installed (declared in the toml).
+    // compiler). NOT bundled, and NOT in the published POM — KFF is a required mod (declared in the
+    // toml) that every Kotlin consumer already declares itself; publishing it would force consumers
+    // to add KFF's maven. A client running this jar needs KFF installed.
     runtimeOnly "thedarkcolour:kotlinforforge-neoforge:${project.kff_version}"
 
     // Bundle Elementa + UniversalCraft AS-IS (Essential ships them with FMLModType: GAMELIBRARY, which
     // is what lets UniversalCraft read the minecraft module). The base game ships neither.
     jarJar("gg.essential:elementa:${project.elementa_version}") { transitive = false }
     jarJar("gg.essential:universalcraft-1.21-neoforge:${project.universalcraft_version}") { transitive = false }
+}
+
+// The mod's version lives once in root gradle.properties — feed it into the mods.toml so the toml
+// can't drift from what the jar/maven coordinate say.
+tasks.named('processResources') {
+    inputs.property('version', project.version)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(version: project.version)
+    }
 }
 
 // Fold the toolkit library's compiled classes (and its resources — icons.png, syntax_rules.json) into
@@ -109,9 +132,8 @@ tasks.named('jar') {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-// The mod POM is deliberately dependency-free (see the root build's publication block), so the
-// Gradle module metadata must not smuggle the runtime deps back in. Consumers fall back to the POM,
-// which is exactly what we want them to see.
+// The mod POM is the consumer contract (Elementa/UC compile deps, KFF runtime) and must be the only
+// metadata consumers see — Gradle module metadata could smuggle in the jarJar/folded internals.
 tasks.withType(GenerateModuleMetadata).configureEach { enabled = false }
 
 // ---- Modrinth / CurseForge / GitHub releases ----------------------------------------------------

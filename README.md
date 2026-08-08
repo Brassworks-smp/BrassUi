@@ -127,8 +127,9 @@ Desktop identity is configurable for testing the authorization mirror:
 
 ## Quick start
 
-BrassUi ships as a self-contained NeoForge mod jar, with Elementa and UniversalCraft folded in, from
-the public Brassworks SMP Maven repository. Add it and depend on the mod—no download token required:
+BrassUi ships as a self-contained NeoForge mod jar, with Elementa and UniversalCraft bundled in, from
+the public Brassworks SMP Maven repository. Add it and depend on the mod—no download token required,
+and no Elementa line to write (the POM brings it for you):
 
 ```kotlin
 repositories {
@@ -142,20 +143,12 @@ repositories {
 }
 
 dependencies {
-    // The mod jar folds in the toolkit and bundles Elementa/UniversalCraft jar-in-jar, but its POM still
-    // lists them (and demo) as runtime deps — pull none of them: demo isn't published, and the rest are
-    // already inside the jar.
-    implementation("net.swzo.brass:brassui:0.2.0") {
-        exclude(group = "net.swzo.brass", module = "brassui-core")
-        exclude(group = "net.swzo.brass", module = "demo")
-        exclude(group = "gg.essential")
-    }
-    jarJar("net.swzo.brass:brassui:0.2.0") { isTransitive = false }
-
-    // brassui's API extends Elementa/UniversalCraft, so they're needed to compile; at runtime they load
-    // from brassui's own jar-in-jar.
-    compileOnly("gg.essential:elementa:745") { isTransitive = false }
-    compileOnly("gg.essential:universalcraft-1.21-neoforge:505") { isTransitive = false }
+    // brassui's POM already exposes Elementa/UniversalCraft, so one implementation line is all you need
+    // to compile against both. jarJar bundles brassui into your mod — Elementa/UC ride inside it, so
+    // nothing else is needed at runtime. (Kotlin For Forge is a separate required mod; add it the way
+    // your Kotlin setup already does.)
+    implementation("net.swzo.brass:brassui:2.1.0")
+    jarJar("net.swzo.brass:brassui:2.1.0") { isTransitive = false }
 }
 ```
 

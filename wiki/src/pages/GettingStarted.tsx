@@ -18,20 +18,12 @@ const KTS = `repositories {
 }
 
 dependencies {
-    // The mod jar folds in the toolkit and bundles Elementa/UniversalCraft jar-in-jar, but its POM still
-    // lists them (and demo) as runtime deps — pull none of them: demo isn't published, and the rest are
-    // already inside the jar.
-    implementation("net.swzo.brass:brassui:${META.version}") {
-        exclude(group = "net.swzo.brass", module = "brassui-core")
-        exclude(group = "net.swzo.brass", module = "demo")
-        exclude(group = "gg.essential")
-    }
+    // brassui's POM already exposes Elementa/UniversalCraft, so one implementation line is all you need
+    // to compile against both. jarJar bundles brassui into your mod — Elementa/UC ride inside it, so
+    // nothing else is needed at runtime. (Kotlin For Forge is a separate required mod; add it the way
+    // your Kotlin setup already does.)
+    implementation("net.swzo.brass:brassui:${META.version}")
     jarJar("net.swzo.brass:brassui:${META.version}") { isTransitive = false }
-
-    // brassui's API extends Elementa/UniversalCraft, so they're needed to compile; at runtime they load
-    // from brassui's own jar-in-jar. transitive = false keeps UniversalCraft's game deps out.
-    compileOnly("gg.essential:elementa:${META.elementaVersion}") { isTransitive = false }
-    compileOnly("gg.essential:universalcraft-1.21-neoforge:${META.universalcraftVersion}") { isTransitive = false }
 }`;
 
 const GROOVY = `repositories {
@@ -47,20 +39,12 @@ const GROOVY = `repositories {
 }
 
 dependencies {
-    // The mod jar folds in the toolkit and bundles Elementa/UniversalCraft jar-in-jar, but its POM still
-    // lists them (and demo) as runtime deps — pull none of them: demo isn't published, and the rest are
-    // already inside the jar.
-    implementation('net.swzo.brass:brassui:${META.version}') {
-        exclude group: 'net.swzo.brass', module: 'brassui-core'
-        exclude group: 'net.swzo.brass', module: 'demo'
-        exclude group: 'gg.essential'
-    }
+    // brassui's POM already exposes Elementa/UniversalCraft, so one implementation line is all you need
+    // to compile against both. jarJar bundles brassui into your mod — Elementa/UC ride inside it, so
+    // nothing else is needed at runtime. (Kotlin For Forge is a separate required mod; add it the way
+    // your Kotlin setup already does.)
+    implementation('net.swzo.brass:brassui:${META.version}')
     jarJar('net.swzo.brass:brassui:${META.version}') { transitive = false }
-
-    // brassui's API extends Elementa/UniversalCraft, so they're needed to compile; at runtime they load
-    // from brassui's own jar-in-jar. transitive = false keeps UniversalCraft's game deps out.
-    compileOnly('gg.essential:elementa:${META.elementaVersion}') { transitive = false }
-    compileOnly('gg.essential:universalcraft-1.21-neoforge:${META.universalcraftVersion}') { transitive = false }
 }`;
 
 export function GettingStarted() {
@@ -74,8 +58,9 @@ export function GettingStarted() {
             <Card title="1 · Depend on the toolkit">
               <p className="text-sm leading-relaxed text-ink-600">
                 brassui ships as a self-contained NeoForge mod jar, with Elementa and UniversalCraft
-                folded in, from the public Brassworks SMP Maven repository. Add it with no download
-                token, then depend on it. Pick your build dialect:
+                bundled in, from the public Brassworks SMP Maven repository. Add it with no download
+                token, then depend on it — one line pulls the toolkit and Elementa. Pick your build
+                dialect:
               </p>
               <GradleBlock kotlin={KTS} groovy={GROOVY} />
             </Card>
