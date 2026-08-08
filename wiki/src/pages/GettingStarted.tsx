@@ -18,12 +18,12 @@ const KTS = `repositories {
 }
 
 dependencies {
-    // brassui's POM already exposes Elementa/UniversalCraft, so one implementation line is all you need
-    // to compile against both. jarJar bundles brassui into your mod — Elementa/UC ride inside it, so
-    // nothing else is needed at runtime. (Kotlin For Forge is a separate required mod; add it the way
-    // your Kotlin setup already does.)
-    implementation("net.swzo.brass:brassui:${META.version}")
-    jarJar("net.swzo.brass:brassui:${META.version}") { isTransitive = false }
+    // One line is all it takes. implementation pulls brassui + Elementa/UniversalCraft (the POM
+    // exposes them for compile); jarJar bundles brassui into your mod, with Elementa/UC riding
+    // inside it — nothing else is needed at runtime. The empty {} keeps the default (transitive)
+    // resolution: isTransitive = false would also starve the compile classpath. (Kotlin For Forge is
+    // a separate required mod; add it the way your Kotlin setup already does.)
+    implementation(jarJar("net.swzo.brass:brassui:${META.version}") {})
 }`;
 
 const GROOVY = `repositories {
@@ -39,12 +39,11 @@ const GROOVY = `repositories {
 }
 
 dependencies {
-    // brassui's POM already exposes Elementa/UniversalCraft, so one implementation line is all you need
-    // to compile against both. jarJar bundles brassui into your mod — Elementa/UC ride inside it, so
-    // nothing else is needed at runtime. (Kotlin For Forge is a separate required mod; add it the way
-    // your Kotlin setup already does.)
-    implementation('net.swzo.brass:brassui:${META.version}')
-    jarJar('net.swzo.brass:brassui:${META.version}') { transitive = false }
+    // One line is all it takes. implementation pulls brassui + Elementa/UniversalCraft (the POM
+    // exposes them for compile); jarJar bundles brassui into your mod, with Elementa/UC riding
+    // inside it — nothing else is needed at runtime. (Kotlin For Forge is a separate required mod;
+    // add it the way your Kotlin setup already does.)
+    implementation(jarJar('net.swzo.brass:brassui:${META.version}'))
 }`;
 
 export function GettingStarted() {

@@ -4,8 +4,7 @@
 //
 // How a host mod consumes it (see the wiki's Getting Started page for the full snippet):
 //
-//     implementation("net.swzo.brass:brassui:<version>")
-//     jarJar("net.swzo.brass:brassui:<version>") { isTransitive = false }
+//     implementation(jarJar("net.swzo.brass:brassui:<version>") {})
 //
 // That works because the published POM exposes Elementa + UniversalCraft as compile-scope
 // dependencies (so the consumer's code can see BrassScreen's Elementa base classes without listing
