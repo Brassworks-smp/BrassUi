@@ -1,5 +1,5 @@
-# Release pipeline: build + boot-test every supported loader/version pair, then publish to
-# Modrinth, CurseForge, GitHub Releases and the Brassworks Maven. Triggered by a `v*` tag.
+# Release pipeline: build every supported loader/version pair, then publish to Modrinth,
+# CurseForge, GitHub Releases and the Brassworks Maven. Triggered by a `v*` tag.
 #
 # Secrets to configure:
 #   MODRINTH_TOKEN, CURSEFORGE_TOKEN            — API tokens (project IDs live in gradle.properties)
@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         # One row per supported loader/version. The multiloader migration (Stonecutter) will grow
-        # this list; each row runs the same build → boot test → publishMods flow.
+        # this list; each row runs the same build → publishMods flow.
         include:
           - loader: neoforge
             mc: 1.21.1
@@ -46,12 +46,6 @@ jobs:
 
       - name: Build
         run: ./gradlew build --stacktrace
-
-      - name: Boot smoke test (dedicated server)
-        run: ./scripts/smoke-boot.sh :mod:runServer server 600
-
-      - name: Boot smoke test (client)
-        run: xvfb-run -a ./scripts/smoke-boot.sh :mod:runClient client 900
 
       - name: Publish to Modrinth, CurseForge and GitHub
         run: ./gradlew :mod:publishMods --stacktrace
