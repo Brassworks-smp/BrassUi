@@ -13,7 +13,8 @@ npm run build        # static site → dist/
 ```
 
 > This app depends on `brassui-react` via `file:../BrassUiReact`, so keep the two repos as siblings.
-> Once BrassUiReact is published to a registry, swap that line in `package.json` for a version range.
+> BrassUiReact lives at https://github.com/Brassworks-smp/BrassUiReact (public); clone it next to this
+> repo. Once BrassUiReact is published to a registry, swap that line in `package.json` for a version range.
 
 ## What's here
 
