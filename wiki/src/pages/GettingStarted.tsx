@@ -8,41 +8,22 @@ import { META } from "../data/meta";
 // Built from META (generated from the build's gradle.properties), so the repo and the version shown
 // here follow the real build automatically — a release just needs the site regenerated, which CI does.
 const KTS = `repositories {
-    maven("${META.packagesUrl}") {
-        content { includeGroup("net.swzo.brass") }
-    }
-    // Elementa + UniversalCraft (brassui's API is built on them) come from here.
-    maven("https://repo.essential.gg/repository/maven-public") {
-        content { includeGroup("gg.essential") }
-    }
+    maven("${META.packagesUrl}")
+    mavenCentral()
 }
 
 dependencies {
-    // One line is all it takes. implementation pulls brassui + Elementa/UniversalCraft (the POM
-    // exposes them for compile); jarJar bundles brassui into your mod, with Elementa/UC riding
-    // inside it — nothing else is needed at runtime. The empty {} keeps the default (transitive)
-    // resolution: isTransitive = false would also starve the compile classpath. (Kotlin For Forge is
-    // a separate required mod; add it the way your Kotlin setup already does.)
     implementation(jarJar("net.swzo.brass:brassui:${META.version}") {})
 }`;
 
 const GROOVY = `repositories {
     maven {
         url = '${META.packagesUrl}'
-        content { includeGroup 'net.swzo.brass' }
     }
-    // Elementa + UniversalCraft (brassui's API is built on them) come from here.
-    maven {
-        url = 'https://repo.essential.gg/repository/maven-public'
-        content { includeGroup 'gg.essential' }
-    }
+    mavenCentral()
 }
 
 dependencies {
-    // One line is all it takes. implementation pulls brassui + Elementa/UniversalCraft (the POM
-    // exposes them for compile); jarJar bundles brassui into your mod, with Elementa/UC riding
-    // inside it — nothing else is needed at runtime. (Kotlin For Forge is a separate required mod;
-    // add it the way your Kotlin setup already does.)
     implementation(jarJar('net.swzo.brass:brassui:${META.version}'))
 }`;
 
@@ -57,9 +38,9 @@ export function GettingStarted() {
             <Card title="1 · Depend on the toolkit">
               <p className="text-sm leading-relaxed text-ink-600">
                 brassui ships as a self-contained NeoForge mod jar, with Elementa and UniversalCraft
-                bundled in, from the public Brassworks SMP Maven repository. Add it with no download
-                token, then depend on it — one line pulls the toolkit and Elementa. Pick your build
-                dialect:
+                bundled in, from the Brassworks SMP Maven repository — Elementa and UniversalCraft are
+                mirrored there too, so one repository and one line pull the whole toolkit. Add it with
+                no download token. Pick your build dialect:
               </p>
               <GradleBlock kotlin={KTS} groovy={GROOVY} />
             </Card>

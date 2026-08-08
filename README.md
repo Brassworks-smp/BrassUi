@@ -128,25 +128,17 @@ Desktop identity is configurable for testing the authorization mirror:
 ## Quick start
 
 BrassUi ships as a self-contained NeoForge mod jar, with Elementa and UniversalCraft bundled in, from
-the public Brassworks SMP Maven repository. Add it and depend on the mod—no download token required,
-and no Elementa line to write (the POM brings it for you):
+the Brassworks SMP Maven repository — Elementa and UniversalCraft are mirrored there too, so one
+repository and one line pull the whole toolkit. Add it and depend on the mod—no download token
+required:
 
 ```kotlin
 repositories {
-    maven("https://maven.opnsoc.org/releases") {
-        content { includeGroup("net.swzo.brass") }
-    }
-    // Elementa + UniversalCraft (brassui's API is built on them) come from here.
-    maven("https://repo.essential.gg/repository/maven-public") {
-        content { includeGroup("gg.essential") }
-    }
+    maven("https://maven.opnsoc.org/releases")
+    mavenCentral()
 }
 
 dependencies {
-    // One line is all it takes. implementation pulls brassui + Elementa/UniversalCraft (the POM
-    // exposes them for compile); jarJar bundles brassui into your mod, with Elementa/UC riding
-    // inside it — nothing else is needed at runtime. The empty {} keeps the default (transitive)
-    // resolution: isTransitive = false would also starve the compile classpath.
     implementation(jarJar("net.swzo.brass:brassui:2.1.0") {})
 }
 ```
