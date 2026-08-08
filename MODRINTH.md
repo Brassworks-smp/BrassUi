@@ -29,7 +29,7 @@ gallery app, so UI code you write once runs in-game and off-game.
 
 ## Requirements
 
-- NeoForge 21.1.x / Minecraft 1.21.1 (older versions and Fabric/Forge support are in development)
+- NeoForge 21.1.x / Minecraft 1.21.1
 - [Kotlin For Forge](https://modrinth.com/mod/kotlinforforge) (declared as a dependency automatically)
 
 ## Links
