@@ -8,11 +8,6 @@ import net.swzo.brass.ui.kit.input.BrassCheckbox
 import net.swzo.brass.ui.kit.media.BrassIcons
 import net.swzo.brass.ui.kit.text.BrassLabel
 
-/**
- * The compact decoration-colour row used by notes and groups. It deliberately mirrors the appearance
- * card: preset colour checkboxes followed by a `+` chip for an arbitrary colour. The enclosing
- * [net.swzo.brass.ui.kit.surface.BrassContextMenu] supplies the panel and click-away behaviour.
- */
 internal class NodeDecorationPalette(
     selectedTone: FrameTone,
     customColor: Int?,

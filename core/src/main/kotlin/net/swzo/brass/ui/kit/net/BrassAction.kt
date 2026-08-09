@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.net
 
 import java.util.concurrent.CompletableFuture
@@ -5,17 +6,13 @@ import java.util.concurrent.CompletableFuture
 /**
  * A named UI action: a payload type, a permission, an optional rate limit, and the server-side
  * handler that runs when the action arrives.
- *
  * ### The two copies
- *
  * The same class exists on both sides - the client keeps the action so widgets can send it and mirror
  * its permission; the server keeps the action so the handler can run there. What crosses the wire is
  * only the [id] and the JSON input; the handler lambda never travels. That is what makes the handler
  * safe to write "inline" in a file next to a screen: it must not capture UI state, because the server
  * executes its own copy.
- *
  * ### Registration is automatic
- *
  * Constructing an action registers it (idempotently) into [BrassNet.registry], so the only step left
  * is making sure the containing object is *loaded* on each side - which is what
  * [BrassActionSet] discovery does for you. A developer never calls `register`.
@@ -27,7 +24,6 @@ class BrassAction<T : Any>(
     val minOpLevel: Int,
     val rateLimit: BrassRateLimit?,
     val inputType: Class<T>,
-    /** Runs after parsing, before the handler; a non-null return is a failure code (translated via [BrassMessages]). */
     val validate: (T) -> String?,
     /**
      * Runs on the server (or in-process on the desktop) and may complete asynchronously - the future
@@ -53,36 +49,11 @@ class BrassActionContext(
      */
     fun publish(stateId: String, value: Any?) = BrassNet.publish(stateId, value)
 
-    /**
-     * Push [value] for [stateId] to a **single** player instead of broadcasting. Pass the target's
-     * player id (the sender's own [playerId] is the common case for private echoes); the desktop
-     * transport delivers to all local subscribers since there is no real player separation there.
-     */
     fun publishTo(playerId: String?, stateId: String, value: Any?) =
         BrassNet.publish(stateId, value, toPlayer = playerId)
 }
 
-/**
- * Declare a server-backed action. Registration, serialization, authorization and rate limiting are
- * all derived from this one declaration - no codecs, no `register` calls.
- *
- * ```
- * @BrassActionSet
- * object TeamActions {
- *     val rename = brassAction<RenameTeam>(
- *         id = "brassui.team.rename",
- *         permission = "brassui.team.rename",
- *         minOpLevel = 3,
- *         rateLimit = BrassRateLimit(max = 10, perSeconds = 5),
- *     ) { ctx, input ->
- *         val team = Teams.get(input.teamId) ?: return@brassAction err("team.missing", input.teamId)
- *         team.name = input.name
- *         ctx.publish("brassui.team.$input.teamId.name", team.name)
- *         ok()
- *     }
- * }
- * ```
- */
+/** Declare a server-backed action; registration, authorization and rate limiting all derive from it. */
 inline fun <reified T : Any> brassAction(
     id: String,
     permission: String,

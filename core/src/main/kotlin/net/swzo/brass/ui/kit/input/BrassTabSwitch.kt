@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.input
 
 import gg.essential.elementa.components.UIContainer
@@ -14,33 +15,21 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 /**
  * A segmented row of keycap tabs, exactly one selected. The active tab animates to the brass accent,
  * the rest sit neutral; clicking a tab selects it and fires [onChange].
- *
  * ### Width
- *
  * Tabs size themselves to their **own label** by default, so "Shaders" does not get the same slab of
  * space as "Resource Packs" and short labels stop swimming in empty keycap. Two escapes from that:
- *
  * - [equalWidths] splits the component's width evenly, the old behaviour, for a control that has to
  *   line up with something else.
  * - [widths] pins individual tabs by index; a null entry keeps the measured width. Use it when one
  *   segment must be a fixed size regardless of its text.
- *
  * With the default sizing the row is as wide as its content, so give the component
  * `width = basicWidthConstraint { tabs.contentWidth() }` rather than a guess - see [contentWidth].
  */
 class BrassTabSwitch(
     private val options: List<String>,
     initialIndex: Int = 0,
-    /** Split the available width evenly instead of sizing each tab to its label. */
     private val equalWidths: Boolean = false,
-    /** Explicit pixel width per tab, by index. Null entries fall back to the measured width. */
     private val widths: List<Float?> = emptyList(),
-    /**
-     * Accent the selected tab animates to; the rest stay [BrassAccent.DEFAULT].
-     *
-     * Takes the same parameter [BrassButton] does, so a tab row can be themed exactly like the
-     * buttons beside it instead of being the one control locked to brass.
-     */
     var accent: BrassAccent = BrassAccent.BRASS,
     private val onChange: (Int) -> Unit = {},
 ) : UIContainer(), BrassValue<Int> {
@@ -57,12 +46,10 @@ class BrassTabSwitch(
     override fun onChange(listener: (Int) -> Unit) = holder.onChange(listener)
     override fun bind(state: BrassState<Int>) = holder.bind(this, state)
 
-    /** Index of the active tab. Alias of [value]. */
     val selectedIndex: Int get() = holder.value
 
     /**
      * Measured label widths, filled on first use.
-     *
      * Width constraints resolve every frame, and measuring a string through the font provider is not
      * free - but the labels never change, so one measurement each is enough for the component's life.
      */
@@ -86,7 +73,6 @@ class BrassTabSwitch(
         holder.onChange(onChange)
     }
 
-    /** Width of tab [index]: an explicit override, or its label plus padding. */
     private fun tabWidth(index: Int): Float {
         widths.getOrNull(index)?.let { return it }
         if (measured[index] < 0f) {
@@ -102,12 +88,6 @@ class BrassTabSwitch(
         return (measured[index] + PAD * 2f).coerceAtLeast(MIN_W)
     }
 
-    /**
-     * Total width the tabs occupy, including the gaps between them.
-     *
-     * Feed this to the component's own width constraint. Meaningless under [equalWidths], where the
-     * tabs divide whatever width they are given instead of asking for one.
-     */
     fun contentWidth(): Float {
         if (options.isEmpty()) return 0f
         var total = 0f
@@ -115,14 +95,12 @@ class BrassTabSwitch(
         return total + GAP * (options.size - 1)
     }
 
-    /** Left/right move between tabs, as a segmented control should. */
     fun onArrow(forward: Boolean) {
         val n = options.size
         if (n == 0) return
         value = ((selectedIndex + if (forward) 1 else -1) % n + n) % n
     }
 
-    /** Select tab [index], firing listeners. Alias of assigning [value]. */
     fun select(index: Int) { value = index }
 
     private fun applySelection(index: Int) {
@@ -134,28 +112,15 @@ class BrassTabSwitch(
 
     companion object : BrassDemoSource {
 
-        /**
-         * Selection moving between tabs.
-         *
-         * Pressed at fractions of the row rather than at its centre, because the centre of a two-tab
-         * switch is the seam between them — the one place a click means nothing. Each press lands
-         * squarely inside a tab, and the accent slides across between them, which is the behaviour a
-         * still cannot show.
-         */
         override fun demo() = BrassDemo("tab-switch", "Tab switch", 190f, 20f) {
             BrassTabSwitch(listOf("Overview", "Details", "History"))
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
-        /** Horizontal breathing room either side of a tab's label. */
         private const val PAD = 9f
-        /** Narrowest a tab gets, so a one-character label is still a comfortable target. */
         private const val MIN_W = 28f
-        /** Seam between neighbouring tabs. */
         private const val GAP = 1f
     }
 }

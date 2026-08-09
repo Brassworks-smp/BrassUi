@@ -21,18 +21,14 @@ import java.util.*
 /**
  * A notification toast - a keycap chip that **slides in** from the right edge, holds, then slides back
  * out. The accent and glyph come from the [Type]. Fire one with [show].
- *
  * ### The stack
- *
  * Toasts are not positioned once and left. The live toasts for a screen are held in a list, and each
  * one eases toward the slot its **current index** implies, every frame. That single decision is what
  * fixes the two things a fire-and-forget toast gets wrong: a new toast can no longer be handed the slot
  * of one that is still visibly sliding away (it is only removed from the list when it is genuinely
  * gone), and when a toast at the bottom does leave, everything above it slides down to fill the gap
  * instead of leaving a hole in the column.
- *
  * ### Sticky toasts
- *
  * A toast normally expires after [LIFE]. Pass `sticky = true` for one that stays until something closes
  * it - the close button, or [close] from code. That is the case for progress: a download toast should
  * live exactly as long as the download, not for two and a half seconds.
@@ -46,7 +42,6 @@ class BrassToast private constructor(
 
     /**
      * The top of the stack, above every window, menu and palette.
-     *
      * Without a declared rank a toast ranked as ordinary content, so the first click on any popup -
      * whose raise puts it above everything content-ranked - buried the notification a second after
      * it slid in. A toast is precisely the thing that must survive other layers claiming the screen.
@@ -65,26 +60,21 @@ class BrassToast private constructor(
     private var offscreenX = 0f
     private var root: UIComponent? = null
 
-    /** When the slide-out began, or 0 while the toast is still on screen. */
     private var closingAt = 0L
 
-    /** Eased vertical position, so a toast slides down into a freed slot instead of jumping. */
     private val slot = BrassEased(0f, speed = SETTLE_SPEED)
     private var slotPrimed = false
 
-    /** An optional progress bar drawn across the bottom edge - see [progress]. */
     var progress: Float? = null
 
     init {
         entranceEnabled = false
     }
 
-    /** Begin the slide-out. Safe to call repeatedly, and the only way to close a sticky toast. */
     fun close() {
         if (closingAt == 0L) closingAt = System.currentTimeMillis()
     }
 
-    /** Alias of [close], so every closable layer in the toolkit answers to the same verb. */
     fun dismiss() = close()
 
     override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
@@ -130,7 +120,6 @@ class BrassToast private constructor(
         if (out >= 1f) remove()
     }
 
-    /** Y for this toast's current index in the stack, counting up from the bottom-right corner. */
     private fun targetY(): Float {
         val r = root ?: return slot.value
         val stack = live[r] ?: return 0f
@@ -148,18 +137,13 @@ class BrassToast private constructor(
     }
 
     companion object {
-        /** Total life of a non-sticky toast, in milliseconds. */
         const val LIFE = 2600L
-        /** How long the slide in / out takes. */
         const val SLIDE_MS = 240L
-        /** How fast a toast settles into a freed slot. */
         const val SETTLE_SPEED = 14f
 
         private const val W = 190
         private const val H = 22
-        /** Vertical gap between stacked toasts. */
         private const val GAP = 6
-        /** Margin from the bottom-right corner. */
         private const val MARGIN = 16
 
         /**
@@ -168,23 +152,19 @@ class BrassToast private constructor(
          */
         private val live = WeakHashMap<UIComponent, MutableList<BrassToast>>()
 
-        /** Highest slot index that still fits on a root [rootH] tall. */
         private fun maxSlot(rootH: Float): Int =
             (((rootH - MARGIN - H) / (H + GAP)).toInt() - 1).coerceAtLeast(0)
 
-        /** How many toasts fit in the column at once - the cap [show] enforces. */
         fun maxVisible(rootH: Float): Int = maxSlot(rootH) + 1
 
         fun show(
             screenRoot: UIComponent,
             message: String,
             type: Type = Type.INFO,
-            /** Stay until closed, rather than expiring after [LIFE]. */
             sticky: Boolean = false,
         ): BrassToast {
             val stack = live.getOrPut(screenRoot) { ArrayList() }
             // Retire the oldest toasts once the column is full.
-            //
             // targetY() clamps a toast's *slot* to what fits on screen, so without a cap here every
             // toast past that point resolved to the SAME slot and they rendered exactly on top of
             // one another - a loop firing thirty notifications produced one unreadable smear rather
@@ -224,7 +204,6 @@ class BrassToast private constructor(
             return t
         }
 
-        /** Close every toast on [screenRoot] - for a screen tearing down, or a "clear all" control. */
         fun clear(screenRoot: UIComponent) {
             live[screenRoot]?.toList()?.forEach { it.close() }
         }

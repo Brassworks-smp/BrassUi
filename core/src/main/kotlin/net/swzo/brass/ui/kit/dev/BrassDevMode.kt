@@ -6,10 +6,7 @@ import gg.essential.elementa.dsl.*
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.kit.base.*
-import net.swzo.brass.ui.kit.dev.BrassDevMode.enabled
-import net.swzo.brass.ui.kit.dev.BrassDevMode.inspect
 import net.swzo.brass.ui.kit.paint.BrassCard
-import net.swzo.brass.ui.kit.surface.BrassContextMenu
 import net.swzo.brass.ui.kit.surface.BrassTooltip
 import net.swzo.brass.ui.kit.text.BrassFont
 import java.awt.Color
@@ -18,14 +15,12 @@ import kotlin.math.roundToInt
 
 /**
  * The toolkit's UI inspector - toggle with **Ctrl+Shift+D** on any [net.swzo.brass.ui.BrassScreen].
- *
  * When on, it **docks a panel to the right edge** and shrinks the main content to fit beside it, exactly
  * like a browser's dev tools. The panel ([BrassDevPanel]) carries a compact perf readout, the full UI
  * tree (colour-tagged, expand/collapse, click to select) and a details pane for the selected element.
  * On top of the finished frame it draws a **Chrome-dev-tools box model** for the element under the
  * cursor or the hovered tree row - content in blue, padding in green, keycap bleed as margin in orange -
  * plus a metadata tooltip.
- *
  * Everything is a real widget under a [BrassDevLayer], which pauses [BrassStats] around its draw, and
  * the stats walk skips [BrassDevOverlay] subtrees - so opening the inspector never moves the numbers it
  * reports.
@@ -35,38 +30,22 @@ object BrassDevMode {
     var enabled: Boolean = false
         private set
 
-    /**
-     * Whether every widget draws its box outline as it paints.
-     *
-     * On by default - seeing the whole layout at once is most of the point - but it makes text hard to
-     * read and hides subtle spacing problems behind a grid of blue lines, so it can be turned off to
-     * inspect one element (whose box model still draws) against the real UI.
-     */
     var showOutlines: Boolean = true
         private set
 
-    /**
-     * Element-picker mode: the next click anywhere in the UI selects whatever is under the cursor
-     * instead of (well, as well as) activating it - Chrome's inspect-element arrow.
-     */
     var picking: Boolean = false
         private set
 
     fun toggleOutlines(): Boolean { showOutlines = !showOutlines; return showOutlines }
     fun togglePicking(): Boolean { picking = !picking; return picking }
 
-    // ---- inspected / selected component ----------------------------------------------------------
 
-    /** Widget under the cursor this frame (set by [inspect]); recomputed every frame. */
     private var hovered: UIComponent? = null
-    /** Component under the hovered tree row; persists until the row is left. */
     private var treeHighlight: UIComponent? = null
 
-    /** The clicked-and-pinned element the details pane describes. */
     var selectedComponent: UIComponent? = null
         private set
 
-    /** Per-node collapse state for the tree (identity-keyed; absent = expanded). */
     private val collapsed: MutableSet<UIComponent> =
         Collections.newSetFromMap(IdentityHashMap())
 
@@ -76,11 +55,6 @@ object BrassDevMode {
     fun clearTreeHighlight(c: UIComponent) { if (treeHighlight === c) treeHighlight = null }
     fun select(c: UIComponent) { selectedComponent = c }
 
-    /**
-     * Select [c] **and reveal it**: every ancestor is expanded and the tree rebuilt, so a component
-     * picked out of the live UI actually appears in the tree rather than being selected inside a
-     * collapsed branch where nothing visibly happens.
-     */
     fun reveal(c: UIComponent) {
         selectedComponent = c
         var node = c
@@ -94,13 +68,6 @@ object BrassDevMode {
     }
 
     fun isCollapsed(c: UIComponent): Boolean = collapsed.contains(c)
-    /**
-     * Fold or unfold [c]'s branch.
-     *
-     * Unfolding rebuilds at once and the new rows animate themselves in. Folding hands off to the tree,
-     * which fades the branch out *before* rebuilding - rebuilding first would delete the rows that need
-     * to be seen leaving.
-     */
     fun toggleCollapse(c: UIComponent) {
         val nowCollapsed = !collapsed.remove(c)
         if (nowCollapsed) {
@@ -111,14 +78,12 @@ object BrassDevMode {
         }
     }
 
-    // ---- docking ---------------------------------------------------------------------------------
 
     private var host: UIComponent? = null
     private var content: UIComponent? = null
     private var layer: BrassDevLayer? = null
     private var panel: BrassDevPanel? = null
 
-    /** Drop every reference to the current screen - called by [net.swzo.brass.ui.BrassScreen] on close. */
     fun forgetScreen() = detach()
 
     fun toggle(): Boolean {
@@ -130,17 +95,8 @@ object BrassDevMode {
         return enabled
     }
 
-    /** Roots that already carry the element-picker click handler. Weak: a root dies with its screen. */
-    private val pickWired = java.util.WeakHashMap<UIComponent, Boolean>()
+    private val pickWired = WeakHashMap<UIComponent, Boolean>()
 
-    /**
-     * Install the picker's click handler on [root], once per root.
-     *
-     * Listening at the root means the click still reaches whatever it landed on, so picking a button
-     * also presses it. Chrome swallows the click; doing the same here would need a full-screen scrim,
-     * which brings its own problems (see [BrassContextMenu] for that story). Picking is a deliberate,
-     * momentary mode, so the extra activation is the cheaper trade.
-     */
     private fun wirePicker(root: UIComponent) {
         if (pickWired.put(root, true) != null) return
         root.onMouseClick {
@@ -150,11 +106,6 @@ object BrassDevMode {
         }
     }
 
-    /**
-     * Attach or detach the docked panel to match [enabled], keeping it bound to the current screen.
-     * [window] is the Elementa root (the panel docks to it); [main] is the content the panel shrinks to
-     * make room. Called once per frame before the tree draws; cheap when nothing changed.
-     */
     fun sync(window: UIComponent, main: UIComponent) {
         // The dock slides in from the right and the content squeezes over to meet it, both driven by
         // one eased value. Detaching happens only once the panel has finished sliding *out*, so
@@ -177,18 +128,15 @@ object BrassDevMode {
         selectedComponent?.let { if (!BrassTree.isAttached(it)) selectedComponent = null }
     }
 
-    /** Eased 0..1 dock position: 0 = fully off the right edge, 1 = fully docked. */
     private val dockValue = BrassEased(0f, speed = DOCK_SPEED)
     private val dock: Float get() = dockValue.value
 
-    /** How far the panel has slid in, for the layout constraints that follow it. */
     private fun dockOffset(): Float = (BrassDevPanel.WIDTH + BrassDevPanel.MARGIN * 2f) * (1f - dock)
 
     private fun attach(window: UIComponent, main: UIComponent) {
         // Shrink the main content so the panel isn't drawn over it - it sits *beside* it. The reserved
         // strip is the panel plus the margin on both sides of it, so the card floats clear of the
         // screen edge and clear of the UI rather than being welded to either.
-        //
         // Both this and the panel's own x read the animated `dock`, so the content squeezes over at
         // exactly the rate the panel slides in and the two never overlap mid-animation.
         val gutter = BrassDevPanel.WIDTH + BrassDevPanel.MARGIN * 2f
@@ -222,7 +170,6 @@ object BrassDevMode {
         collapsed.clear()
     }
 
-    // ---- per-widget outline (called by BrassWidget while it paints) -------------------------------
 
     fun inspect(
         m: UMatrixStack,
@@ -261,7 +208,6 @@ object BrassDevMode {
         }
     }
 
-    // ---- top overlay: box model + tooltip --------------------------------------------------------
 
     fun drawOverlay(m: UMatrixStack, root: UIComponent, screenW: Float, screenH: Float, mouseX: Float, mouseY: Float) {
         if (!enabled) return
@@ -270,7 +216,6 @@ object BrassDevMode {
             // box model nor the metadata card may draw - a tooltip for a widget buried under the panel
             // is describing something you cannot see, and it followed the cursor down over the
             // selected-element pane where it had no business being.
-            //
             // The panel's *own* controls are exempt, which is why this is a predicate rather than a
             // flag: the header buttons need tooltips of their own, and they live inside the panel.
             try {
@@ -289,13 +234,11 @@ object BrassDevMode {
         }
     }
 
-    /** Whether [c] belongs to the inspector's own subtree, rather than the UI being inspected. */
     private fun insideDevLayer(c: UIComponent): Boolean {
         val l = layer ?: return false
         return BrassTree.isDescendantOf(c, l)
     }
 
-    /** Whether the cursor is inside the docked panel (including its margin). */
     private fun cursorOverPanel(mouseX: Float, mouseY: Float): Boolean {
         val l = layer ?: return false
         return mouseX >= l.getLeft() - BrassDevPanel.MARGIN && mouseX <= l.getRight() + BrassDevPanel.MARGIN &&
@@ -311,7 +254,7 @@ object BrassDevMode {
             val keycap = c.chrome == BrassChrome.KEYCAP
             val bt = if (keycap) BrassWidget.BLEED_TOP else 0f
             val bb = if (keycap) BrassWidget.BLEED_BOTTOM else 0f
-            if (bx > 0f || bt > 0f || bb > 0f) ring(m, x - bx, y - bt, x2 + bx, y2 + bb, x, y, x2, y2, MARGIN)
+            ring(m, x - bx, y - bt, x2 + bx, y2 + bb, x, y, x2, y2, MARGIN)
         }
 
         var hasKids = false
@@ -364,7 +307,6 @@ object BrassDevMode {
         }
     }
 
-    // ---- perf readout ----------------------------------------------------------------------------
 
     fun statsLines(): List<Pair<String, Color>> {
         val s = BrassStats
@@ -379,14 +321,12 @@ object BrassDevMode {
         )
     }
 
-    // ---- primitives ------------------------------------------------------------------------------
 
     private fun fillRect(m: UMatrixStack, x: Float, y: Float, x2: Float, y2: Float, c: Color) {
         if (x2 <= x || y2 <= y) return
         UIBlock.drawBlock(m, c, x.toDouble(), y.toDouble(), x2.toDouble(), y2.toDouble())
     }
 
-    /** Fill the four bands between an outer and an inner rectangle - a box-model band (padding/margin). */
     private fun ring(
         m: UMatrixStack,
         ox: Float, oy: Float, ox2: Float, oy2: Float,
@@ -399,14 +339,6 @@ object BrassDevMode {
         fillRect(m, ix2, iy, ox2, iy2, c)
     }
 
-    /**
-     * A 1-px outline drawn as four **non-overlapping** bands.
-     *
-     * The obvious version draws full-width top/bottom bars and full-height left/right bars, which
-     * double up at the four corners. With an opaque colour that is invisible; these outlines are
-     * translucent, so every corner pixel got blended twice and came out noticeably darker - four dots
-     * framing each widget. The side bands are inset by a pixel at each end so nothing is painted twice.
-     */
     private fun outline(m: UMatrixStack, x: Float, y: Float, x2: Float, y2: Float, c: Color) {
         fillRect(m, x, y, x2, y + 1f, c)              // top, full width
         fillRect(m, x, y2 - 1f, x2, y2, c)            // bottom, full width
@@ -414,7 +346,6 @@ object BrassDevMode {
         fillRect(m, x2 - 1f, y + 1f, x2, y2 - 1f, c)  // right, between them
     }
 
-    /** How fast the panel docks and undocks. */
     private const val DOCK_SPEED = 13f
 
     private val BOX = Color(0, 200, 255, 90)

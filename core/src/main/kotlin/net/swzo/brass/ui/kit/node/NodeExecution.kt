@@ -21,7 +21,6 @@ class NodeInputs constructor(private val values: Map<Int, List<Any?>>) {
 
 data class NodeResult(
     val outputs: Map<Int, Any?> = emptyMap(),
-    /** FLOW output indices fired by this invocation. Data outputs do not need to be listed. */
     val eventOutputs: Set<Int> = emptySet(),
 )
 
@@ -69,7 +68,6 @@ data class ExecutionUpdate(
  * Deterministic graph scheduler with data flow, event-flow gating, asynchronous node support and a
  * small debugger. Nodes are topologically ordered by every live link; executor stages may complete on
  * any thread, while graph order and debugger notifications remain serialized on the scheduler worker.
- *
  * Breakpoints pause before a node. [step] executes exactly one node and pauses before the next;
  * [continueExecution] resumes freely. A FLOW input only runs after an upstream executor emits its port
  * index in [NodeResult.eventOutputs].
@@ -94,6 +92,7 @@ class GraphScheduler(
     @Volatile var lastReport: ExecutionReport? = null
         private set
 
+    // wait/notifyAll require java.lang.Object; kotlin.Any has neither.
     private val gate = Object()
     private var cancelled = false
     private var stepBudget = Int.MAX_VALUE
@@ -113,7 +112,6 @@ class GraphScheduler(
     ): CompletableFuture<ExecutionReport> =
         start(initial, if (paused) 0 else Int.MAX_VALUE)
 
-    /** Start a fresh run, execute its first available node, then pause before the next one. */
     fun runStep(initial: Map<PortRef, Any?> = emptyMap()): CompletableFuture<ExecutionReport> =
         start(initial, 1)
 

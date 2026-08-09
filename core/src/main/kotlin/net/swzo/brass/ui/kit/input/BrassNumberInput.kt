@@ -17,30 +17,23 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 
 /**
  * An exact number: a value with a step button at each end, and a middle you can drag to scrub.
- *
  * ```kotlin
  * BrassNumberInput(BrassRange(0f, 64f, step = 1f), initial = 16f) { count = it.toInt() }
  * ```
- *
  * ### Why not a slider
- *
  * [BrassSlider] maps a range onto a track, which is the right control when the *proportion* is what
  * matters - volume, opacity, a percentage. It is the wrong one when the exact number matters, because
  * hitting 17 out of 0..64 on a 120-pixel track is a game of skill. Here the steppers guarantee an
  * exact value, the drag covers the coarse movement, and holding Shift while dragging slows it down for
  * the last few units.
- *
  * The bounds and quantisation come from [BrassRange], shared with the slider, so `0.1 + 0.2` prints
  * as `0.3` in both rather than each control rounding its own way.
- *
  * ### Chrome
- *
  * The same recessed groove [BrassSlider] sits in, filled to `range.fraction(value)` exactly as the
  * slider fills to its own value - a supporting cue, not the primary read (the number is), which is
  * why it uses the slider's resting colours rather than brightening on hover the way a slider's own
  * fill does. The fill spans the **channel between the two steppers** rather than the whole interior,
  * since the steppers are opaque and a full-width fill simply disappeared under them.
- *
  * The two steppers are [BrassCard.miniKeycap] - real buttons, not a flat card - because a control
  * that mixes a raised button into a recessed groove is exactly what a spinner has always looked like
  * everywhere else it appears. It used to be a raised [BrassChrome.FLAT] keycap with two small flat
@@ -49,10 +42,8 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * their arithmetic.
  */
 class BrassNumberInput(
-    /** Bounds and quantisation. */
     val range: BrassRange = BrassRange(0f, 100f, step = 1f),
     initial: Float = 0f,
-    /** Text after the number - `ms`, `%`, `blocks`. */
     var suffix: String = "",
     private val onChange: (Float) -> Unit = {},
 ) : BrassWidget(BrassAccent.DEFAULT), BrassValue<Float>, BrassFocusable {
@@ -67,12 +58,10 @@ class BrassNumberInput(
     override fun onChange(listener: (Float) -> Unit) = holder.onChange(listener)
     override fun bind(state: BrassState<Float>) = holder.bind(this, state)
 
-    /** True only while a press that started on the middle is still held. */
     private var scrubbing = false
     private var scrubFrom = 0f
     private var scrubValue = 0f
 
-    /** Which stepper is under the cursor, -1 for down, 1 for up, 0 for neither. */
     private var hotStepper = 0
 
     init {
@@ -115,7 +104,6 @@ class BrassNumberInput(
         else -> false
     }
 
-    /** Which stepper a local x falls in: -1 down, 1 up, 0 the scrub area. */
     private fun stepperAt(localX: Float): Int = when {
         localX < STEPPER -> -1
         localX > getWidth() - STEPPER -> 1
@@ -134,7 +122,6 @@ class BrassNumberInput(
         // The groove first, filled to the value exactly as BrassSlider fills to its own - the same
         // material, so the two read as one family rather than two different controls that happen to
         // share a range.
-        //
         // The fill spans only the *channel between the steppers*, not the whole interior: the
         // steppers are opaque buttons drawn over the track, so a fill running the full width was
         // silently painted under them and the bar appeared to start and end at arbitrary points
@@ -199,34 +186,19 @@ class BrassNumberInput(
 
     companion object : BrassDemoSource {
 
-        /**
-         * The steppers clicked up and down.
-         *
-         * The steppers at either end are painted regions rather than child widgets, so they respond
-         * to a press landing on them the same way any part of the control does.
-         */
         override fun demo() = BrassDemo("number-input", "Number input", 130f, 18f) {
             BrassNumberInput(BrassRange(0f, 100f, step = 1f), initial = 42f, suffix = "%")
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
-        /**
-         * Height a control takes when the caller does not say otherwise. Matches the 20 px
-         * `BrassForm.addSlider` gives an ordinary slider, so a form holding both does not step.
-         */
         private const val DEFAULT_H = 20f
         private const val STEPPER = 12f
         private const val PAD = 3
         private const val ICON = 6f
-        /** Pixels of drag that cover the whole range. */
         private const val SCRUB_PIXELS = 200f
-        /** Scrub multiplier while Shift is held. */
         private const val FINE = 0.15f
-        /** Steps a Page Up or Down moves. */
         private const val PAGE = 10
 
         private val DIM: java.awt.Color = java.awt.Color(0, 0, 0, 110)

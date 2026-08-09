@@ -12,33 +12,25 @@ import net.swzo.brass.ui.kit.paint.BrassCard
 import net.swzo.brass.ui.kit.paint.BrassPaint
 import net.swzo.brass.ui.kit.platform.BrassPlatform
 import net.swzo.brass.ui.kit.surface.BrassTooltip.attach
-import net.swzo.brass.ui.kit.surface.BrassTooltip.attachLazy
-import net.swzo.brass.ui.kit.surface.BrassTooltip.placeCard
 import net.swzo.brass.ui.kit.text.BrassFont
 import java.awt.Color
 import kotlin.math.min
 
 /**
  * Hover tooltips, drawn as a card above everything else.
- *
  * Attach one to any component:
- *
  * ```kotlin
  * BrassTooltip.attach(button, "Start the server")
  * BrassTooltip.attach(icon, "Danger", "This cannot be undone", accent = BrassAccent.DANGER)
  * ```
- *
  * ### Behaviour
- *
  * - **Delayed**, so sweeping the cursor across a toolbar does not flash a tooltip per button.
  * - **Fades in**, and once one tooltip is up, moving to another shows it immediately - the usual
  *   "tooltip mode" every desktop UI has, so a row of controls can be read by sweeping across it.
  * - **Clamped to the screen**: it prefers to sit below-right of the cursor and flips above or left
  *   when there is not room, so it can never be pushed off the edge.
  * - **Follows the cursor** horizontally by default; pin it to the component with `follow = false`.
- *
  * ### Drawing
- *
  * A tooltip is not a component in the tree - it is painted by the screen after everything else, from
  * a single shared instance. Putting it in the tree would mean fighting z-order with popups and the
  * dev overlay, and a floating component that reparents itself is exactly what caused the earlier
@@ -46,38 +38,16 @@ import kotlin.math.min
  */
 object BrassTooltip {
 
-    /**
-     * What to show for a component.
-     *
-     * The text is held as **suppliers**, not strings, so a tooltip whose content is only knowable at
-     * hover time can be attached once at construction. Resolving it by re-attaching from inside a
-     * hover handler registers new listeners while Elementa is iterating them, which throws
-     * ConcurrentModificationException mid-draw - see [attachLazy].
-     */
     private class Entry(
         val title: () -> String,
         val body: () -> String?,
         val accent: BrassAccent,
         val follow: Boolean,
-        /** Delay before this tooltip appears, overriding [delayMs]. */
         val delayMs: Long?,
-        /**
-         * Rich multi-line content as (text, colour) pairs. When non-empty it replaces the title/body
-         * card entirely - the way a Minecraft item tooltip (name + coloured lore lines) can ride in a
-         * brassui card without the toolkit knowing anything about Minecraft.
-         */
         val lines: () -> List<Pair<String, Color>> = { emptyList() },
-        /**
-         * A fully **custom-painted** tooltip: when present it replaces the text/lines card body, so a
-         * host can draw item icons, keycaps, swatches - anything - inside the standard tooltip card.
-         */
         val custom: Custom? = null,
     )
 
-    /**
-     * A custom tooltip body: [size] returns `[w, h]` (the content area, before the card's padding), and
-     * [draw] paints it at `(x, y)` faded by `alpha`. Both are resolved at draw time.
-     */
     class Custom(
         val size: () -> FloatArray,
         val draw: (UMatrixStack, Float, Float, Float) -> Unit,
@@ -85,40 +55,26 @@ object BrassTooltip {
 
     private val entries = java.util.WeakHashMap<UIComponent, Entry>()
 
-    /** Components whose hover listeners are already installed - see [attachLazy]. */
     private val wired = java.util.WeakHashMap<UIComponent, Boolean>()
 
-    /** The component currently hovered, and when the hover started. */
     private var hovered: UIComponent? = null
     private var hoveredAt = 0L
 
-    /** Eased 0..1 visibility. */
     private val fadeValue = BrassEased(0f, speed = 30f)
     private val fade: Float get() = fadeValue.value
 
-    /** The entry actually being drawn. Kept while fading out, after the cursor has already left. */
     private var shown: Entry? = null
 
-    /** True once a tooltip has been shown recently - the next one appears without waiting again. */
     private var warm = false
     private var wentColdAt = 0L
 
     private var mouseX = 0f
     private var mouseY = 0f
 
-    /**
-     * Default delay before a tooltip appears from cold, in milliseconds. Individual tooltips can
-     * override it per [attach] - a decorative hint can afford to wait longer than this.
-     *
-     * Short on purpose: long enough that sweeping across a toolbar does not strobe a card per button,
-     * short enough that deliberately resting on a control feels like it answers immediately.
-     */
     var delayMs = 90L
 
-    /** How long after hiding the "tooltip mode" stays warm, so a sweep across a row reads instantly. */
     var warmMs = 700L
 
-    /** How fast the card fades in and out. Higher is snappier. */
     var fadeSpeed = 30f
 
     /**
@@ -129,25 +85,17 @@ object BrassTooltip {
      */
     var maxTextWidth = 260f
 
-    /**
-     * Show [title] (and optional [body]) when [component] is hovered.
-     *
-     * Re-attaching replaces the previous text, so this is safe to call when a label changes. The
-     * component is held weakly - a screen that goes away takes its tooltips with it.
-     */
     fun attach(
         component: UIComponent,
         title: String,
         body: String? = null,
         accent: BrassAccent = BrassAccent.DEFAULT,
         follow: Boolean = true,
-        /** Delay before this tooltip pops up; null uses the global [delayMs]. */
         delayMs: Long? = null,
     ): () -> Unit = attachLazy(component, { title }, { body }, accent, follow, delayMs)
 
     /**
      * As [attach], but the text is resolved each time the tooltip is shown.
-     *
      * Use this whenever the label depends on state that is not known when the widget is built - an
      * item's display name once the platform is bound, a live value, a changing selection. The
      * alternative, re-attaching on hover, corrupts Elementa's listener list while it is iterating it.
@@ -165,14 +113,6 @@ object BrassTooltip {
         return { detach(component) }
     }
 
-    /**
-     * Attach a **rich** tooltip: one or more independently coloured lines (the name, then lore), drawn
-     * in the same delayed, fading brassui card as a text tooltip.
-     *
-     * The [lines] supplier is resolved when the tooltip is shown, so a host can convert Minecraft
-     * `Component`s to `(string, colour)` pairs lazily at hover time. Re-attaching (e.g. when the
-     * hovered row of a virtual list changes) replaces the content without re-registering listeners.
-     */
     fun attachRich(
         component: UIComponent,
         lines: () -> List<Pair<String, Color>>,
@@ -185,11 +125,6 @@ object BrassTooltip {
         return { detach(component) }
     }
 
-    /**
-     * Attach a **custom-painted** tooltip: the standard delayed, fading card, but with a body the host
-     * draws itself via [custom]. For content no string can express - a redstone link's two coloured
-     * item slots, a colour swatch grid, a mini chart - shown in the same chrome as any other tooltip.
-     */
     fun attachCustom(
         component: UIComponent,
         custom: Custom,
@@ -202,10 +137,8 @@ object BrassTooltip {
         return { detach(component) }
     }
 
-    /** Install the enter/leave listeners that drive this tooltip, once per component. */
     private fun wire(component: UIComponent) {
         // Listeners are registered ONCE per component; a re-attach only swaps the entry.
-        //
         // Elementa has no way to remove a listener, so the previous version - which registered a
         // fresh enter/leave pair on every call - grew an unbounded chain of closures on any widget
         // whose tooltip text was refreshed, and ran all of them on every hover. The doc above
@@ -226,41 +159,21 @@ object BrassTooltip {
         }
     }
 
-    /** Forget [component]'s tooltip. */
     fun detach(component: UIComponent) {
         entries.remove(component)
         if (hovered === component) hovered = null
     }
 
-    /**
-     * Consulted before a tooltip is shown; returning false suppresses it.
-     *
-     * The dev inspector installs one so a tooltip belonging to the UI *underneath* its panel cannot
-     * show through - while still letting the panel's own controls have tooltips of their own. A flat
-     * on/off switch could not tell those two cases apart.
-     */
     var gate: ((UIComponent) -> Boolean)? = null
 
-    /**
-     * The rectangle this tooltip occupied on the last frame it drew, as `[left, top, right, bottom]`,
-     * or null when nothing is up.
-     *
-     * Published so another floating card - the dev inspector's metadata readout - can place itself
-     * clear of it via [placeCard] instead of landing on top of it.
-     */
     var lastBounds: FloatArray? = null
         private set
 
-    /** Track the cursor; called by the screen each frame. */
     fun cursor(x: Float, y: Float) {
         mouseX = x
         mouseY = y
     }
 
-    /**
-     * Draw the active tooltip, if any. Called by the screen after everything else has drawn, so the
-     * card always sits on top.
-     */
     fun draw(m: UMatrixStack, root: UIComponent, screenW: Float, screenH: Float) {
         if (warm && System.currentTimeMillis() - wentColdAt > warmMs) warm = false
 
@@ -310,16 +223,6 @@ object BrassTooltip {
         paint(m, root, entry, screenW, screenH)
     }
 
-    /**
-     * Place a [w] x [h] card near ([mouseX],[mouseY]), on screen and clear of [avoid].
-     *
-     * Tries below-right of the cursor first, then flips left and/or above when there is no room, and
-     * finally slides off the obstacle. Shared with the dev inspector's metadata card: two floating
-     * cards that both "prefer below-right of the cursor" land on each other every time, and the only
-     * way for them not to is for the second one to know where the first one went.
-     *
-     * Returns `[x, y]`.
-     */
     fun placeCard(
         w: Float, h: Float,
         mouseX: Float, mouseY: Float,
@@ -334,12 +237,23 @@ object BrassTooltip {
         val above = clampY(mouseY - h - CURSOR_GAP)
         val right = clampX(mouseX + CURSOR_GAP)
         val left = clampX(mouseX - w - CURSOR_GAP)
-        val candidates = listOf(
-            right to below, left to below, right to above, left to above,
-            // last resorts: stack directly under or over the obstacle, ignoring the cursor
-            right to clampY((avoid?.get(3) ?: 0f) + GAP),
-            right to clampY((avoid?.get(1) ?: 0f) - h - GAP),
-        )
+        val candidates = buildList {
+            add(right to below)
+            add(left to below)
+            add(right to above)
+            add(left to above)
+            // Clear of the obstacle (normally the hovered component): centred under it, above it,
+            // then to its right and left. These are tried AFTER the cursor-relative spots so a
+            // tooltip still follows the cursor when there is room, but never covers the control.
+            if (avoid != null) {
+                val centerX = clampX((avoid[0] + avoid[2]) / 2f - w / 2f)
+                val centerY = clampY((avoid[1] + avoid[3]) / 2f - h / 2f)
+                add(centerX to clampY(avoid[3] + GAP))
+                add(centerX to clampY(avoid[1] - h - GAP))
+                add(clampX(avoid[2] + GAP) to centerY)
+                add(clampX(avoid[0] - w - GAP) to centerY)
+            }
+        }
 
         for ((cx, cy) in candidates) {
             if (avoid == null || !overlaps(cx, cy, w, h, avoid)) return floatArrayOf(cx, cy)
@@ -351,12 +265,48 @@ object BrassTooltip {
     private fun overlaps(x: Float, y: Float, w: Float, h: Float, r: FloatArray): Boolean =
         x < r[2] + GAP && x + w > r[0] - GAP && y < r[3] + GAP && y + h > r[1] - GAP
 
+    private fun avoidBounds(screenW: Float, screenH: Float): FloatArray? {
+        val anchor = hovered ?: return null
+        if (anchor.getWidth() > screenW * MAX_AVOID_FRACTION) return null
+        if (anchor.getHeight() > screenH * MAX_AVOID_FRACTION) return null
+        return floatArrayOf(anchor.getLeft(), anchor.getTop(), anchor.getRight(), anchor.getBottom())
+    }
+
+    /**
+     * Pinned placement (`follow = false`): below the component, flipping above when there is no room
+     * below - never clamped up onto the component itself, which made a bottom-edge widget disappear
+     * under its own tooltip.
+     */
+    private fun pinnedPosition(
+        anchor: UIComponent,
+        w: Float,
+        h: Float,
+        screenW: Float,
+        screenH: Float,
+    ): FloatArray {
+        val x = anchor.getLeft().coerceIn(EDGE, (screenW - w - EDGE).coerceAtLeast(EDGE))
+        val belowY = anchor.getBottom() + 4f
+        val aboveY = anchor.getTop() - h - 4f
+        val y = when {
+            belowY + h <= screenH - EDGE -> belowY
+            aboveY >= EDGE -> aboveY
+            else -> belowY.coerceIn(EDGE, (screenH - h - EDGE).coerceAtLeast(EDGE))
+        }
+        return floatArrayOf(x, y)
+    }
+
+    /**
+     * Components at most this fraction of the screen (per axis) count as "controls" for tooltip
+     * avoidance; anything larger is a surface and is never avoided.
+     */
+    private const val MAX_AVOID_FRACTION = 0.4f
+    private const val PAD = 5f
+
     private fun paint(m: UMatrixStack, root: UIComponent, entry: Entry, screenW: Float, screenH: Float) {
-        val pad = 5f
-        entry.custom?.let { paintCustom(m, entry, screenW, screenH, pad, it); return }
+        entry.custom?.let { paintCustom(m, entry, screenW, screenH, it); return }
         val rich = entry.lines().takeIf { it.isNotEmpty() }
         if (rich != null) {
-            paintRich(m, root, entry, screenW, screenH, pad, rich)
+            paintRich(m, root, entry, screenW, screenH, rich)
             return
         }
         val title = entry.title()
@@ -365,26 +315,31 @@ object BrassTooltip {
         // asked every frame and legitimately have no answer sometimes - a grid whose cursor is over an
         // empty slot, a widget disabled with no reason given.
         if (title.isBlank() && body.isNullOrBlank()) return
-        val textMaxW = (min(maxTextWidth, screenW - EDGE * 2) - pad * 2).coerceAtLeast(20f)
+        val textMaxW = (min(maxTextWidth, screenW - EDGE * 2) - PAD * 2).coerceAtLeast(20f)
         val rows = buildList {
             BrassFont.wrap(root, title, textMaxW).forEach { add(it to Colors.UI_TEXT_HOVER) }
             if (body != null) {
                 BrassFont.wrap(root, body, textMaxW).forEach { add(it to Colors.UI_TEXT_DARK) }
             }
         }
-        val w = (rows.maxOfOrNull { BrassFont.width(root, it.first) } ?: 0f) + pad * 2
-        val h = pad * 2 + BrassFont.LINE * rows.size + (rows.size - 1) * 1f
+        val w = (rows.maxOfOrNull { BrassFont.width(root, it.first) } ?: 0f) + PAD * 2
+        val h = PAD * 2 + BrassFont.LINE * rows.size + (rows.size - 1) * 1f
 
         val anchor = hovered
         var x: Float
         var y: Float
         if (entry.follow || anchor == null) {
-            val at = placeCard(w, h, mouseX, mouseY, screenW, screenH)
+            // Keep the card off the hovered control itself - the cursor can sit on a small button
+            // at the edge of the screen where every cursor-relative spot is taken, and the naive
+            // answer (clamp up) landed the card on top of the control that raised it. Large
+            // surfaces (the node editor canvas, full-screen panels) are deliberately NOT avoided -
+            // their tooltips describe the cursor's target inside them, and avoiding the whole
+            // surface would push the card outside the very UI it explains.
+            val at = placeCard(w, h, mouseX, mouseY, screenW, screenH, avoidBounds(screenW, screenH))
             x = at[0]; y = at[1]
         } else {
-            // pinned to the component, still clamped on screen
-            x = anchor.getLeft().coerceIn(EDGE, (screenW - w - EDGE).coerceAtLeast(EDGE))
-            y = (anchor.getBottom() + 4f).coerceIn(EDGE, (screenH - h - EDGE).coerceAtLeast(EDGE))
+            val at = pinnedPosition(anchor, w, h, screenW, screenH)
+            x = at[0]; y = at[1]
         }
 
         // rise slightly as it fades in - the same motion the widgets use on entrance
@@ -394,7 +349,6 @@ object BrassTooltip {
         lastBounds = floatArrayOf(x, y, x + w, y + h)
 
         // Land every glyph queued this frame BEFORE the card is drawn.
-        //
         // Minecraft batches text into a buffer source and flushes it later, so a label drawn earlier in
         // the frame - anywhere on screen - could still be in the queue when the tooltip's quads go
         // down, and its drop shadow then painted over the card. The tooltip is drawn last in the frame
@@ -413,33 +367,31 @@ object BrassTooltip {
         rows.forEachIndexed { i, (text, color) ->
             BrassFont.draw(
                 m, root, text,
-                x + pad, y + pad + i * (BrassFont.LINE + 1f), alpha(color, fade),
+                x + PAD, y + PAD + i * (BrassFont.LINE + 1f), alpha(color, fade),
             )
         }
     }
 
-    /** The custom-painted card: same placement and chrome, body drawn by the host's [Custom.draw]. */
     private fun paintCustom(
         m: UMatrixStack,
         entry: Entry,
         screenW: Float,
         screenH: Float,
-        pad: Float,
         custom: Custom,
     ) {
         val size = custom.size()
-        val w = size[0] + pad * 2
-        val h = size[1] + pad * 2
+        val w = size[0] + PAD * 2
+        val h = size[1] + PAD * 2
 
         val anchor = hovered
         var x: Float
         var y: Float
         if (entry.follow || anchor == null) {
-            val at = placeCard(w, h, mouseX, mouseY, screenW, screenH)
+            val at = placeCard(w, h, mouseX, mouseY, screenW, screenH, avoidBounds(screenW, screenH))
             x = at[0]; y = at[1]
         } else {
-            x = anchor.getLeft().coerceIn(EDGE, (screenW - w - EDGE).coerceAtLeast(EDGE))
-            y = (anchor.getBottom() + 4f).coerceIn(EDGE, (screenH - h - EDGE).coerceAtLeast(EDGE))
+            val at = pinnedPosition(anchor, w, h, screenW, screenH)
+            x = at[0]; y = at[1]
         }
 
         val rise = (1f - fade) * 3f
@@ -452,35 +404,33 @@ object BrassTooltip {
         val accentColor = if (entry.accent.isDefault) Colors.UI_ACCENT else entry.accent.accent
         BrassPaint.rect(m, x, y, x + 1f, y + h, alpha(accentColor, fade))
 
-        custom.draw(m, x + pad, y + pad, fade)
+        custom.draw(m, x + PAD, y + PAD, fade)
     }
 
-    /** The coloured-lines card: same placement and chrome, one line per (text, colour) pair. */
     private fun paintRich(
         m: UMatrixStack,
         root: UIComponent,
         entry: Entry,
         screenW: Float,
         screenH: Float,
-        pad: Float,
         lines: List<Pair<String, Color>>,
     ) {
-        val textMaxW = (min(maxTextWidth, screenW - EDGE * 2) - pad * 2).coerceAtLeast(20f)
+        val textMaxW = (min(maxTextWidth, screenW - EDGE * 2) - PAD * 2).coerceAtLeast(20f)
         val rows = lines.flatMap { (text, color) ->
             BrassFont.wrap(root, text, textMaxW).map { it to color }
         }
-        val w = (rows.maxOfOrNull { BrassFont.width(root, it.first) } ?: 0f) + pad * 2
-        val h = pad * 2 + BrassFont.LINE * rows.size + (rows.size - 1) * 1f
+        val w = (rows.maxOfOrNull { BrassFont.width(root, it.first) } ?: 0f) + PAD * 2
+        val h = PAD * 2 + BrassFont.LINE * rows.size + (rows.size - 1) * 1f
 
         val anchor = hovered
         var x: Float
         var y: Float
         if (entry.follow || anchor == null) {
-            val at = placeCard(w, h, mouseX, mouseY, screenW, screenH)
+            val at = placeCard(w, h, mouseX, mouseY, screenW, screenH, avoidBounds(screenW, screenH))
             x = at[0]; y = at[1]
         } else {
-            x = anchor.getLeft().coerceIn(EDGE, (screenW - w - EDGE).coerceAtLeast(EDGE))
-            y = (anchor.getBottom() + 4f).coerceIn(EDGE, (screenH - h - EDGE).coerceAtLeast(EDGE))
+            val at = pinnedPosition(anchor, w, h, screenW, screenH)
+            x = at[0]; y = at[1]
         }
 
         val rise = (1f - fade) * 3f
@@ -496,39 +446,23 @@ object BrassTooltip {
         rows.forEachIndexed { i, (text, color) ->
             BrassFont.draw(
                 m, root, text,
-                x + pad, y + pad + i * (BrassFont.LINE + 1f), alpha(color, fade),
+                x + PAD, y + PAD + i * (BrassFont.LINE + 1f), alpha(color, fade),
             )
         }
     }
 
 
-
-    /**
-     * [c] at alpha [a].
-     *
-     * Memoised on the rounded ARGB, the same trick `BrassWidget.AnimColor` uses: the tooltip is drawn
-     * every frame it is up, and for most of those frames the fade has settled and the answer is
-     * identical - so a settled tooltip now allocates nothing, and a fading one allocates only while
-     * the alpha is genuinely in motion.
-     */
     private fun alpha(c: Color, a: Float): Color {
         val ai = (255 * a.coerceIn(0f, 1f)).toInt()
         val argb = (ai shl 24) or (c.rgb and 0xFFFFFF)
         return alphaCache.getOrPut(argb) { Color(c.red, c.green, c.blue, ai) }
     }
 
-    /**
-     * Keyed on the resulting ARGB rather than held in a single slot: a tooltip paints three different
-     * colours per frame (the accent rule, the title, the body), so one slot would be evicted by the
-     * next call every time and cache nothing at all. Bounded because the fade sweeps through a range
-     * of alphas on the way in and out.
-     */
     private val alphaCache = object : LinkedHashMap<Int, Color>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Color>) = size > 256
     }
 
     private const val CURSOR_GAP = BrassMetrics.CURSOR_GAP
     private const val EDGE = BrassMetrics.FLOATING_EDGE
-    /** Clearance kept between two floating cards. */
     private const val GAP = BrassMetrics.CARD_GAP
 }

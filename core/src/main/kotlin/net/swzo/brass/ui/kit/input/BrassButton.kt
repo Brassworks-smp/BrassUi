@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.input
 
 import gg.essential.universal.UMatrixStack
@@ -28,7 +29,6 @@ open class BrassButton(
 
     override fun proxyActivate() { if (active) onClick() }
 
-    /** Intrinsic label width + padding - handy for `basicWidthConstraint`. */
     fun labelWidth(): Float = BrassFont.width(this, label) + 14f
 
     override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
@@ -42,13 +42,6 @@ open class BrassButton(
 
     companion object : BrassDemoSource {
 
-        /**
-         * The plain case: a button at rest, pointed at, and pressed.
-         *
-         * [BrassDemo.Stage.interactive] is the whole script, because for this widget it genuinely is
-         * the whole story — and the fact that the toolkit's most-used control needs no bespoke demo is
-         * a reasonable sign the default set is pitched right.
-         */
         override fun demo() = BrassDemo("button", "Button", 130f, 20f) {
             BrassButton("Primary action", BrassAccent.BRASS)
         }

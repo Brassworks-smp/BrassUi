@@ -14,33 +14,9 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * A scrolling list of [T] that creates **no component per row** - rows are painted directly, and only
- * the handful inside the viewport are touched at all.
- *
- * ### Why this is a base class and not a widget
- *
- * All of this was inside [net.swzo.brass.ui.kit.surface.BrassTable]: the scroll offset and its clamp,
- * a [BrassScrollbarModel] and the grip's hit-testing, drag-tracking and track paging, the hovered-row
- * lookup with its visibility gate, selection, arrow-key navigation, `scrollTo` / `scrollToEnd` /
- * `scrollOffset`, and the first/last arithmetic that decides which rows to draw. None of it is about
- * *tables*. A tree view needs every line of it and would otherwise have arrived as a second copy -
- * which is exactly how the table and [BrassScrollbar] ended up with two different scrollbars before
- * [BrassScrollbarModel] pulled the geometry out.
- *
- * Subclasses supply the two things that genuinely differ:
- *
- * - [paintRow] - what one row looks like.
- * - [headerHeight] / [paintHeader] - an optional fixed band above the rows that does not scroll.
- *
- * Everything else, including what a row *is*, stays here. A row is an index into [items]; the
- * subclass decides what to draw for it.
- *
- * ### Scrolling is internal
- *
- * The component owns its viewport rather than living inside a `ScrollComponent`. That is what lets it
- * skip off-screen rows - a scroll view would need every row to exist as a child in order to position
- * it - and it is why the scrollbar has to be painted and dragged by hand here rather than by
- * attaching a [BrassScrollbar].
+ * A scrolling list that creates no component per row - rows are painted directly and only the ones in
+ * the viewport are touched. Subclasses supply [paintRow] and an optional [headerHeight]. The component
+ * owns its viewport (instead of a ScrollComponent) precisely so off-screen rows never exist.
  */
 abstract class BrassVirtualList<T>(
     protected val rowHeight: Float = 16f,
@@ -51,39 +27,22 @@ abstract class BrassVirtualList<T>(
     // `setItems` collide on the same JVM signature.
     private var current: List<T> = emptyList()
 
-    /** The backing data. Replace with [setItems]. */
     val items: List<T> get() = current
 
-    /** Index of the selected row, or -1. */
     var selectedIndex: Int = -1
         protected set
 
-    /** Index of the row under the cursor, or -1. Valid during [paintRow]. */
     protected var hoveredRow: Int = -1
         private set
 
     private var scroll = 0f
 
-    /** Height of the non-scrolling band above the rows. Zero for a list with no header. */
     protected open val headerHeight: Float get() = 0f
 
-    /** Paint the header band, if [headerHeight] is non-zero. */
     protected open fun paintHeader(m: UMatrixStack, x: Float, y: Float, w: Float) {}
 
-    /**
-     * Paint one row.
-     *
-     * ([x], [y]) is the row's top-left in absolute coordinates and ([w], [rowHeight]) its size. The
-     * row may be partially outside the viewport - the whole component carries a `ScissorEffect`, so
-     * paint it in full and let the clip cut it, which is what makes scrolling look continuous rather
-     * than making text pop in and out at the edges.
-     *
-     * The background wash for selection, hover and striping is already drawn; override
-     * [rowBackground] to change it rather than painting over it here.
-     */
     protected abstract fun paintRow(m: UMatrixStack, item: T, index: Int, x: Float, y: Float, w: Float)
 
-    /** The wash behind row [index], or null for none. */
     protected open fun rowBackground(index: Int): Color? = when {
         index == selectedIndex -> SELECTED
         index == hoveredRow -> HOVER
@@ -91,44 +50,26 @@ abstract class BrassVirtualList<T>(
         else -> null
     }
 
-    /**
-     * A click landed on row [index] at [localX] (from the component's left edge). Return true to
-     * consume it and suppress the default select-the-row behaviour.
-     */
     protected open fun onRowClick(index: Int, localX: Float, button: Int): Boolean = false
 
-    /** A click landed on the header at [localX]. Only called when [headerHeight] is non-zero. */
     protected open fun onHeaderClick(localX: Float) {}
 
-    /**
-     * First look at any click, before the scrollbar and the rows - for chrome painted in
-     * [paintOverlay] that has to be clickable, like the code view's copy button. Return true to
-     * consume the click.
-     *
-     * A subclass cannot do this with a listener of its own: listeners run in registration order, so
-     * the base class's handler has already selected the row underneath by the time a later listener
-     * sees the click, and a copy button that also changes the selection reads as a misclick.
-     */
     protected open fun onViewportClick(localX: Float, localY: Float, button: Int): Boolean = false
 
     /**
      * Paint over the rows, before the scrollbar, across the **whole viewport** rather than one row.
-     *
      * For chrome that belongs to the list rather than to any row and must not stop where the rows do -
      * a line-number gutter, a fold column, a ruler. Painting those in [paintRow] leaves them ending at
      * the last row instead of at the bottom of the view, which reads as the column having run out.
      */
     protected open fun paintOverlay(m: UMatrixStack, x: Float, y: Float, w: Float, h: Float) {}
 
-    /** Whether a press anywhere should take keyboard focus. */
     override val focusable: Boolean get() = true
 
-    // ---- scrollbar -------------------------------------------------------------------------------
 
     private var draggingBar = false
     private var barGrabOffset = 0f
 
-    /** Geometry shared with [BrassScrollbar] - see [BrassScrollbarModel]. */
     private val bar = BrassScrollbarModel()
 
     private fun syncBar(): BrassScrollbarModel {
@@ -137,7 +78,6 @@ abstract class BrassVirtualList<T>(
         return bar
     }
 
-    /** Grip rectangle `[x1, y1, x2, y2]`, or null when there is nothing to scroll. */
     private fun gripRect(): FloatArray? {
         val m = syncBar()
         if (!m.scrollable) return null
@@ -146,7 +86,6 @@ abstract class BrassVirtualList<T>(
         return floatArrayOf(x + w - BrassScrollbar.WIDTH - 2f, gripY, x + w - 2f, gripY + m.gripHeight())
     }
 
-    // ---- geometry --------------------------------------------------------------------------------
 
     protected fun bodyHeight() = (getHeight() - headerHeight).coerceAtLeast(0f)
 
@@ -154,16 +93,13 @@ abstract class BrassVirtualList<T>(
 
     private fun clampScroll(v: Float) = syncBar().clamp(v)
 
-    /** Row index under a y offset measured from the component's top, or -1 outside the body. */
     protected fun rowAt(localY: Float): Int {
         if (localY < headerHeight) return -1
         val index = floor((localY - headerHeight + scroll) / rowHeight).toInt()
         return if (index in items.indices) index else -1
     }
 
-    // ---- public API ------------------------------------------------------------------------------
 
-    /** Swap the backing data. Cheap: nothing is built until the rows are drawn. */
     open fun setItems(next: List<T>) {
         current = next
         if (selectedIndex >= items.size) selectedIndex = -1
@@ -174,30 +110,22 @@ abstract class BrassVirtualList<T>(
 
     fun selected(): T? = items.getOrNull(selectedIndex)
 
-    /** Select row [index] (or -1 to clear) and notify, without scrolling to it. */
     fun select(index: Int) {
         if (index !in items.indices) { selectedIndex = -1; return }
         selectedIndex = index
         onSelect?.invoke(items[index], index)
     }
 
-    /** Scroll so [index] is visible, nudging by the minimum needed. */
     fun scrollTo(index: Int) {
         scroll = syncBar().reveal(scroll, index * rowHeight, rowHeight)
     }
 
-    /** Pin to the bottom - for a log view that should follow new lines. */
     fun scrollToEnd() { scroll = clampScroll(Float.MAX_VALUE) }
 
-    /**
-     * Current scroll offset in pixels, and settable - a view that reloads its data needs to put the
-     * scroll back where it was.
-     */
     var scrollOffset: Float
         get() = scroll
         set(value) { scroll = clampScroll(value) }
 
-    /** Move the selection by [delta] rows, scrolling to follow it. Routed here by `BrassFocus`. */
     fun moveSelection(delta: Int) {
         if (items.isEmpty()) return
         val next = (if (selectedIndex < 0) 0 else selectedIndex + delta).coerceIn(0, items.size - 1)
@@ -207,7 +135,6 @@ abstract class BrassVirtualList<T>(
         onSelect?.invoke(items[next], next)
     }
 
-    // ---- input -----------------------------------------------------------------------------------
 
     init {
         // A BrassWidget, not a bare UIComponent. The base class is what runs the entrance cascade and
@@ -267,13 +194,12 @@ abstract class BrassVirtualList<T>(
         onMouseRelease { draggingBar = false }
     }
 
-    // ---- paint -----------------------------------------------------------------------------------
 
+    @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun drawContent(matrixStack: UMatrixStack, bx: Int, by: Int, bw: Int, bh: Int) {
         // Whole-pixel bounds, snapped *inward* (ceil the origin, floor the far edge), used by every
         // layer of the paint below. Two reasons, both learned from the top rule of the code view's
         // card coming out as a dim half-height line:
-        //
         //  - A list stacked by SiblingConstraint lands on a fractional y as often as not, and a 1-px
         //    rule drawn at y = 100.5 is split across two device rows at half intensity.
         //  - The component carries a ScissorEffect clipped to its *exact* float bounds, so snapping
@@ -333,14 +259,12 @@ abstract class BrassVirtualList<T>(
     }
 
     protected companion object {
-        /** How far either side of the 3-px grip still counts as grabbing it. */
         const val BAR_GRAB = 3f
 
         val STRIPE: Color get() = Colors.ROW_STRIPE
         val HOVER: Color get() = Colors.ROW_HOVER
         val SELECTED: Color
             get() = Color(Colors.UI_ACCENT.red, Colors.UI_ACCENT.green, Colors.UI_ACCENT.blue, 46)
-        /** The scrollbar track - the faint wash BrassScrollbar uses, not a black groove. */
         val TRACK: Color get() = Colors.SCROLL_TRACK
     }
 }

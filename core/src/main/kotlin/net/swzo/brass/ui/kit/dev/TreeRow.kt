@@ -10,11 +10,6 @@ import net.swzo.brass.ui.kit.text.BrassFont
 import net.swzo.brass.ui.kit.text.BrassTag
 import java.awt.Color
 
-/**
- * One tree row: an expand/collapse glyph (when the node has children), the element's name, and a
- * coloured type tag. Hovering highlights the element on screen; clicking the row selects it (feeding
- * [DevDetails]); clicking the glyph expands or collapses it.
- */
 internal class TreeRow(
     val target: UIComponent,
     val depth: Int,
@@ -23,11 +18,9 @@ internal class TreeRow(
 
     private val name = target.javaClass.simpleName.ifEmpty { "anon" }
 
-    /** Set while this row's branch is folding away; fades the row out before the tree rebuilds. */
     var leaving = false
     private var leave = 1f
 
-    /** Whether [target] sits under [node] in the component tree - used to pick the rows to fade. */
     fun isUnder(node: UIComponent): Boolean = BrassTree.isDescendantOf(target, node)
 
     init {
@@ -89,11 +82,8 @@ internal class TreeRow(
     }
 
     companion object {
-        /** Kept as an alias so the row's hit-testing reads the same as its painting. */
         const val INDENT = BrassTreeGuides.INDENT
-        /** How fast a folding branch fades out. */
         const val LEAVE_SPEED = 7f
-        /** How long the tree waits for that fade before rebuilding, in nanoseconds. */
         const val LEAVE_NANOS = 150_000_000L
     }
 }

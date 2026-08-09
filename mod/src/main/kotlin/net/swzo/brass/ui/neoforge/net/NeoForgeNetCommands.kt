@@ -11,10 +11,6 @@ import net.swzo.brass.ui.kit.net.BrassNet
  */
 object NeoForgeNetCommands {
 
-    /**
-     * Send the action [id] with the raw JSON [json], returning immediate feedback text. The async
-     * outcome is printed to the local player's chat when it arrives.
-     */
     fun sendAction(id: String, json: String): String {
         val action = BrassNet.registry.get<Any>(id)
             ?: return "Unknown action: $id"

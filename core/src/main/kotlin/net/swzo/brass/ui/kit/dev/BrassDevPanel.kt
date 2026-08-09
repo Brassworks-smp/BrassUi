@@ -117,13 +117,8 @@ class BrassDevPanel(root: UIComponent) : UIContainer(), BrassDevOverlay {
 
     companion object {
         const val WIDTH = 244f
-        /** Matches [net.swzo.brass.ui.kit.surface.BrassWindow]'s title bar, so the two line up. */
         const val HEADER = 20f
         const val STATS = 42f
-        /**
-         * Gap between the panel card and the screen edge / the UI beside it. Zero: the panel is docked
-         * furniture, not a floating card, and a gutter around it only shrank the UI it inspects.
-         */
         const val MARGIN = 0f
     }
 }

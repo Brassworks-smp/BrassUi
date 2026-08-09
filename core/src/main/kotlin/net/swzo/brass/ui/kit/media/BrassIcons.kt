@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.media
 
 import com.google.gson.Gson
@@ -5,9 +6,6 @@ import gg.essential.elementa.components.UIImage
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.kit.base.BrassAmbientFade
 import net.swzo.brass.ui.kit.base.BrassStats
-import net.swzo.brass.ui.kit.media.BrassIcons.NONE
-import net.swzo.brass.ui.kit.media.BrassIcons.draw
-import net.swzo.brass.ui.kit.media.BrassIcons.sprite
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.InputStreamReader
@@ -17,23 +15,18 @@ import javax.imageio.ImageIO
 /**
  * The toolkit's icon set: a **sprite sheet** at `assets/brassui/textures/gui/icons.png` with an
  * accompanying `icons.json` naming each sprite's rectangle within it.
- *
  * ```json
  * { "width": 96, "height": 36, "cell": 12,
  *   "sprites": { "close": { "x": 0, "y": 0, "w": 12, "h": 12 }, ... } }
  * ```
- *
  * Adding an icon means painting it into the sheet and adding one entry to the JSON - no code change,
  * and no per-icon file. Sprites are white masks on transparency, so every icon tints with its
  * widget's animated text colour.
- *
  * ### Loading
- *
  * The sheet is read through **this class's own** class loader, not Elementa's `UIImage.ofResource`:
  * Elementa resolves that path against `UIImage`'s class, and under NeoForge's module layers Elementa
  * is a GAMELIBRARY in a different module from the mod, so it cannot see `assets/brassui/...` and
  * silently falls back to a placeholder.
- *
  * The sheet is decoded once, on first use. Each sprite is then cropped out lazily and cached, so an
  * icon that never appears costs nothing beyond its JSON entry. Sprites are sampled NEAREST and
  * snapped to whole pixels, keeping the pixel-art crisp at any GUI scale.
@@ -43,17 +36,13 @@ object BrassIcons {
     private const val SHEET = "/assets/brassui/textures/gui/icons.png"
     private const val ATLAS = "/assets/brassui/textures/gui/icons.json"
 
-    /** A named region of the sheet, cropped into its own texture on first draw. */
     class Icon(private val name: String) {
         val image: UIImage? by lazy { sprite(name) }
 
-        /** Whether this is a real icon rather than [NONE] - for a caller laying out around it. */
         val present: Boolean get() = name.isNotEmpty()
     }
 
-    // ---- sheet + atlas ---------------------------------------------------------------------------
 
-    /** A sprite's rectangle in the sheet. Populated reflectively by Gson, hence the vars. */
     private class Rect {
         var x: Int = 0
         var y: Int = 0
@@ -67,7 +56,6 @@ object BrassIcons {
         }.getOrNull()
     }
 
-    /** Gson binding for `icons.json`. */
     private class AtlasFile {
         var sprites: Map<String, Rect>? = null
     }
@@ -101,7 +89,6 @@ object BrassIcons {
         return out
     }
 
-    /** Sprite names the atlas defines - used by the icon self-check in the showcase. */
     fun spriteNames(): Set<String> = atlas.keys
 
     /**
@@ -121,15 +108,7 @@ object BrassIcons {
         )
     }
 
-    // ---- named sprites ---------------------------------------------------------------------------
 
-    /**
-     * The empty icon - draws nothing.
-     *
-     * For a keycap that wants the button but not a glyph, such as the window controls: at their size a
-     * glyph is a few pixels of noise rather than a symbol. Deliberately not in the atlas, so [sprite]
-     * misses and [draw] returns early.
-     */
     val NONE = Icon("")
 
     val CLOSE = Icon("close")

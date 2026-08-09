@@ -14,27 +14,21 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 
 /**
  * An inventory-style slot showing a Minecraft item - the first widget backed by [BrassPlatform].
- *
  * ```kotlin
  * BrassItem("minecraft:diamond_pickaxe", count = 1)
  *     .constrain { width = 18.pixels(); height = 18.pixels() }
  * ```
- *
- * It is a [BrassWidget] like everything else, so it obeys the same layout constraints, hover, press,
+ * It is a [net.swzo.brass.ui.kit.base.BrassWidget] like everything else, so it obeys the same layout constraints, hover, press,
  * entrance and accent machinery - an item slot is a widget that happens to render an item, not a
  * special case that bypasses the toolkit.
- *
  * The item itself is drawn by the platform, because item rendering is Minecraft's and `brassui` has
  * no Minecraft imports. With **no platform bound**, or an unknown id, the slot draws its recessed
  * well and a small cross rather than nothing - a missing item should look deliberately empty, not
  * like a rendering bug.
  */
 class BrassItem(
-    /** Item id, e.g. `minecraft:diamond`. */
     var itemId: String,
-    /** Stack size; drawn bottom-right when above 1. */
     var count: Int = 1,
-    /** Show the item's name as a tooltip on hover. */
     tooltip: Boolean = true,
     private val onClick: (() -> Unit)? = null,
 ) : BrassPlatformVisual(BrassAccent.DEFAULT) {
@@ -53,7 +47,6 @@ class BrassItem(
 
     override fun proxyActivate() { if (active) onClick?.invoke() }
 
-    /** The square, centred and inset from the card's face - an item is always drawn square. */
     override fun contentBox(x: Int, y: Int, w: Int, h: Int): FloatArray {
         val size = min(w, h).toFloat()
         val inset = (size * 0.12f).coerceIn(1f, 3f)
@@ -71,7 +64,6 @@ class BrassItem(
         fade: Float,
     ): Boolean = platform.drawItem(m, itemId, x, y, w, count, fade)
 
-    /** A deliberate empty-slot mark, so "no platform" and "bad id" read as empty rather than broken. */
     override fun paintPlaceholder(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
         val cx = x + w / 2f
         val cy = y + h / 2f
@@ -96,18 +88,10 @@ class BrassItem(
 
     companion object : BrassDemoSource {
 
-        /**
-         * An item slot with a tooltip on hover.
-         *
-         * Not marked [BrassDemo.worldRequired]: item rendering needs no client level, so this one
-         * captures correctly from a title screen while the entity and block demos below do not.
-         */
         override fun demo() = BrassDemo("item", "Item slot", 24f, 24f) {
             BrassItem("minecraft:diamond_pickaxe")
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 

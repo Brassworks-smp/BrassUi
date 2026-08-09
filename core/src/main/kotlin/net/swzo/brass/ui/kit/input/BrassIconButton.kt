@@ -47,7 +47,6 @@ class BrassIconButton(
 
     companion object : BrassDemoSource {
 
-        /** A labelled icon button — the form a toolbar action takes. */
         override fun demo() = BrassDemo("icon-button", "Icon button", 100f, 20f) {
             BrassIconButton("Settings", BrassIcons.GEAR)
         }

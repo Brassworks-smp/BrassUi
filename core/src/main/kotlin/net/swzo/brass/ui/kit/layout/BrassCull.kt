@@ -11,22 +11,17 @@ import net.swzo.brass.ui.kit.text.BrassMarkdown
 
 /**
  * Visibility culling for content a component paints **itself**.
- *
  * ### What Elementa already does - and why the widget-level cull was removed
- *
  * `UIComponent.draw` tests every child with `Window.isAreaVisible(...)` and skips its `draw`
  * entirely unless it passes. That test covers both the screen bounds *and* the active
  * `ScissorEffect`, which is exactly what a `ScrollComponent` installs while drawing its contents.
  * Off-screen and scrolled-away **components** are therefore already culled by the framework, one
  * level higher than any check inside a widget could sit.
- *
  * An earlier version of this file added a per-widget check in `BrassWidget.draw`. It was redundant:
  * a culled widget's `draw` is never called, so the check never ran for anything it was meant to
  * catch - which is precisely why the dev overlay reported a 0% cull rate. That reading was correct
  * and the code was wrong.
- *
  * ### What is still worth culling
- *
  * Elementa can only cull whole components. A component that paints *many pieces itself* - the lines
  * of a [BrassMarkdown] document, the rows of a [BrassTable] - is a single child as far as the
  * framework is concerned, so it gets drawn in full whenever any part of it is on screen. Those
@@ -35,22 +30,10 @@ import net.swzo.brass.ui.kit.text.BrassMarkdown
  */
 object BrassCull {
 
-    /** Master switch, for A/B testing the internal culling in game. */
     var enabled: Boolean = true
 
-    /**
-     * The effective clip rect for [c] as `[left, top, right, bottom]`: the root's bounds intersected
-     * with every scrolling ancestor's.
-     *
-     * Fetch this **once** per frame in a component that draws many pieces, rather than per piece -
-     * it walks the ancestor chain, and doing that per row of a long table would undo the saving.
-     */
     fun clipOf(c: UIComponent): BrassRect = clipInto(c, BrassRect.infinite())
 
-    /**
-     * As [clipOf], but writing into [out] - for a caller holding a scratch rectangle across frames,
-     * which is every caller that walks a long list.
-     */
     fun clipInto(c: UIComponent, out: BrassRect): BrassRect {
         out.mutate(
             Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY,
@@ -78,13 +61,11 @@ object BrassCull {
         return out
     }
 
-    /** Whether a rectangle overlaps a clip fetched from [clipOf]. */
     fun rectVisible(clip: BrassRect, left: Float, top: Float, right: Float, bottom: Float): Boolean {
         if (!enabled) return true
         return clip.overlaps(left, top, right, bottom)
     }
 
-    /** Whether [c]'s own box, expanded by [bleed], overlaps its clip. */
     fun visible(c: UIComponent, bleed: Float = 0f): Boolean {
         if (!enabled) return true
         val clip = clipInto(c, scratch)

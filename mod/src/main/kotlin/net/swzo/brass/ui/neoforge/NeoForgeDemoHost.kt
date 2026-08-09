@@ -10,12 +10,10 @@ import java.awt.Color
 
 /**
  * The gallery as the in-game `/brassui` screen.
- *
  * This is the whole of what the gallery needs from Minecraft. Everything else in that screen — every
  * widget, every section, including the item slots, mobs, block models and inventory grids — compiles
  * in a module with no Minecraft on its classpath, because the toolkit names game content with string
  * ids and resolves them through [net.swzo.brass.ui.kit.platform.BrassPlatform].
- *
  * What is left is the part that genuinely cannot be abstracted: the raw-canvas cards, whose entire
  * purpose is to show a caller dropping out of the toolkit into `GuiGraphics`.
  */
@@ -23,13 +21,10 @@ class NeoForgeDemoHost : BrassDemoHost {
 
     override val subtitle = "widget toolkit"
 
-    /** The world keeps running behind an in-game screen, so the backdrop is translucent. */
     override val backdrop: Color = SCREEN_DIM
 
-    /** The platform seam is bound to NeoForge here, so all the game-content widgets can draw. */
     override val gameWidgets = true
 
-    /** The local player is the one skin guaranteed to be in the client's player list. */
     override val playerName: String
         get() = Minecraft.getInstance().player?.gameProfile?.name ?: "Steve"
 
@@ -41,12 +36,6 @@ class NeoForgeDemoHost : BrassDemoHost {
         Minecraft.getInstance().setScreen(screen)
     }
 
-    /**
-     * Two canvases: one on a card and clipped to it, one with no chrome at all.
-     *
-     * Nothing here goes through the toolkit's painter — these are raw `GuiGraphics` calls, landing in
-     * the right place because the platform adopted Elementa's matrix and translated to the widget.
-     */
     override fun rawCanvases(): List<BrassDemoHost.DemoCanvas> = listOf(
         BrassDemoHost.DemoCanvas(
             // The oversized item deliberately overruns the box, to show the clip doing its job.
@@ -70,10 +59,6 @@ class NeoForgeDemoHost : BrassDemoHost {
     )
 
     private companion object {
-        /**
-         * Translucent app fill for the in-game gallery: the launcher ink at partial alpha, so the
-         * running game shows through behind the toolkit the way it does behind an inventory screen.
-         */
         val SCREEN_DIM: Color = Color(
             Colors.UI_BACKGROUND.red, Colors.UI_BACKGROUND.green, Colors.UI_BACKGROUND.blue, 150,
         )

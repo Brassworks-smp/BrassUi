@@ -18,7 +18,6 @@ import kotlin.math.abs
  * header (a per-node accent seam), a collapse chevron, colour-coded keycap port nubs, and its inline
  * controls - every piece painted through the shared toolkit painters so it is the same chrome the real
  * windows and widgets wear, just smaller and drawn under the canvas' zoom.
- *
  * Animation is read here, not advanced: the editor advances every [net.swzo.brass.ui.kit.base.BrassEased]
  * once per frame (so nothing double-steps) and this paints the current values - the open/close pop, the
  * hover lift, the selection halo, the roll-up, and each control's hover/press.
@@ -28,19 +27,11 @@ object NodeView {
     /** Interior chrome (title/ports/fields) fades in across this detail band; the card never changes. */
     private const val INTERIOR_MIN_DETAIL = 0.22f
     private const val INTERIOR_FULL_DETAIL = 0.50f
-    /** The accent seam fades out around 15% zoom (detail ~0.14) - sub-pixel bars flicker. */
     private const val SEAM_MIN_DETAIL = 0.07f
     private const val SEAM_MAX_DETAIL = 0.14f
-    /** The card's 1px outlines fade out around 10% zoom - below that, header + body fills only. */
     private const val OUTLINE_MIN_DETAIL = 0.025f
     private const val OUTLINE_MAX_DETAIL = 0.06f
 
-    /**
-     * Draw one node. [value] is an optional live output value shown as a small badge in the header -
-     * tinted by the node's first output port type, so the badge reads as "what kind of value this
-     * node carries right now" - the host's way of putting a live readout on every card without owning
-     * the drawing. Null hides the badge.
-     */
     fun draw(ctx: NodeDrawCtx, graph: NodeGraph, node: GraphNode, value: Any? = null) {
         node.type.renderer?.let { renderer ->
             renderer.draw(ctx, graph, node)
@@ -149,12 +140,6 @@ object NodeView {
         m.pop()
     }
 
-    /**
-     * The batched silhouette pass: every visible node's **real card** (body, header, accent seam,
-     * selection halo) is added to the frame's shared [NodeDrawCtx.lodRects] batch - pixel-identical
-     * to the full-detail card, but one GPU draw call for the whole tree. [draw] then layers the
-     * interior chrome over it, so the LOD is invisible.
-     */
     fun drawLod(ctx: NodeDrawCtx, node: GraphNode) {
         val pop = node.pop.value
         if (pop <= 0.001f) return
@@ -192,7 +177,6 @@ object NodeView {
         m.pop()
     }
 
-    /** The real card for direct hosts (no batched LOD pass): body, header, seam and selection halo. */
     private fun drawCard(
         ctx: NodeDrawCtx,
         node: GraphNode,
@@ -267,11 +251,6 @@ object NodeView {
         }
     }
 
-    /**
-     * A port nub - a tiny colour-tinted keycap. It grows and lights as a valid target ([glow]) with a
-     * ring that blooms when the cursor is over it, and shrinks, reddens and jitters when it is an
-     * invalid drop for the wire being dragged ([reject]) - a distinct "no" against the satisfying "yes".
-     */
     private fun nub(
         m: UMatrixStack, cx: Float, cy: Float, port: Port, connected: Boolean,
         glow: Float, reject: Float, time: Float,

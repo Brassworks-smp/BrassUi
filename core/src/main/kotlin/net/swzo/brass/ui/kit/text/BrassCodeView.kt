@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.text
 
 import gg.essential.universal.UMatrixStack
@@ -11,34 +12,24 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 /**
  * Read-only syntax-highlighted code with a line-number gutter - a log, a config file, a stack trace,
  * a snippet in a docs panel.
- *
  * ```kotlin
  * BrassCodeView(source, language = "kotlin").constrain { width = 100.percent(); height = 200.pixels() }
  * ```
  */
 class BrassCodeView(
     code: String = "",
-    /** Language id understood by [BrassSyntax], or null for plain text. */
-    language: String? = null,
-    /** Show the line-number gutter. */
+    private var language: String? = null,
     var gutter: Boolean = true,
 ) : BrassVirtualList<BrassCodeView.Line>(BrassFont.LINE + 2f) {
 
-    /** One highlighted line: its number and its coloured runs. */
     class Line(val number: Int, val spans: List<BrassSyntax.Span>)
 
-    private var language: String? = language
-
-    /** Horizontal scroll, in pixels. Long lines scroll rather than wrap. */
     private var scrollX = 0f
 
-    /** Widest line, measured at highlight time - the horizontal scroll range. */
     private var widest = 0f
 
-    /** Lines to draw a marker beside - an error line, a breakpoint, a search hit. */
     var markers: Set<Int> = emptySet()
 
-    /** When the copy chip last fired, or 0 - drives its check-mark flash. */
     private var copiedAt = 0L
 
     init {
@@ -52,7 +43,6 @@ class BrassCodeView(
         }
     }
 
-    /** Replace the document. Re-highlights once, here, not per frame. */
     fun setCode(code: String, language: String? = this.language) {
         this.language = language
         val highlighted = BrassSyntax.highlight(language, code)
@@ -63,10 +53,8 @@ class BrassCodeView(
         scrollOffset = 0f
     }
 
-    /** The document as plain text - for a copy button. */
     fun text(): String = items.joinToString("\n") { line -> line.spans.joinToString("") { it.text } }
 
-    /** The copy chip's rect in the top-right of the viewport, `[x1, y1, x2, y2]`. */
     private fun chipRect(x: Float, y: Float, w: Float): FloatArray {
         val x2 = x + w - CHIP_MARGIN
         val y1 = y + CHIP_MARGIN
@@ -125,7 +113,7 @@ class BrassCodeView(
     }
 
     override fun paintOverlay(m: UMatrixStack, x: Float, y: Float, w: Float, h: Float) {
-        if (gutter) paintGutter(m, x, y, w, h)
+        if (gutter) paintGutter(m, x, y, h)
 
         val r = chipRect(x, y, w)
         val (mx, my) = getMousePosition()
@@ -133,7 +121,7 @@ class BrassCodeView(
         BrassCopyChip.draw(m, r[0], r[1], hovered, BrassCopyChip.flashing(copiedAt))
     }
 
-    private fun paintGutter(m: UMatrixStack, x: Float, y: Float, w: Float, h: Float) {
+    private fun paintGutter(m: UMatrixStack, x: Float, y: Float, h: Float) {
         val gw = gutterWidth()
         val top = y + BORDER
         val bottom = y + h - BORDER
@@ -166,12 +154,6 @@ class BrassCodeView(
 
     companion object : BrassDemoSource {
 
-        /**
-         * Highlighted source with a marked line, scrolled.
-         *
-         * The scroll is the animation worth having: this is a virtual list, so what a reader wants to
-         * know is that a long file moves smoothly under a fixed gutter rather than re-laying out.
-         */
         override fun demo() = BrassDemo("code-view", "Code view", 270f, 110f) {
             val view = BrassCodeView(SAMPLE, language = "kotlin")
             view.markers = setOf(2)
@@ -189,14 +171,11 @@ class BrassCodeView(
             }
         """.trimIndent()
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
         private const val PAD = 4f
         private const val GUTTER_PAD = 4f
-        /** Vertical offset from top border so code/line numbers don't collide with the frame. */
         private const val TOP_PAD = 4f
         private const val BORDER = 1f
         private const val CHIP_MARGIN = 3f

@@ -1,6 +1,6 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.text
 
-import gg.essential.universal.UDesktop
 import gg.essential.universal.UKeyboard
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
@@ -16,24 +16,18 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * A text field with the editing behaviour people expect from a real one: click or drag to select,
  * double-click to select a word, shift+arrows to extend a selection, word- and line-wise motion with
  * the platform's modifiers, and cut/copy/paste/select-all.
- *
  * ### Selection model
- *
  * Owned by [BrassTextEdit], shared with the multi-line [BrassTextArea]: caret and anchor, word
  * boundaries, the clipboard, and every edit. What stays here is the single-line half — a horizontal
  * scroll offset, an advance table for hit-testing, and the rule that vertical keys mean "the ends".
- *
  * ### Platform keys
- *
  * MC maps Cmd to "ctrl" on macOS, so [UKeyboard.isCtrlKeyDown] is the platform's primary modifier
  * either way and Cmd+C/V/X/A work unchanged. The arrow keys differ though, and the mapping follows
  * each platform's convention:
- *
  * | | macOS | elsewhere |
  * |---|---|---|
  * | word-wise | Alt+arrow | Ctrl+arrow |
  * | line-wise | Cmd+arrow | Home / End |
- *
  * Home/End and Up/Down always go to the start/end, since this is a single-line field.
  */
 class BrassTextInput(
@@ -57,12 +51,10 @@ class BrassTextInput(
     override fun onChange(listener: (String) -> Unit) = holder.onChange(listener)
     override fun bind(state: BrassState<String>) = holder.bind(this, state)
 
-    /** The field's contents. Alias of [value]. */
     var text: String
         get() = holder.value
         private set(v) { holder.setSilently(v) }
 
-    /** Replace the contents and re-clamp every index, notifying unless [silent]. */
     private fun setInternal(next: String, newCaret: Int, silent: Boolean) {
         if (next == holder.value) return
         if (silent) holder.setSilently(next) else holder.value = next
@@ -78,18 +70,8 @@ class BrassTextInput(
      */
     fun setTextSilently(value: String) = setSilently(value)
 
-    /**
-     * Called when Enter is pressed, with the field's current text.
-     *
-     * Null - the default - keeps the original behaviour: Enter drops focus, the right thing for a form
-     * field the user has finished filling in. Set it for a **send-on-Enter** field - a chat box or a
-     * command line - where Enter submits and the field stays focused and ready for the next line. The
-     * callback is responsible for clearing the field if it wants to; that is not assumed, because a
-     * command line that re-runs the last entry does not.
-     */
     var onSubmit: ((String) -> Unit)? = null
 
-    /** The caret, the selection and every edit - see [BrassTextEdit]. */
     private val edit = BrassTextEdit(
         multiline = false,
         read = { holder.value },
@@ -99,7 +81,6 @@ class BrassTextInput(
 
     private val caret: Int get() = edit.caret
 
-    /** First visible character - the field scrolls horizontally to keep the caret in view. */
     private var scroll: Int = 0
 
     override var focused = false
@@ -107,11 +88,6 @@ class BrassTextInput(
 
     private var caretLitAt = System.currentTimeMillis()
 
-    /**
-     * Set while the mouse is down inside this field. Elementa broadcasts drags to the whole tree, so
-     * without this every field on screen would select text when you dragged anywhere at all (the same
-     * gate BrassSlider needs for scrubbing).
-     */
     private var selecting = false
 
     private var lastClickAt = 0L
@@ -188,32 +164,26 @@ class BrassTextInput(
         }
     }
 
-    // ---- selection ------------------------------------------------------------------------------
 
     private val selStart: Int get() = edit.selStart
     private val selEnd: Int get() = edit.selEnd
     private val hasSelection: Boolean get() = edit.hasSelection
 
-    /** The selected substring, or empty when nothing is selected. */
     val selectedText: String get() = edit.selectedText
 
     fun selectAll() = edit.selectAll()
 
-    // ---- bookkeeping ----------------------------------------------------------------------------
 
-    /** Force every index back into range for the current [text]. */
     private fun clampIndices() {
         edit.clamp()
         scroll = scroll.coerceIn(0, text.length)
         if (scroll > caret) scroll = caret
     }
 
-    /** Keep the caret solid for a moment after any edit, so it doesn't blink out mid-keystroke. */
     private fun resetBlink() { caretLitAt = System.currentTimeMillis() }
 
     /**
      * The caret index nearest a click at [localX] pixels from the field's left edge.
-     *
      * Indices are clamped first: if [scroll] were stale and past the end, `scroll..text.length` would
      * be an *empty* range, the loop would never run, and this would return the out-of-range starting
      * value - putting the caret beyond the text and making the next Backspace throw.
@@ -238,16 +208,7 @@ class BrassTextInput(
         return best.coerceIn(0, text.length)
     }
 
-    // ---- advance table ---------------------------------------------------------------------------
 
-    /**
-     * `advances[i]` is the pixel width of `text.take(i)`, so the width of any substring is one
-     * subtraction and any caret position is a binary search.
-     *
-     * Rebuilt only when the text actually changes. Everything that used to walk the string measuring
-     * a fresh substring per step - hit-testing a click, scrolling the view to keep the caret visible,
-     * placing the selection highlight, positioning the caret - now reads it directly.
-     */
     private var advanceTable: FloatArray = FloatArray(1)
     private var advancesFor: String? = null
 
@@ -264,13 +225,10 @@ class BrassTextInput(
         return out
     }
 
-    /** Width of `text.take(i)`. */
     private fun advanceTo(i: Int): Float = advances()[i.coerceIn(0, text.length)]
 
-    /** Width of `text.substring(from, to)`. */
     private fun advanceBetween(from: Int, to: Int): Float = advanceTo(to) - advanceTo(from)
 
-    // ---- render ---------------------------------------------------------------------------------
 
     override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
         if (hoveredState && active) BrassCursor.request(BrassCursor.Kind.TEXT)
@@ -320,7 +278,6 @@ class BrassTextInput(
         }
     }
 
-    /** Longest prefix of [s] that fits in [avail] pixels. */
     private fun clipToWidth(s: String, avail: Float): String {
         if (BrassFont.width(this, s) <= avail) return s
         var t = s
@@ -330,19 +287,10 @@ class BrassTextInput(
 
     companion object : BrassDemoSource {
 
-        /**
-         * Focused, typed into, and corrected with a backspace.
-         *
-         * Typed a character at a time so the caret advances and blinks the way it does under a real
-         * hand; the backspace is there because a text field that only ever grows hides the one
-         * behaviour people actually check for.
-         */
         override fun demo() = BrassDemo("text-input", "Text input", 190f, 18f) {
             BrassTextInput(placeholder = "Server name")
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
@@ -350,7 +298,6 @@ class BrassTextInput(
         private const val PAD_R = 5
         private const val DOUBLE_CLICK_MS = BrassMetrics.DOUBLE_CLICK_MS
 
-        /** Selection wash: the accent at low alpha, so glyphs stay legible on top of it. */
         private val SELECTION: Color = Color(Colors.UI_ACCENT.red, Colors.UI_ACCENT.green, Colors.UI_ACCENT.blue, 90)
     }
 }

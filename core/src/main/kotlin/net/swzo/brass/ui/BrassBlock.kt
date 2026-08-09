@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui
 
 import gg.essential.elementa.UIComponent
@@ -13,22 +14,16 @@ import java.awt.Color
  * control its crisp seated edge. An optional [outerBorder]
  * adds a second, outer 1-px ring (the near-black `globalOuterBorder`) for panels and the window chrome,
  * and an optional [shadow] drops a soft rounded shadow down-right so a floating surface reads as lifted.
- *
  * Everything is drawn inside the component's own bounds (both borders inset inward, the shadow reserving
  * the bottom-right pixel) - nothing overruns the layout box, matching how the old flat primitive behaved.
  * Rounded fills are rendered with Elementa's [UIRoundedRectangle] shader; sub-pixel radii fall back to a
  * plain [UIBlock] so hairlines stay crisp.
  */
 open class BrassBlock(
-    /** The flat fill colour. */
     var fill: Color = Colors.UI_ELEMENT_BG,
-    /** The 1-px inner border; a transparent colour draws none. */
     var border: Color? = Colors.UI_ELEMENT_BORDER,
-    /** Corner radius, in pixels. */
     var cornerRadius: Float = Colors.RADIUS,
-    /** An optional outer 1-px ring outside the border - for panels. */
     var outerBorder: Color? = null,
-    /** Drop a soft rounded shadow down-right, reserving the bottom-right pixel of the bounds. */
     var shadow: Boolean = false,
 ) : UIComponent() {
 
@@ -52,14 +47,8 @@ open class BrassBlock(
     }
 
     companion object {
-        /** The drop-shadow tone - a translucent black. */
         val SHADOW: Color get() = Colors.SHADOW
 
-        /**
-         * Drawn inward so it stays inside `[x1,y1]..[x2,y2]`:
-         * the outer ring (if any) at the bounds edge, the inner border inset 1 px, then the fill inset
-         * again. Radius shrinks by 1 px per ring so the corners stay concentric.
-         */
         fun drawBox(
             m: UMatrixStack,
             x1: Float, y1: Float, x2: Float, y2: Float,
@@ -78,7 +67,6 @@ open class BrassBlock(
             roundedRect(m, fill, ax1, ay1, ax2, ay2, r)
         }
 
-        /** Fill a rounded rect `[x1,y1]..[x2,y2]` (radius clamped to half the shorter side). */
         fun roundedRect(m: UMatrixStack, c: Color, x1: Float, y1: Float, x2: Float, y2: Float, radius: Float) {
             if (x2 <= x1 || y2 <= y1) return
             val rr = minOf(radius, (x2 - x1) / 2f, (y2 - y1) / 2f).coerceAtLeast(0f)
@@ -89,13 +77,11 @@ open class BrassBlock(
             }
         }
 
-        /** Lighten toward white by [t] (0..1). */
         fun lighten(c: Color, t: Float): Color {
             fun ch(v: Int) = (v + (255 - v) * t).toInt().coerceIn(0, 255)
             return Color(ch(c.red), ch(c.green), ch(c.blue), c.alpha)
         }
 
-        /** Darken toward black by [t] (0..1). */
         fun darken(c: Color, t: Float): Color {
             fun ch(v: Int) = (v * (1f - t)).toInt().coerceIn(0, 255)
             return Color(ch(c.red), ch(c.green), ch(c.blue), c.alpha)

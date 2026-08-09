@@ -17,18 +17,13 @@ import kotlin.math.floor
 /**
  * A **multi-line** text field: word-wrapped, scrollable, selectable, with a caret you can move by
  * clicking, dragging or with the arrow keys.
- *
  * ### Why this exists
- *
  * [BrassTextInput] is explicitly single-line — vertical motion and Home/End all mean "the ends" — so
  * anything needing a description, a MOTD, a command block or a note had nowhere to go.
- *
  * ### Same editor, different layout
- *
  * Selection, word motion, the clipboard and every edit come from [BrassTextEdit], shared with
  * [BrassTextInput]. This class owns only the part that genuinely differs: turning a string into
  * wrapped lines, mapping a click to an index, and scrolling vertically instead of horizontally.
- *
  * That split is new. This widget used to reimplement the editing half and, in doing so, shipped
  * without selection, without a clipboard and without word-wise motion — so the same keystrokes did
  * different things in the two fields. They are now the same field with different geometry, which is
@@ -60,16 +55,10 @@ class BrassTextArea(
     override fun onChange(listener: (String) -> Unit) = holder.onChange(listener)
     override fun bind(state: BrassState<String>) = holder.bind(this, state)
 
-    /** The field's contents. Alias of [value]. */
     val text: String get() = holder.value
 
-    /** Select the complete note/body so the next typed character replaces placeholder-like content. */
     fun selectAll() = edit.selectAll()
 
-    /**
-     * Scale the text metrics and padding together. Normally 1; immediate-mode canvases can match their
-     * own zoom so entering edit mode does not make the same text visibly change size.
-     */
     var contentScale: Float = 1f
         set(value) {
             val next = value.coerceIn(0.4f, 2.2f)
@@ -78,33 +67,13 @@ class BrassTextArea(
             invalidateWrap()
         }
 
-    /**
-     * Set this to make the field a **composer**: Enter submits and Shift+Enter inserts the newline.
-     *
-     * That is the opposite of the field's default polarity, and deliberately so. A text area whose job
-     * is a description or a MOTD wants Enter to mean "new paragraph", because there is no other way to
-     * get one and nothing is waiting on the text. A chat composer is the other case entirely — every
-     * message ends with Enter and only the occasional one has a second line — and a user who has to
-     * reach for the mouse to send, or who sends by pressing a key that visibly does nothing else in
-     * every other field, will notice immediately.
-     *
-     * Rather than have callers re-handle keys (and get selection, wrapping and the caret wrong doing
-     * it), setting this swaps the two bindings and leaves everything else alone. The field is still the
-     * same editor; only what Enter means changes, and it changes exactly when a caller has said there
-     * is something for it to submit to.
-     */
     var onSubmit: ((String) -> Unit)? = null
 
-    /**
-     * How many **visual** lines the text currently occupies — wrapped lines included, not just the
-     * newlines in it. For a composer that grows with what is typed; see [heightForLines].
-     */
     val lineCount: Int get() = layout(innerWidth()).size.coerceAtLeast(1)
 
     override var focused = false
         private set
 
-    /** The caret, the selection and every edit — see [BrassTextEdit]. */
     private val edit = BrassTextEdit(
         multiline = true,
         read = { holder.value },
@@ -117,12 +86,6 @@ class BrassTextArea(
 
     private var caretLitAt = System.currentTimeMillis()
 
-    /**
-     * Set while the mouse is down inside this field, so a drag selects.
-     *
-     * Elementa broadcasts drags to the whole tree, so without this gate every field on screen would
-     * select text when you dragged anywhere at all.
-     */
     private var selecting = false
     private var lastClickAt = 0L
 
@@ -131,7 +94,6 @@ class BrassTextArea(
     private var wrappedFor = -1f
     private var wrappedText: String? = null
 
-    /** Highlighted source lines and each line's absolute start offset, keyed to the exact [text]. */
     private var highlighted: List<List<BrassSyntax.Span>> = emptyList()
     private var sourceLineStarts: IntArray = IntArray(0)
     private var highlightedFor: String? = null
@@ -244,18 +206,7 @@ class BrassTextArea(
     // Text is kept inside by construction instead: `layout` breaks even an unbreakable word at the
     // field's width, and `drawContent` skips lines outside the viewport.
 
-    // ---- wrapping ----------------------------------------------------------------------------------
 
-    /**
-     * The visual lines at the current width, and the character index each begins at.
-     *
-     * Explicit newlines are honoured first and each paragraph is then greedily wrapped. The line starts
-     * are built *here*, in the same pass — they used to be recomputed separately by walking the wrapped
-     * lines and guessing which separator each break had consumed, which is only correct while every
-     * break falls on a space. It does not: a word longer than the field is broken mid-word (see below),
-     * and the guess then desynchronised every index after it, putting the caret and the selection on
-     * the wrong characters for the rest of the field.
-     */
     private fun layout(width: Float): List<String> {
         if (width == wrappedFor && wrappedText === text) return wrapped
 
@@ -331,7 +282,6 @@ class BrassTextArea(
         return lines
     }
 
-    /** How many leading characters of [s] fit in [width]. At least one, or a break makes no progress. */
     private fun longestPrefix(s: String, width: Float): Int {
         var n = 0
         var acc = 0f
@@ -349,20 +299,17 @@ class BrassTextArea(
         return starts
     }
 
-    /** Index of the visual line containing [index]. */
     private fun lineOf(index: Int, width: Float): Int {
         val s = lineStartsList(width)
         for (i in s.indices.reversed()) if (index >= s[i]) return i
         return 0
     }
 
-    /** Start of the visual line the caret is on. */
     private fun lineHome(): Int {
         val width = innerWidth()
         return lineStartsList(width).getOrElse(lineOf(edit.caret, width)) { 0 }
     }
 
-    /** End of the visual line the caret is on. */
     private fun lineTail(): Int {
         val width = innerWidth()
         val row = lineOf(edit.caret, width)
@@ -404,7 +351,6 @@ class BrassTextArea(
     private fun lineHeight(): Float = BrassFont.LINE * contentScale
     private fun textWidth(value: String): Float = BrassFont.width(this, value) * contentScale
 
-    /** Scroll so the caret's line is inside the viewport, after a keystroke moved it. */
     private fun revealCaret() {
         val width = innerWidth()
         val row = lineOf(edit.caret, width)
@@ -416,7 +362,6 @@ class BrassTextArea(
         scrollY = bar.clamp(scrollY)
     }
 
-    // ---- render ------------------------------------------------------------------------------------
 
     override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
         if (hoveredState && active) BrassCursor.request(BrassCursor.Kind.TEXT)
@@ -457,7 +402,6 @@ class BrassTextArea(
 
         // A caret would be ambiguous next to a selection highlight, so it only shows for a plain
         // insertion point — the same rule the single-line field uses.
-        //
         // It does show over the placeholder, which it used to not. An empty field that had just been
         // clicked looked exactly like one that had not: greyed prompt text, no caret, no sign the
         // click had landed — so the only way to find out whether the thing was a text field was to
@@ -495,12 +439,6 @@ class BrassTextArea(
         }
     }
 
-    /**
-     * One visual line of the field, honouring [contentScale]. With a [language] set, the line is painted
-     * as its syntax-coloured runs clipped to this visual line's slice of the source — a soft wrap inside
-     * a token keeps that token's colour across the seam (a long string stays amber over the break).
-     * Placeholder prompts drop the shadow so they read as a ghost behind real text.
-     */
     private fun drawLine(
         m: UMatrixStack,
         line: String,
@@ -536,19 +474,11 @@ class BrassTextArea(
         }
     }
 
-    /** The source line containing absolute offset [start] — binary search over [sourceLineStarts]. */
     private fun sourceIndexFor(start: Int): Int {
         val probe = sourceLineStarts.binarySearch(start)
         return if (probe >= 0) probe else -probe - 2
     }
 
-    /**
-     * The selection wash across one visual line.
-     *
-     * Painted per line rather than as one rectangle because a selection spanning three lines is three
-     * separate runs, and the middle one has to extend to the line's own end rather than to the widest
-     * line's — otherwise a multi-line selection reads as a ragged block with holes in it.
-     */
     private fun paintSelection(m: UMatrixStack, row: Int, line: String, starts: List<Int>, x: Int, ly: Float) {
         val lineStart = starts.getOrElse(row) { return }
         val lineEnd = lineStart + line.length
@@ -567,37 +497,24 @@ class BrassTextArea(
 
     companion object : BrassDemoSource {
 
-        /** Multi-line entry — type into it, press Enter, select across the line break. */
         override fun demo() = BrassDemo("text-area", "Text area", 220f, 70f) {
             BrassTextArea(placeholder = "Description")
         }
 
-        /**
-         * The height a field needs to show [lines] of text without scrolling — the padding above and
-         * below plus the lines themselves.
-         *
-         * Exposed so a composer can grow with what is typed (`heightForLines(lineCount.coerceAtMost(4))`)
-         * without duplicating the padding, which is private and would otherwise be guessed at.
-         */
         fun heightForLines(lines: Int): Float = lines.coerceAtLeast(1) * BrassFont.LINE + PAD * 2
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
         private const val PAD = 5f
         private const val GRIP_W = 3f
 
-        /** How long the caret stays lit, and then dark, once idle. */
         private const val BLINK_MS = 500L
 
-        /** Width of the stub marking a selected line break at the end of a line. */
         private const val NEWLINE_SLIVER = 3f
 
         private val TRACK: Color get() = Colors.SCROLL_TRACK
 
-        /** Selection wash: the accent at low alpha, so glyphs stay legible on top of it. */
         private val SELECTION: Color
             get() = Color(Colors.UI_ACCENT.red, Colors.UI_ACCENT.green, Colors.UI_ACCENT.blue, 90)
     }

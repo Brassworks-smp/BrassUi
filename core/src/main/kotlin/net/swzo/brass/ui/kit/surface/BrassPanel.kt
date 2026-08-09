@@ -2,7 +2,6 @@ package net.swzo.brass.ui.kit.surface
 
 import gg.essential.elementa.UIComponent
 import gg.essential.elementa.components.UIContainer
-import gg.essential.elementa.constraints.SiblingConstraint
 import gg.essential.elementa.dsl.basicHeightConstraint
 import gg.essential.elementa.dsl.childOf
 import gg.essential.elementa.dsl.constrain
@@ -26,52 +25,39 @@ import net.swzo.brass.ui.kit.text.BrassLabel
 
 /**
  * A titled **card** with a padded, self-contained content area - the shape a screen is built out of.
- *
  * ### What it does for you, that a bare card does not
- *
  * Two things go wrong every time a card is hand-built, and this fixes both by construction:
- *
  * 1. **It never clips its own frame.** The card is painted with [BrassCard.panel], whose near-black
  *    ring is drawn *inside* the panel's bounds rather than bleeding a pixel past them. So a panel
  *    dropped flush inside a `ScrollComponent` (or any `ScissorEffect`) keeps its frame on all four
  *    sides - the "the black border gets shaved off the top and sides" bug simply cannot happen. A card
  *    hand-drawn with [BrassCard.draw] has to be inset by hand to avoid it; this one does not.
- *
  * 2. **Its content is padded, by the toolkit's own scale.** [content] sits [pad] in from every edge
  *    ([BrassSpacing.PAD] by default), so controls never touch the frame and every panel in an app is
  *    padded the *same*. No screen has to remember a magic number, and two panels built by two different
  *    people line up.
- *
  * ### Adding content
- *
  * The default body is a **vertical stack** - the shape a card wants almost every time:
- *
  * ```kotlin
  * BrassPanel("SERVER").add(
  *     BrassTextInput("", "address"),
  *     BrassButton("Connect", BrassAccent.BRASS),
  * ) childOf parent
  * ```
- *
  * [add] appends full-width rows top to bottom, reserving the keycap bleed so a control's ring and lip
  * are never clipped. Side-by-side controls go in through [row], and **wrapping is what they do by
  * default**: a row reflows onto another line when the panel is too narrow to hold it, rather than
  * letting its controls collide or run off the edge at small GUI scales. There is deliberately no
  * fixed-count side-by-side option - a row that cannot wrap is the bug this is here to prevent.
- *
  * ```kotlin
  * panel.row(18f, BrassButton("Edit"), BrassButton("Copy"), BrassButton("Delete"))
  * ```
- *
  * That row wraps instead of overlapping, so a panel laid out this way survives being squeezed without
  * any per-screen responsive code.
- *
  * For a card that lays out its own body by hand (a master/detail split, absolute positioning), pass
  * [Layout.FREE] and add straight to [content] - it is still padded and still self-contained, it just
  * does not manage a stack for you.
- *
  * ### Sizing
- *
  * By default the panel fills whatever height it is given, and [content] fills the area below the title.
  * Pass `hug = true` (or use [BrassPanel.hug]) for a card that measures its own height from its content -
  * the tallest child, not the sum (see [BrassLayout.tallestChildHeight]) - which is what a card in a
@@ -79,37 +65,23 @@ import net.swzo.brass.ui.kit.text.BrassLabel
  */
 class BrassPanel @JvmOverloads constructor(
     private val title: String? = null,
-    /** Inset of [content] from the card's edge. Defaults to the toolkit scale. */
     private val pad: Float = BrassSpacing.PAD,
-    /** Gap between stacked rows added through [add]. */
     private val gap: Float = BrassSpacing.GAP,
-    /** Fill the card, or leave it a bordered frame over whatever is behind it. */
     private val filled: Boolean = true,
-    /** How [add] places children - a wrapping vertical stack, or hand-positioned [content]. */
     private val layout: Layout = Layout.COLUMN,
-    /** Measure the panel's own height from its content rather than filling the height it is given. */
     private val hug: Boolean = false,
 ) : BrassContainer() {
 
-    /** How a panel arranges what [add] puts in it. */
     enum class Layout {
-        /** A vertical stack of full-width rows, wrapping the keycap bleed - the default a card wants. */
         COLUMN,
 
-        /** No managed layout: add to [content] and position by hand. For a master/detail body. */
         FREE,
     }
 
-    /** Height of the title band, or 0 when the panel has no title. */
     private val titleH: Float = if (title != null) BrassSpacing.TITLE_H else 0f
 
-    /**
-     * The padded region inside the card. Add here when the panel is [Layout.FREE] or you are
-     * positioning children yourself; otherwise prefer [add] / [row], which fill it for you.
-     */
     val content: UIContainer
 
-    /** The managed stack [add] appends to, created lazily on first use. Null for [Layout.FREE]. */
     private var stack: BrassVBox? = null
 
     init {
@@ -127,7 +99,7 @@ class BrassPanel @JvmOverloads constructor(
         if (hug) {
             // The card sizes to the tallest thing in it, plus the title band and padding on both edges.
             constrain {
-                height = basicHeightConstraint { c ->
+                height = basicHeightConstraint { _ ->
                     val kids = content.children
                     val body = if (kids.isEmpty()) 0f else kids.maxOf { it.getBottom() } - content.getTop()
                     titleH + pad + body + pad
@@ -153,9 +125,7 @@ class BrassPanel @JvmOverloads constructor(
         } childOf this
     }
 
-    // ---- building --------------------------------------------------------------------------------
 
-    /** The managed vertical stack, created on first [add]. Throws in [Layout.FREE]. */
     private fun column(): BrassVBox {
         check(layout == Layout.COLUMN) {
             "This panel is Layout.FREE; add to `content` and position children yourself."
@@ -166,10 +136,6 @@ class BrassPanel @JvmOverloads constructor(
         }
     }
 
-    /**
-     * Append [children] as full-width rows, top to bottom, reserving the keycap bleed so nothing is
-     * clipped. Returns this panel so a card can be built and parented in one expression.
-     */
     fun add(vararg children: UIComponent): BrassPanel {
         val col = column()
         for (child in children) {
@@ -181,12 +147,6 @@ class BrassPanel @JvmOverloads constructor(
         return this
     }
 
-    /**
-     * Append a row of [controls] that sit side by side and **wrap onto another line when the panel is
-     * too narrow to fit them** - the responsive answer to controls colliding at small GUI scales. Each
-     * control is [height] tall and stretches to share the line; below a readable minimum the row wraps
-     * instead of squeezing them to slivers.
-     */
     fun row(rowHeight: Float, vararg controls: UIComponent): BrassPanel {
         val flow = BrassFlow(gapX = gap, gapY = BrassSpacing.TIGHT, itemHeight = rowHeight, stretch = true)
         controls.forEach { flow.add(it, MIN_CONTROL) }
@@ -194,13 +154,11 @@ class BrassPanel @JvmOverloads constructor(
         return add(flow)
     }
 
-    /** Append blank vertical space - a break wider than the usual [gap]. */
     fun addSpacer(size: Float): BrassPanel {
         column().addSpacer(size)
         return this
     }
 
-    // ---- paint -----------------------------------------------------------------------------------
 
     override fun paint(matrixStack: UMatrixStack) {
         val x = getLeft(); val y = getTop(); val x2 = getRight(); val y2 = getBottom()
@@ -214,7 +172,6 @@ class BrassPanel @JvmOverloads constructor(
         }
     }
 
-    /** A hairline, for the title band's underline. Kept private - it is not a general-purpose divider. */
     private class Rule : UIComponent() {
         override fun draw(matrixStack: UMatrixStack) {
             beforeDraw(matrixStack)
@@ -226,13 +183,8 @@ class BrassPanel @JvmOverloads constructor(
     }
 
     companion object : BrassDemoSource {
-        /** Narrowest a control in a [row] gets before the row wraps instead of squeezing it. */
         private const val MIN_CONTROL = 76f
 
-        /**
-         * A card that measures its own height from its content - for a panel in a scrolling list, so
-         * the list scrolls to exactly the panel's end.
-         */
         @JvmStatic
         fun hug(
             title: String? = null,
@@ -242,10 +194,6 @@ class BrassPanel @JvmOverloads constructor(
             layout: Layout = Layout.COLUMN,
         ): BrassPanel = BrassPanel(title, pad, gap, filled, layout, hug = true)
 
-        /**
-         * A titled card with a stacked body and a wrapping button row. A panel paints its own card, so
-         * the demo does not wrap it in another one (`card = false`).
-         */
         override fun demo() = BrassDemo("panel", "Panel", 210f, 96f, card = false) {
             BrassPanel("SERVER").add(
                 BrassLabel("survival.example.net"),

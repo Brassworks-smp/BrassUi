@@ -11,7 +11,6 @@ import net.swzo.brass.ui.kit.text.BrassCopyChip.FLASH_MS
 /**
  * The small copy-to-clipboard chip that sits in the corner of a code surface - the code view, and
  * each fenced block in a markdown document.
- *
  * One drawing in one place, because the two hosts paint their own chrome (neither is a component
  * tree the chip could be added to as a child) and a copy affordance that looks different in the two
  * places it appears reads as two features. The glyph is the traditional pair of offset pages, drawn
@@ -21,20 +20,15 @@ import net.swzo.brass.ui.kit.text.BrassCopyChip.FLASH_MS
  */
 object BrassCopyChip {
 
-    /** Edge length of the chip. Sized to sit inside one code line. */
     const val SIZE = 11f
 
-    /** How long the check is shown after a copy. */
     const val FLASH_MS = 1200L
 
-    /** Whether a copy at [copiedAt] should still be showing its check. */
     fun flashing(copiedAt: Long): Boolean =
         copiedAt != 0L && System.currentTimeMillis() - copiedAt < FLASH_MS
 
-    /** Put [text] on the clipboard. Returns false if the platform refused. */
     fun copy(text: String): Boolean = runCatching { UDesktop.setClipboardString(text) }.isSuccess
 
-    /** Draw the chip with its top-left at ([x1],[y1]). */
     fun draw(m: UMatrixStack, x1: Float, y1: Float, hovered: Boolean, copied: Boolean) {
         val x2 = x1 + SIZE
         val y2 = y1 + SIZE

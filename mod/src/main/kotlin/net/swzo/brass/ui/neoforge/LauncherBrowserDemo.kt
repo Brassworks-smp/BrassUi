@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.neoforge
 
 import gg.essential.elementa.UIComponent
@@ -35,21 +36,16 @@ import net.swzo.brass.ui.kit.base.BrassChrome
 
 /**
  * A **static mock** of the BrassWorks launcher's "Add content" browser, rebuilt in `brassui`.
- *
  * Its only job is to put the toolkit under a real screen's worth of load: a modal with a custom body,
  * two segmented tab rows, a search field, a scrolling list of composed rows, item rendering, tags,
  * tooltips and a footer — the shapes an actual application screen is made of, rather than one widget
  * per row in a demo popup.
- *
  * **Nothing here is wired up.** No search, no install. The tabs swap which list is shown and that is
  * the extent of it; the install keys do nothing.
- *
  * The data *is* real, though: every entry below — title, author, description, download count, last
  * update — was read from Modrinth's public API, and the icons are the projects' actual artwork, pulled
  * over the network at runtime by [BrassImage] and cached per URL.
- *
  * ### Why these particular mods
- *
  * They are the well-known ones whose Modrinth icon happens to be a **PNG**. Modrinth serves most icons
  * as WebP, which the JDK's ImageIO has no reader for (see [BrassImage]), so a Sodium or a Create would sit on
  * the widget's failed placeholder and demo nothing. Both tabs are Modrinth data — CurseForge's API
@@ -57,28 +53,21 @@ import net.swzo.brass.ui.kit.base.BrassChrome
  */
 object LauncherBrowserDemo {
 
-    /** Height of one result row (which draws as a flat card). */
     private const val ROW_H = 40f
-    /** Gap between rows. */
     private const val ROW_GAP = 4f
-    /** Inset of the row's icon from the card edge — the icon fills the rest of the card's height. */
     private const val ICON_PAD = 4f
 
-    /** One row's worth of content, as read from Modrinth. */
     private class Entry(
         val title: String,
         val author: String,
         val description: String,
-        /** Raw count; rendered through [fmtDownloads], as the launcher does. */
         val downloads: Long,
         val updated: String,
         val categories: List<String>,
-        /** Project icon URL. PNG only — see the class docs. */
         val icon: String,
         val installed: Boolean = false,
     )
 
-    /** The launcher's own `fmtDownloads`, reimplemented. */
     private fun fmtDownloads(n: Long): String = when {
         n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
         n >= 1_000 -> "%.1fK".format(n / 1_000.0)
@@ -190,7 +179,6 @@ object LauncherBrowserDemo {
         ),
     )
 
-    /** Open the mock. [screenRoot] is the screen's content layer. */
     fun open(screenRoot: UIComponent) {
         // A modal with a custom body: the launcher's browser is not a stack of labelled form rows, so
         // the popup's form scroller is turned off and the layout is built directly into `content`.
@@ -208,14 +196,12 @@ object LauncherBrowserDemo {
         popup.showModal(screenRoot, 560f, 340f)
     }
 
-    /** The browser layout: source tabs + search, type tabs, the results list, and a footer note. */
     private class Body : UIContainer() {
 
         private val list: UIContainer
         private var rowCount = 0
 
         init {
-            // ---- source tabs + search --------------------------------------------------------
             // Sized to its own tabs rather than a guessed pixel width — see BrassTabSwitch.contentWidth.
             val sourceTabs = BrassTabSwitch(listOf("Modrinth", "CurseForge"), onChange = { showSource(it) })
             sourceTabs.constrain {
@@ -233,19 +219,16 @@ object LauncherBrowserDemo {
                     height = 16.pixels()
                 } childOf this
 
-            // ---- type tabs -------------------------------------------------------------------
             val typeTabs = BrassTabSwitch(listOf("Mods", "Resource Packs", "Shaders"))
             typeTabs.constrain {
                 x = 0.pixels(); y = 22.pixels()
                 width = basicWidthConstraint { typeTabs.contentWidth() }; height = 16.pixels()
             } childOf this
 
-            // ---- footer, pinned first so the list can be sized against it --------------------
             val footer = BrassLabel("Showing results for 1.21.1  ·  NeoForge", Colors.UI_TEXT_DARK)
                 .also { it.entranceEnabled = false }
                 .constrain { x = 0.pixels(); y = 0.pixels(true) } childOf this
 
-            // ---- results ---------------------------------------------------------------------
             val scroll = ScrollComponent().constrain {
                 x = 0.pixels(); y = 44.pixels()
                 width = 100.percent() - (BrassScrollbar.WIDTH + 4f).pixels()
@@ -264,7 +247,6 @@ object LauncherBrowserDemo {
             showSource(0)
         }
 
-        /** Swap the visible list. The only thing any control in this mock actually does. */
         private fun showSource(index: Int) {
             val curseforge = index == 1
             val shown = if (curseforge) CURSEFORGE else MODRINTH
@@ -281,14 +263,6 @@ object LauncherBrowserDemo {
 
     }
 
-    /**
-     * One result row: icon, title + author + installed tag, description, download count, date and
-     * category pills, with a quick-install key on the right.
-     *
-     * Drawn as a flat outlined card rather than a keycap — a list row is a surface you click, not a
-     * button that sits proud of one — with the outline going brass on hover, which is what the
-     * launcher's rows do.
-     */
     private class Row(private val entry: Entry, curseforge: Boolean) : BrassWidget(BrassAccent.DEFAULT) {
 
         init {

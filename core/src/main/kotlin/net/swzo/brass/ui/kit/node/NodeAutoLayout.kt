@@ -6,7 +6,6 @@ import kotlin.math.sqrt
 
 /**
  * Pure, deterministic auto-layout for a node graph.
- *
  * Connected components are arranged as column flows reading left to right - the way a hand-made
  * graph reads: each layer is a column, the nodes inside it stack vertically, and columns advance
  * sideways at a fixed pitch. Longest-path layering collapses strongly-connected cycles into a
@@ -16,19 +15,15 @@ import kotlin.math.sqrt
  * rows wrap at roughly sqrt(component-count) columns, so a handful of subnetworks land in a
  * squarish footprint instead of one endless vertical strip or one endless horizontal row - and
  * nothing ever overlaps.
- *
  * The algorithm takes geometry and edges only and returns coordinates - no UI, no animation - which
  * is what makes it testable off-game and lets [BrassNodeEditor.autoLayout] animate the move.
  */
 object NodeAutoLayout {
 
-    /** A node's geometry. Width/height are the *rendered* card size, not a grid cell. */
     data class LayoutNode(val id: Int, val width: Float, val height: Float)
 
-    /** A directed wire: [from]'s output feeds [to]'s input (flow runs left to right). */
     data class LayoutEdge(val from: Int, val to: Int)
 
-    /** Final node positions (top-left) and the union bounds `[minX, minY, maxX, maxY]`. */
     class Layout(
         val positions: Map<Int, Pair<Float, Float>>,
         val bounds: FloatArray,
@@ -120,7 +115,6 @@ object NodeAutoLayout {
         return Layout(positions, floatArrayOf(minX, minY, maxX, maxY))
     }
 
-    // ---- connected components -------------------------------------------------------------------
 
     private fun components(nodes: List<LayoutNode>, edges: List<LayoutEdge>): List<List<Int>> {
         val adj = HashMap<Int, MutableList<Int>>()
@@ -149,7 +143,6 @@ object NodeAutoLayout {
         return out
     }
 
-    // ---- one connected component -----------------------------------------------------------------
 
     private class Placed(val positions: Map<Int, Pair<Float, Float>>, val bounds: FloatArray)
 
@@ -263,7 +256,6 @@ object NodeAutoLayout {
         return Placed(positions, floatArrayOf(minX, minY, maxX, maxY))
     }
 
-    /** Tarjan's strongly-connected components; groups are returned in reverse topological order. */
     private fun stronglyConnected(ids: List<Int>, edges: List<LayoutEdge>): List<List<Int>> {
         val succ = HashMap<Int, MutableList<Int>>()
         ids.forEach { succ[it] = ArrayList() }

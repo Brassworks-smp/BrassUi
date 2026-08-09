@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.surface
 
 import gg.essential.elementa.UIComponent
@@ -23,46 +24,28 @@ import net.swzo.brass.ui.kit.text.BrassTag
 /**
  * A floating, **draggable** sub-window with a title bar and a scrolling form body. Shown above the
  * screen via [show]; [dismiss] closes it and fires [onClose].
- *
  * ### What lives where
- *
  * The frame itself - drag, collapse, maximize, resize, the open/close animation - is
  * [BrassFrameBase]. The form is [BrassForm], and the `add*` builders here simply forward to it, so a
  * form can equally be built outside a popup. What is left here is what is genuinely a *popup*: the
  * modal scrim, the z-order rules, and the show/dismiss lifecycle.
- *
  * ### Modal mode
- *
  * Pass `modal = true` (or use [showModal]) for a dialog: a dark scrim covers the whole screen, the
  * popup is centred on it, and clicks cannot reach anything behind. **A modal's chrome defaults off** -
  * no header, no close button, no resize, no collapse - because a dialog is answered by its own
  * buttons, not dismissed by furniture around the edge. Every one of those is an independent flag, so
  * a modal that does want a title bar and a close button just asks for them.
- *
  * `dismissOnEscape` stays on by default in both modes; turn it off for a dialog that must be answered.
  */
 class BrassPopup(
     private val title: String,
     private val onClose: () -> Unit = {},
-    /** Show over a dark scrim, centred, with chrome off by default. */
     val modal: Boolean = false,
-    /** Show the title bar. Off by default for a modal. */
     private val showHeader: Boolean = !modal,
-    /** Show the close button in the title bar. Off by default for a modal. */
     private val showCloseButton: Boolean = !modal,
-    /** Allow dragging the edges to resize. Off by default for a modal. */
     resizable: Boolean = !modal,
-    /** Allow double-clicking / minimising the title bar to roll the popup up. Off for a modal. */
     collapsible: Boolean = !modal,
-    /** Whether Escape closes this popup. On by default in both modes. */
     val dismissOnEscape: Boolean = true,
-    /**
-     * Build the scrolling [BrassForm] the `add*` builders fill.
-     *
-     * Turn it off for a dialog that lays out its own content - a browser, a wizard step, anything that
-     * is not a stack of labelled rows. [content] is then an empty container filling the frame below
-     * the header, and the builder methods throw.
-     */
     private val scrollingBody: Boolean = true,
 ) : BrassFrameBase(
     titleBarH = if (showHeader) 20 else 0,
@@ -75,22 +58,18 @@ class BrassPopup(
 
     private var root: UIComponent? = null
 
-    /** The form filling [content], or null when the popup has a custom body. */
     private val form: BrassForm?
 
     override val dismissing: Boolean get() = anim.isClosing
     override val escapeDismissable: Boolean get() = dismissOnEscape
 
-    /** The dark scrim behind a modal, if any - created and torn down with the popup. */
     private var scrim: Scrim? = null
 
-    /** A popup is dragged within its screen root, which is also its parent. */
     override val dragBounds: UIComponent? get() = root ?: super.dragBounds
 
     init {
         // A headerless popup builds no title bar at all - no drag handle, no title, no controls. That
         // is deliberate: a modal is placed by the layout, not by the user, and a strip of invisible
-        // drag target across its top would be a trap.
         if (showHeader) buildTitleBar()
 
         form = if (scrollingBody) {
@@ -123,44 +102,16 @@ class BrassPopup(
         }
     }
 
-    /** A popup shades to its title bar on a double-click rather than maximizing. */
     override fun onTitleDoubleClick() = toggleCollapse()
 
     override fun requestClose() = dismiss()
 
-    // ---- z-order ---------------------------------------------------------------------------------
 
-    /**
-     * Set when a click lands on this popup, and acted on at the start of the next draw. Re-parenting
-     * during event dispatch would mutate the child list Elementa is iterating over.
-     */
     private var raisePending = false
 
-    /**
-     * Interaction ordering, so a queued raise can tell whether it has been overtaken.
-     *
-     * A click anywhere on a popup queues a raise, and the click that opens a *new* popup necessarily
-     * lands on the popup holding the button - so the opener would raise itself over the popup it just
-     * opened, one frame later. That is why a colour picker opened from a settings popup appeared
-     * behind it. Stamping both the click and the show from one counter lets the deferred raise notice
-     * that something newer exists and stand down.
-     */
     private var raiseStamp = 0L
     private var shownStamp = 0L
 
-    /**
-     * Raise this popup among its siblings on a click, **only as high as its rank allows**.
-     *
-     * Entirely through [BrassLayers.raise] - this method used to keep its own copy of the ordering
-     * rule (stop below a scrim, then put the context menu back on top), and a private copy of a rule
-     * is a rule that drifts: it knew about modals and menus but not about the toast column or the
-     * command palette, so a click on any popup appended it above both. Now the popup only knows its
-     * own rank; who it may and may not cover is [BrassLayers]' single decision.
-     *
-     * A modal raises its scrim first and itself second. Both are ranked [BrassLayers.Rank.MODAL], so
-     * the two land together at the top of the modal band - scrim, then popup directly on top of it -
-     * while transient chrome and toasts stay above.
-     */
     private fun raiseWithin(r: UIComponent) {
         scrim?.let { BrassLayers.raise(r, it) }
         BrassLayers.raise(r, this)
@@ -178,12 +129,10 @@ class BrassPopup(
         }
     }
 
-    /** The scrim is a sibling, not a child, so it is told the frame's alpha rather than inheriting it. */
     override fun onAlpha(alpha: Float) {
         scrim?.alpha = alpha
     }
 
-    // ---- form ------------------------------------------------------------------------------------
 
     private fun form(): BrassForm = requireNotNull(form) {
         "This popup was built with scrollingBody = false; add to `content` instead of using the form builders."
@@ -217,13 +166,10 @@ class BrassPopup(
     fun number(label: String): Float? = form?.number(label)
     fun choice(label: String): String? = form?.choice(label)
 
-    /** Every registered control's current value, keyed by caption. */
     fun values(): Map<String, Any> = form?.values() ?: emptyMap()
 
-    /** Populate the form from saved values - see [BrassForm.setValues]. */
     fun setValues(values: Map<String, Any?>): BrassPopup = also { form?.setValues(values) }
 
-    // ---- lifecycle -------------------------------------------------------------------------------
 
     /**
      * Float the popup above [screenRoot] at ([x],[y]) with size [w]x[h], **clamped to fit the
@@ -249,13 +195,6 @@ class BrassPopup(
         return this
     }
 
-    /**
-     * Show as a **modal**: a dark scrim over the whole screen with the popup centred on it.
-     *
-     * The scrim is added to the root *first* so it sits under the popup, and it swallows every click,
-     * which is what makes the dialog modal rather than merely centred. Both fade together with the
-     * frame animation, and both are removed when it lands.
-     */
     fun showModal(screenRoot: UIComponent, w: Float, h: Float): BrassPopup {
         val sc = Scrim().constrain {
             x = 0.pixels(); y = 0.pixels(); width = 100.percent(); height = 100.percent()
@@ -272,7 +211,6 @@ class BrassPopup(
 
     /**
      * Dismiss the popup. Named `dismiss` (not `hide`) - `UIComponent.hide()` is final.
-     *
      * This only *starts* the close: the popup animates out and removes itself from the tree once the
      * animation lands. Removing it here would mean a popup could never be seen to close.
      */
@@ -284,7 +222,6 @@ class BrassPopup(
 
     /**
      * The actual teardown, run once the close animation has finished.
-     *
      * [onClose] fires **unconditionally**, not only when there is still a root to detach from.
      * Bailing out early on a null root - which is what this used to do - meant a popup whose root had
      * been cleared (a double dismiss, or an external reparent) became an invisible zombie that never
@@ -302,18 +239,9 @@ class BrassPopup(
         onClose()
     }
 
-    /**
-     * The dark wash behind a modal.
-     *
-     * It swallows clicks rather than passing them through - that is the whole point of a modal, and it
-     * is also why it is a real component rather than a rectangle painted by the popup: only something
-     * in the tree can take the click.
-     */
     private class Scrim : UIComponent(), BrassLayers.Layer {
-        /** Ranked with the modal it belongs to, so [BrassLayers.raise] treats the pair as one band. */
         override val rank: BrassLayers.Rank get() = BrassLayers.Rank.MODAL
 
-        /** Set each frame by the popup so the scrim fades in and out with it. */
         var alpha: Float = 1f
 
         init {
@@ -334,25 +262,17 @@ class BrassPopup(
         }
 
         private companion object {
-            /** How dark the scrim gets. Enough to push the UI back without hiding it. */
             const val SCRIM_ALPHA = 150
         }
     }
 
     private companion object {
-        /**
-         * Monotonic counter shared by every popup, stamping clicks and shows so their relative order
-         * is comparable across instances - see [raiseStamp].
-         */
         var interactionSeq = 0L
 
-        /** Inset of the body from the frame's edges. */
         const val PAD = 12f
 
-        /** Margin kept between a popup and the screen edge. */
         const val EDGE = BrassMetrics.FLOATING_EDGE
 
-        /** Smallest a popup may be squeezed to before it stops shrinking. */
         const val MIN_W = 160f
         const val MIN_H = 120f
     }

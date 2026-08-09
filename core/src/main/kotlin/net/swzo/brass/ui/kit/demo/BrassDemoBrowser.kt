@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.demo
 
 import gg.essential.elementa.UIComponent
@@ -33,32 +34,24 @@ import java.awt.image.BufferedImage
 
 /**
  * The demo browser: pick a widget, drive it yourself, capture what you see.
- *
  * ### Why capturing is manual
- *
  * There used to be a batch mode: one command captured every demo in every theme and quit. It read as
  * the obviously right design and was wrong twice over. Nobody ever wanted *all* of it — a widget's demo
  * changes and regenerating four hundred files to pick up the two that moved makes the diff unreadable.
  * And a sweep gives you no chance to *look*: a demo whose sample data is cropped produces a perfectly
  * valid file that nobody sees until it is on a page.
- *
  * The demos were also **scripted** — each carried a timeline saying to open a section at 0.3s and
  * release a drag at 1.7s — and that went for a related reason. Every animation worth recording had to
  * be predicted in advance and written as numbers, so tuning a clip meant editing Kotlin, rebuilding,
  * relaunching, watching, and adjusting a decimal. Here the widget is **live and takes the real mouse**:
  * you open the accordion at the pace you want and hold the record button around it.
- *
  * The theme dimension went the same way. Whatever palette the game is in is the one you capture.
- *
  * ### How the same pixels end up in the file
- *
  * The demo is a **real child of this screen**, laid out inside the preview card — which is what makes
  * hover, clicks and drags land on it normally. Capturing then reads that same on-screen rectangle back
  * out of the framebuffer. There is no second copy and no separate state: the frame written to disk is
  * the component you are looking at, one draw later — every clip already resolved against the real screen.
- *
  * ### What works without a host
- *
  * Everything except writing files. With no [BrassDemoCapture] bound this is still a working browser —
  * which is what the desktop app gets — and the shutter and record button disable themselves with a
  * reason rather than vanishing.
@@ -68,16 +61,7 @@ class BrassDemoBrowser(
     // so a property called onClose here compiles but `onClose()` binds to that inherited method instead
     // of invoking the lambda — the Close button silently called the wrong thing.
     private val onExit: () -> Unit = {},
-    /** Name of the demo to open on first mount, or null to start on the first in the list. */
     initial: String? = null,
-    /**
-     * Capture the opened demo to a PNG and close, once it has drawn a few frames.
-     *
-     * For a scripted single-shot — `-Dui.shot=node-editor` on the desktop — that regenerates exactly one
-     * screenshot without anyone clicking. This is deliberately one demo at a time and writes a file you
-     * then look at, which is the same contract the manual shutter keeps; it is not the old batch sweep
-     * this browser was built to replace.
-     */
     private val autoShot: Boolean = false,
 ) : BrassScreen() {
 
@@ -87,27 +71,21 @@ class BrassDemoBrowser(
     // resolve the wrong one — silently, since both are in scope.
     private var current: BrassDemo = demos.first()
 
-    /** Index to open on, resolved from the [initial] name against the demo list. */
     private val startIndex: Int =
         initial?.let { name -> demos.indexOfFirst { it.name.equals(name, ignoreCase = true) } }
             ?.takeIf { it >= 0 } ?: 0
 
-    /** Frames drawn since mount, for the [autoShot] delay. */
     private var shotFrames = 0
     private var shotDone = false
 
-    /** The live demo instance, or null before the first mount. */
     private var mounted: UIComponent? = null
 
-    /** Frames accumulated by an in-progress recording, or null when not recording. */
     private var recording: MutableList<BufferedImage>? = null
 
-    /** Real seconds accumulated toward the next recorded frame, so capture is paced to [FPS]. */
     private var sinceFrame: Float = 0f
 
     /**
      * Encodes and writes finished recordings, off the render thread.
-     *
      * One thread, not a pool: writes are rare and sequential by nature, and two of them racing to
      * [BrassDemoCapture]'s unique-name check would be how two takes land on the same file. Daemon, so a
      * half-written capture never keeps the game from quitting.
@@ -116,13 +94,11 @@ class BrassDemoBrowser(
         Thread(r, "brassui-demo-write").apply { isDaemon = true }
     }
 
-    /** A result from [writer], picked up by the next frame. See [finishRecording]. */
     private val pendingStatus = java.util.concurrent.atomic.AtomicReference<String?>()
 
     private val status = BrassLabel("").also { it.entranceEnabled = false }
     private val caption = BrassLabel("").also { it.entranceEnabled = false }
 
-    /** Where the demo is parented. Its box is the demo's outer size, so capture can measure from it. */
     private val stage = Stage()
 
     private val navRows = ArrayList<BrassButton>()
@@ -136,7 +112,6 @@ class BrassDemoBrowser(
         select(startIndex)
     }
 
-    // ---- layout ----------------------------------------------------------------------------------
 
     private fun buildChrome() {
         BrassLabel("Demo browser", Colors.UI_TEXT_HOVER).also { it.entranceEnabled = false }
@@ -238,7 +213,6 @@ class BrassDemoBrowser(
         status.constrain { x = 260.pixels(); y = 100.percent() - 18.pixels() } childOf background
     }
 
-    // ---- selection --------------------------------------------------------------------------------
 
     private fun select(index: Int) {
         current = demos[index]
@@ -260,7 +234,6 @@ class BrassDemoBrowser(
         }
     }
 
-    /** Build the demo fresh and put it on the stage. */
     private fun mount() {
         stage.clearChildren()
         stage.constrain {
@@ -284,16 +257,7 @@ class BrassDemoBrowser(
         mounted = root
     }
 
-    // ---- capture ----------------------------------------------------------------------------------
 
-    /**
-     * Read the demo back out of the frame that was just drawn.
-     *
-     * The demo is a real child of this screen, laid out inside [stage] — so its on-screen rectangle is
-     * exactly [stage]'s box, and handing that to [BrassDemoCapture.grab] captures the widget as shown,
-     * every clip rectangle already resolved against the real framebuffer. There is no second draw and
-     * no translation to get wrong: the pixels in the file are the pixels on screen, one frame later.
-     */
     private fun grab(): BufferedImage? {
         val host = BrassDemoCapture.current ?: return null
         mounted ?: return null
@@ -306,7 +270,6 @@ class BrassDemoBrowser(
         say(host.writePng(current.name, image)?.let { "wrote $it" } ?: "write failed")
     }
 
-    /** Start capturing, or stop. Prefer the key over the button so the pointer stays on the widget. */
     private fun toggleRecord() {
         when {
             recording != null -> finishRecording()
@@ -314,7 +277,6 @@ class BrassDemoBrowser(
         }
     }
 
-    /** Begin capturing. */
     private fun beginRecording() {
         recording = ArrayList()
         sinceFrame = 0f
@@ -324,21 +286,16 @@ class BrassDemoBrowser(
 
     /**
      * Stop capturing **now**, and write in the background.
-     *
      * ### Why the write is off-thread
-     *
      * Because it is slow enough to be felt. Encoding a GIF means building a shared palette across every
      * frame and quantising all of them against it, which for a few hundred frames is a second or two of
      * pure CPU — and it was running on the render thread, so pressing Stop froze the game until the file
      * was on disk. That reads as the button not working, and the natural response is to press it again.
-     *
      * So stopping is now only the three lines that matter interactively: drop the frame list, restore
      * the button, say what is happening. The frames are plain images with no GL handles once
      * [BrassDemoCapture.grab] has read them back, so they hand off safely to a worker while the browser
      * carries on drawing.
-     *
      * ### A GIF with no motion is a PNG
-     *
      * A recording where nothing happened — the button held down while the widget sat still — is a run
      * of identical frames. Writing that as an animation is wasteful and, worse, misleading: it implies
      * motion that is not there. So an all-identical run collapses to a single PNG, which also keeps the
@@ -387,21 +344,16 @@ class BrassDemoBrowser(
 
     /**
      * Ctrl+R to record, Ctrl+S to shoot.
-     *
      * ### Why modified letters rather than function keys
-     *
      * These were F9 and F10, chosen because nothing else claims them. On a Mac laptop that is a bad
      * binding: the top row is media keys by default, so a "single key" shortcut is really Fn plus a key
      * on the far edge of the keyboard — the opposite of reachable while your other hand is driving a
      * widget with the trackpad.
-     *
      * A modified letter is reachable and mnemonic, and **Ctrl is the right modifier on every platform**
      * because Minecraft maps Cmd to it on macOS (the toolkit relies on this everywhere — see
      * [net.swzo.brass.ui.kit.text.BrassTextInput]). So this is Cmd+R / Cmd+S on a Mac and Ctrl+R /
      * Ctrl+S elsewhere, from one branchless check.
-     *
      * ### Why they can be letters at all
-     *
      * A demo is a live widget and one of them is a text field, so an *unmodified* letter would be
      * swallowed mid-edit — or worse, fire and type. Two things make the modified form safe: the screen
      * sees the key before the focused component does, and these two combinations are claimed by nothing
@@ -419,7 +371,6 @@ class BrassDemoBrowser(
         super.onKeyPressed(keyCode, typedChar, modifiers)
     }
 
-    // ---- per-frame ---------------------------------------------------------------------------------
 
     override fun onDrawScreen(matrixStack: UMatrixStack, mouseX: Int, mouseY: Int, partialTicks: Float) {
         pendingStatus.getAndSet(null)?.let { say(it) }
@@ -455,21 +406,12 @@ class BrassDemoBrowser(
         }
     }
 
-    /**
-     * Release any capture resources on the way out.
-     *
-     * Reading the screen holds nothing, so the bound host's [BrassDemoCapture.release] is usually a
-     * no-op — but it stays on the interface for a host that does allocate, and leaving the screen is
-     * the one moment that reliably signals capturing is done. An in-flight recording is finished first,
-     * so its frames are written rather than thrown away.
-     */
     override fun onScreenClose() {
         if (recording != null) finishRecording()
         BrassDemoCapture.current?.release()
         super.onScreenClose()
     }
 
-    /** The card the browser's own panels are made of. */
     private class Card : BrassWidget(BrassAccent.DEFAULT) {
         init {
             chrome = BrassChrome.NONE
@@ -479,14 +421,6 @@ class BrassDemoBrowser(
             BrassCard.draw(m, x.toFloat(), y.toFloat(), (x + w).toFloat(), (y + h).toFloat(), shadow = true)
     }
 
-    /**
-     * The box the demo is parented into.
-     *
-     * A component of its own rather than parenting the demo straight into the preview card, so the
-     * demo's position and size are known exactly — [grab] reads them to work out the translation, and a
-     * demo sitting inside a card with its own padding would make that arithmetic depend on the card.
-     * Paints a size readout under itself while recording, so it is obvious a take is running.
-     */
     private inner class Stage : BrassWidget(BrassAccent.DEFAULT) {
         init {
             chrome = BrassChrome.NONE
@@ -508,33 +442,10 @@ class BrassDemoBrowser(
         const val BTN_W = 76f
         const val STAGE_MARGIN = 8f
 
-        /**
-         * Frames per second a recording captures *and* declares.
-         *
-         * These have to be the same number, and once were not: the browser grabbed one frame per
-         * rendered game frame (60+ fps) while the GIF's delay claimed 20, so every clip played back in
-         * ~3x slow motion. Now the capture is paced to this rate by real elapsed time (see the recording
-         * block in [onDrawScreen]), so the same 20 is the sampling rate and the playback rate and a clip
-         * runs at the speed it was performed. A machine drawing slower than 20 fps captures every frame
-         * it can and plays back slightly fast — a fair trade for not stepping a synthetic clock.
-         */
         const val FPS = 20
 
-        /**
-         * Hard stop on a recording's length.
-         *
-         * Every frame is a full-size image held in memory, so a record button left on by accident is a
-         * slow out-of-memory rather than a large file. At [FPS] this is half a minute, which is far
-         * longer than any widget demonstration and short enough to be survivable.
-         */
         const val MAX_FRAMES = 600
 
-        /**
-         * What to call the primary modifier in a tooltip.
-         *
-         * The key is the same one either way — Minecraft reports Cmd as ctrl on macOS — but writing
-         * "Ctrl+R" on a Mac would send someone hunting for a key that is not the one that works.
-         */
         val MOD: String get() = if (UDesktop.isMac) "Cmd" else "Ctrl"
     }
 }

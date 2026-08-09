@@ -21,26 +21,17 @@ import kotlin.math.roundToInt
 /**
  * A scrollbar in the toolkit's grammar: a thin recessed track with a flat grip that brightens toward
  * brass on hover or while dragged.
- *
  * Elementa drives this - [ScrollComponent.setVerticalScrollBarComponent] positions and sizes the grip
  * to reflect the scroll offset, and hides it when everything already fits. All this type does is
  * paint; the geometry is Elementa's.
- *
  * Build one with [attach], which wires the track, the grip and the scroll view together.
  */
 class BrassScrollbar : UIContainer() {
 
     private val grip = Grip()
 
-    /** The view this bar reports on, so the track can hide when there is nothing to scroll. */
     private var scroll: ScrollComponent? = null
 
-    /**
-     * Keep the bar on screen even when the content fits.
-     *
-     * Off by default - a bar with nothing to scroll is noise - but a panel whose content grows and
-     * shrinks can want the gutter reserved so the layout does not jump as the bar appears.
-     */
     var alwaysShow: Boolean = false
 
     init {
@@ -70,13 +61,6 @@ class BrassScrollbar : UIContainer() {
     private var overflowFrame = -1L
     private var overflowResult = false
 
-    /**
-     * [needsScrolling], answered at most once per frame.
-     *
-     * The measurement walks every child of the scroll view and resolves two constraints on each, and
-     * `draw` is not the only thing that asks. Once a frame is as fresh as the answer can meaningfully
-     * be - nothing moves between two reads within the same frame.
-     */
     private fun overflows(): Boolean {
         if (overflowFrame == BrassClock.frame) return overflowResult
         overflowFrame = BrassClock.frame
@@ -84,13 +68,6 @@ class BrassScrollbar : UIContainer() {
         return overflowResult
     }
 
-    /**
-     * Whether the attached view actually overflows.
-     *
-     * Measured from the children's own extent rather than asking the ScrollComponent, whose content
-     * height is private. Taking the span between the topmost and bottommost child works whatever the
-     * current scroll offset is, since scrolling moves them all together.
-     */
     private fun needsScrolling(): Boolean {
         val s = scroll ?: return true
         val kids = s.allChildren
@@ -104,12 +81,10 @@ class BrassScrollbar : UIContainer() {
         return (bottom - top) > s.getHeight() + 0.5f
     }
 
-    /** The draggable grip. Elementa sets its y and height; this only paints it. */
     private class Grip : UIComponent() {
         private var hovered = false
         private val glowValue = BrassEased(0f, speed = GLOW_SPEED)
 
-        /** Set by the owning bar each frame - see [BrassScrollbar.draw]. */
         var visible = true
 
         init {
@@ -131,17 +106,14 @@ class BrassScrollbar : UIContainer() {
     }
 
     companion object {
-        /** How fast the grip brightens on hover. */
         private const val GLOW_SPEED = 12f
         private val TRACK: Color get() = Colors.SCROLL_TRACK
 
-        /** Default scrollbar width, in pixels. */
         const val WIDTH = 3f
 
         /**
          * Attach a scrollbar to [scroll], laid out inside [parent] along the scroll view's right edge,
          * and return it. The bar hides itself whenever the content already fits, unless [alwaysShow].
-         *
          * Note the scroll view must leave room for it - reserve [WIDTH] plus a small gap in the
          * scroll's own width, or the bar will sit on top of the content.
          */

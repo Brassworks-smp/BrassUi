@@ -14,7 +14,6 @@ import net.swzo.brass.ui.kit.text.BrassLabel
  * title, subtitle, and three **working** square control keys on the right (minimise rolls the window
  * up to its title bar, maximise toggles full size, close fires [onClose]). Fill [content] with the
  * body; the keys and chrome manage themselves.
- *
  * Drag, collapse, maximise, resize and the open/close animation all come from [BrassFrameBase] - see
  * there for why they are no longer implemented here.
  */
@@ -22,20 +21,8 @@ class BrassWindow(
     title: String,
     subtitle: String? = null,
     private val onClose: () -> Unit = {},
-    /**
-     * Title bar height. Sized to the control keycaps plus a couple of pixels of breathing room - a
-     * title bar is chrome and should not spend more of the frame than the controls in it need.
-     */
     titleBarH: Int = 20,
-    /**
-     * Whether the title bar carries the minimise / maximise / close keys.
-     *
-     * A screen's *only* window has nowhere to minimise to, nothing to maximise past and nothing
-     * behind it to close back to - the keys would be three controls that either do nothing useful or
-     * strand the user. Such a window passes `false` and keeps the bar as a plain title strip.
-     */
     private val controls: Boolean = true,
-    /** Minimum size the window can be dragged down to. */
     minW: Float = 260f,
     minH: Float = 160f,
 ) : BrassFrameBase(titleBarH, minW, minH) {
@@ -67,7 +54,6 @@ class BrassWindow(
         }
 
         // Right-aligned square keycap controls: minimise / maximise / close.
-        //
         // No glyphs. At this size the icons were a couple of pixels of noise inside an already small
         // key, and three near-identical smudges do not read as three different actions - position and
         // the close key's danger accent do that work on their own, the way a row of plain keys on a
@@ -101,15 +87,10 @@ class BrassWindow(
         }
     }
 
-    /** The maximise key has no glyph to swap, so it reports the state by staying lit instead. */
     override fun onMaximizeChanged(maximized: Boolean) {
         maximizeButton?.selected = maximized
     }
 
-    /**
-     * Fired once, not once per frame: the window stays in the tree until whatever [onClose] does
-     * takes the screen down, and the animation keeps reporting finished the whole time.
-     */
     override fun onClosed() {
         if (closeFired) return
         closeFired = true

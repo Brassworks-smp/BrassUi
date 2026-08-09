@@ -21,7 +21,6 @@ import org.bson.BsonValue
  * editor's fast save path (numbers stay numbers, byte arrays stay binary, and there is no text to
  * escape or parse), plus the equivalent versioned JSON document for portable export, import and
  * hand-editing:
- *
  * ```json
  * {
  *   "version": 5,
@@ -30,9 +29,7 @@ import org.bson.BsonValue
  *   "links": [ { "from": 1, "fromPort": 0, "to": 2, "toPort": 0 } ]
  * }
  * ```
- *
  * ### Why this is trivial
- *
  * Because the graph is pure data (see [NodeGraph]). A node writes its type id, position and each field's
  * primitive value; loading rebuilds the node from its registered [NodeType] (so predicates and control
  * layout come back correct) and hands each field its saved value through [NodeField.decode]. Custom node
@@ -40,7 +37,6 @@ import org.bson.BsonValue
  * recognise is simply skipped, so an older build opens a newer file without crashing.
  * [compatibility] lets a host warn before that tolerant future-version read, while versions
  * [OLDEST_SUPPORTED_VERSION] through [CURRENT_VERSION] are the explicit compatibility contract.
- *
  * BSON comes from MongoDB's pure-JVM `org.mongodb:bson` (jar-in-jar'd by the mod and mirrored to the
  * Brassworks maven, so consumers add no repository). JSON uses Gson, already on the classpath (see
  * [net.swzo.brass.ui.kit.media.BrassIcons]).
@@ -273,7 +269,6 @@ object NodeIO {
         return gson.toJson(root)
     }
 
-    /** Read [json] into [graph] (which should be empty), skipping anything unknown. */
     fun into(graph: NodeGraph, json: String) {
         val root = runCatching { JsonParser.parseString(json).asJsonObject }.getOrNull() ?: return
 

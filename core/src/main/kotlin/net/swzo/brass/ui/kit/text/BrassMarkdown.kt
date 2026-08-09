@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.text
 
 import gg.essential.elementa.UIComponent
@@ -14,9 +15,7 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 /**
  * Renders a practical subset of Markdown in the toolkit's palette - for changelogs, help panels, MOTDs
  * and anything else where the text is authored rather than hardcoded into a layout.
- *
  * ### Supported
- *
  * | Syntax | Result |
  * |---|---|
  * | `# ` `## ` `### ` | headings, scaled down by level |
@@ -27,19 +26,14 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * | `---` | horizontal rule (a [BrassDivider] in all but name) |
  * | `**b**` `*i*` `` `code` `` | inline emphasis |
  * | `[label](url)` | link - styled, and clickable when [onLink] is set |
- *
  * Blank lines separate paragraphs; consecutive lines within a paragraph are joined and re-wrapped.
  * Everything wraps to the component's current width and re-lays out when that width changes, so this
  * behaves like the rest of the reactive layout pieces ([BrassFlow], [BrassLayout]).
- *
  * ### Height
- *
  * Like [BrassFlow], this measures itself rather than guessing: constrain it with
  * `height = basicHeightConstraint { md.contentHeight() }` and it will grow as the panel narrows and
  * text wraps to more lines. Sizing it any other way will clip the tail of the document.
- *
  * ### Font assumption
- *
  * Bold and italic are emitted as vanilla `§` formatting codes, which the default (vanilla) font
  * provider renders and measures correctly. Under a custom Elementa font provider those codes would
  * show up literally - if the toolkit ever switches fonts, emphasis needs re-implementing here (bold
@@ -94,16 +88,13 @@ class BrassMarkdown(
         }
     }
 
-    /** Force a re-layout on the next draw. (Named to avoid colliding with any Elementa member.) */
     private fun markDirty() { lastWidth = Float.NaN }
 
-    /** Total height of the laid-out document. Feed this to a `basicHeightConstraint`. */
     fun contentHeight(): Float {
         relayoutIfNeeded(getWidth())
         return measuredHeight
     }
 
-    // ---- parsing --------------------------------------------------------------------------------
 
     private enum class Kind { PARAGRAPH, HEADING, BULLET, ORDERED, QUOTE, CODE, RULE }
 
@@ -111,13 +102,8 @@ class BrassMarkdown(
         val kind: Kind,
         val spans: List<Span> = emptyList(),
         val level: Int = 0,
-        /** Marker for list items - a bullet glyph or the written number. */
         val marker: String = "",
         val codeLines: List<String> = emptyList(),
-        /**
-         * Highlighted form of [codeLines]: one list of coloured runs per line. Built once at parse
-         * time - running the language regex over a code block every frame would be indefensible.
-         */
         val codeSpans: List<List<BrassSyntax.Span>> = emptyList(),
     )
 
@@ -199,12 +185,6 @@ class BrassMarkdown(
         return out
     }
 
-    /**
-     * Split a line into styled [Span]s. Deliberately a single left-to-right scan rather than a nest of
-     * regexes: markers are matched in priority order (code first, so `` `**not bold**` `` stays
-     * literal), and an unterminated marker is emitted as plain text instead of swallowing the rest of
-     * the line.
-     */
     private fun inline(s: String): List<Span> {
         val out = ArrayList<Span>()
         val buf = StringBuilder()
@@ -252,17 +232,7 @@ class BrassMarkdown(
         return out
     }
 
-    // ---- layout ---------------------------------------------------------------------------------
 
-    /** A span placed at a resolved position, ready to draw. */
-    /**
-     * A span placed at a resolved position, ready to draw.
-     *
-     * [rendered] is the string actually handed to the font - the text with its vanilla formatting
-     * codes already prefixed. Built here, at layout time, rather than in `draw`: emphasis used to
-     * allocate a StringBuilder per styled span **per frame**, for a string that cannot change until
-     * the document is re-laid-out anyway.
-     */
     private class Placed(
         val span: Span,
         val x: Float,
@@ -277,17 +247,14 @@ class BrassMarkdown(
         val height: Float,
         val parts: List<Placed>,
         val kind: Kind,
-        /** Left edge of the block's content, for quote bars and code panels. */
         val indent: Float,
         val marker: String = "",
         val width: Float = 0f,
-        /** Draw the bullet dot on this line (first line of a `- ` item only). */
         val bullet: Boolean = false,
     )
 
     private class LinkRect(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val url: String)
 
-    /** A copy chip in the top-right of one fenced code block, and the text it copies. */
     private class CodeChip(
         val blockIndex: Int,
         val x1: Float, val y1: Float, val x2: Float, val y2: Float,
@@ -397,11 +364,6 @@ class BrassMarkdown(
         measuredHeight = y
     }
 
-    /**
-     * Break [spans] into lines fitting [avail] pixels, splitting on spaces and preserving each word's
-     * style. A single word longer than the line is left to overflow rather than being hyphenated -
-     * it is almost always a URL or an identifier, where a break would be worse than the overflow.
-     */
     private fun wrap(spans: List<Span>, avail: Float, scale: Float): List<List<Span>> {
         val out = ArrayList<List<Span>>()
         var current = ArrayList<Span>()
@@ -432,7 +394,6 @@ class BrassMarkdown(
         return if (out.isEmpty()) listOf(emptyList()) else out
     }
 
-    /** The string actually handed to the font - emphasis as vanilla formatting codes. */
     private fun render(span: Span): String {
         if (!span.bold && !span.italic) return span.text
         val sb = StringBuilder()
@@ -469,7 +430,6 @@ class BrassMarkdown(
         else -> 6f
     }
 
-    // ---- render ---------------------------------------------------------------------------------
 
     override fun draw(matrixStack: UMatrixStack) {
         beforeDraw(matrixStack)
@@ -563,12 +523,6 @@ class BrassMarkdown(
 
     companion object : BrassDemoSource {
 
-        /**
-         * Rendered markdown covering the inline styles and a list, with a link hovered.
-         *
-         * The sample deliberately exercises one of each construct the renderer handles rather than
-         * reading as prose — a demo of a markdown renderer is a demo of its coverage.
-         */
         override fun demo() = BrassDemo("markdown", "Markdown", 270f, 130f) {
             BrassMarkdown(SAMPLE)
         }
@@ -583,8 +537,6 @@ class BrassMarkdown(
             - second item
         """.trimIndent()
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
@@ -597,9 +549,7 @@ class BrassMarkdown(
         private const val RULE_H = 5f
         private const val CODE_LINE = 11f
         private const val CODE_PAD = 4f
-        /** Blank panel above the first line of a code block. */
         private const val CODE_TOP_PAD = 2f
-        /** Gap between a code block's copy chip and the panel's own corner. */
         private const val CHIP_MARGIN = 3f
 
         private val CODE_BG: Color get() = Colors.CODE_BG

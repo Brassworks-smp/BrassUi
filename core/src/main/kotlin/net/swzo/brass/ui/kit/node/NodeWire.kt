@@ -1,6 +1,5 @@
 package net.swzo.brass.ui.kit.node
 
-import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.kit.base.BrassAmbientFade
 import net.swzo.brass.ui.kit.paint.BrassPaint
@@ -14,24 +13,19 @@ import kotlin.math.max
  * The wires between ports, drawn as **even pixel-art curves** in the spirit of the Create mod's train
  * map: one continuous cubic Bézier laid down as a run of identical square stamps that are spaced by
  * **arc length**, not by curve parameter.
- *
  * ### Why arc length is the whole trick
- *
  * Sampling a Bézier at a uniform `t` places samples close together where the curve is straight and far
  * apart where it bends - so a naive stamp-per-sample wire is dense in the flat middle and sparse (even
  * gappy) through the bends, which is exactly the "too dense here, too thin there" look. Instead we
  * sample once into a fine polyline, measure its cumulative length, then walk that length in fixed
  * [SPACING] world-unit steps dropping one stamp per step. Every stamp is then the same distance from the
  * next regardless of curvature, so the line has one uniform density end to end.
- *
  * ### One pixel, once
- *
  * Each step floors to a whole **world** cell and the cells are de-duplicated, so a pixel the walk visits
  * twice (where consecutive steps land in the same cell) is painted once. That is what lets the shadow
  * and the selection halo use translucent colours without the overlaps stacking into dark knots. Because
  * every cell is a whole world unit drawn under the canvas' scaled matrix, the wire snaps to the same
  * pixel grid as the nubs and the background grid and scales crisply with the zoom.
- *
  * Passes, back to front: a one-cell depth shadow, an optional selection/hover halo one cell wider, the
  * coloured core, then a slow travelling mote so the graph reads as live.
  */
@@ -39,15 +33,12 @@ object NodeWire {
 
     private const val SPACING = 1f
     private const val CORE = 2f
-    /** Full stamp cells blend in across this zoom band; below it the cheaper polyline carries. */
     private const val WIRE_LOD_MIN = 0.42f
     private const val WIRE_LOD_MAX = 0.55f
-    /** One polyline segment per this many screen pixels at overview zoom. */
     private const val SEGMENT_PX = 4f
     private const val DASH_ON = 5f
     private const val DASH_OFF = 4f
 
-    /** The wire from an output at ([x0],[y0]) to an input at ([x3],[y3]). */
     fun draw(
         ctx: NodeDrawCtx,
         x0: Float, y0: Float, x3: Float, y3: Float,
@@ -57,13 +48,7 @@ object NodeWire {
         dashed: Boolean = false,
         arrow: Boolean = false,
         symbol: String? = null,
-        /**
-         * Live signal strength 0..1. Drives the wire's brightness (a dark, dimmed wire when the signal
-         * is off, a bright one when it is at full strength) and the travelling motes, which only run
-         * while a signal is present and move faster the stronger it is.
-         */
         strength: Float = 1f,
-        /** Whether to draw [symbol] at the wire's midpoint - data ports hide it, signal wires often do. */
         showSymbol: Boolean = true,
         /**
          * 0..1 how strongly the travelling motes show. The LOD cross-fade ramps this in late, so the
@@ -143,11 +128,6 @@ object NodeWire {
         }
     }
 
-    /**
-     * The overview tier: the same bezier drawn as a thick polyline, with one segment per ~4 screen
-     * pixels (clamped 4..256), so segment count falls off with zoom and a zoomed-out tree costs
-     * almost as little as the old straight lines - while the wire still reads as a curve.
-     */
     private fun drawPolyline(
         batch: BrassPaint.QuadBatch,
         ctx: NodeDrawCtx,
@@ -180,7 +160,6 @@ object NodeWire {
         }
     }
 
-    /** Distance from world point ([wx],[wy]) to the wire, for hit-testing a click on the line itself. */
     fun distanceTo(wx: Float, wy: Float, x0: Float, y0: Float, x3: Float, y3: Float): Float {
         val h = handle(x0, x3)
         val cx1 = x0 + h; val cx2 = x3 - h
@@ -196,11 +175,6 @@ object NodeWire {
 
     private fun handle(x0: Float, x3: Float): Float = max(30f, abs(x3 - x0) * 0.5f)
 
-    /**
-     * Sample the cubic into a fine polyline, then walk it by arc length dropping one de-duplicated whole
-     * world cell every [SPACING] units - the even stamp run every pass then reuses. Packed as `ix<<32 |
-     * iy` so a visited-set can reject a repeat pixel in O(1).
-     */
     private fun stampCells(
         x0: Float, y0: Float, cx1: Float, cy1: Float, cx2: Float, cy2: Float, x3: Float, y3: Float,
         dashed: Boolean,
@@ -252,7 +226,6 @@ object NodeWire {
         if (seen.add(key)) cells.add(key)
     }
 
-    /** Paint every cell as a [size] square, shifted by ([dx],[dy]) world units, in [color]. */
     private fun stamp(
         batch: BrassPaint.QuadBatch, ctx: NodeDrawCtx, cells: LongArray,
         size: Float, dx: Float, dy: Float, color: Color,
@@ -264,7 +237,6 @@ object NodeWire {
         }
     }
 
-    /** A single [size]-square cell, dropped if it falls outside the visible viewport. */
     private fun cell(batch: BrassPaint.QuadBatch, ctx: NodeDrawCtx, ix: Float, iy: Float, size: Float, color: Color) {
         if (!ctx.visible(ix, iy, ix + size, iy + size)) return
         batch.rect(ix, iy, ix + size, iy + size, color)

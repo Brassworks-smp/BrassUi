@@ -12,18 +12,14 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 /**
  * An **indeterminate** loading bar: a brass block that sweeps back and forth inside a recessed track,
  * easing at each end.
- *
  * Deliberately the same chrome as [BrassProgressBar] - same groove, same border, same brass - so the two
  * read as one family and can swap places the moment real progress becomes known. Use this while a
  * duration is unknown, and [BrassProgressBar] once it isn't.
- *
  * (This replaced an earlier version that lit a row of discrete cells with an exponential comet trail.
  * It had more going on but read as noise at UI scale, and never matched the rest of the toolkit.)
  */
 class BrassLoading(
-    /** Fraction of the track the moving block occupies. */
     private val blockFraction: Float = 0.32f,
-    /** Seconds for one full there-and-back sweep. */
     private val period: Float = 1.6f,
 ) : BrassWidget(BrassAccent.DEFAULT) {
 
@@ -55,13 +51,6 @@ class BrassLoading(
 
     companion object : BrassDemoSource {
 
-        /**
-         * The indeterminate sweep, one full cycle.
-         *
-         * No still: a frozen frame of this is a block sitting in a groove, which reads as a progress
-         * bar stuck at some arbitrary value — the opposite of what an indeterminate indicator means.
-         * The scene is a little longer than one `period` so the loop closes cleanly.
-         */
         override fun demo() = BrassDemo("loading", "Loading", 190f, 14f) {
             BrassLoading()
         }

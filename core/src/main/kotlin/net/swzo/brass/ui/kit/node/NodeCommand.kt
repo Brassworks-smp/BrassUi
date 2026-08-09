@@ -4,27 +4,21 @@ package net.swzo.brass.ui.kit.node
  * One **undoable edit** to a [NodeGraph]. A command is created *already applied* (the editor performs the
  * edit live and hands the finished command to the [CommandStack]); the stack only ever [revert]s it and
  * [apply]s it again as the user walks undo/redo.
- *
  * ### The thin-command + snapshot approach
- *
  * Fine-grained commands ([MoveNodesCommand]) exist where they buy something concrete - dragging a node
  * should not clone the whole graph on every mouse-up, and moving via a command keeps the selection and
  * the running animations rather than reloading the graph out from under them. Everything structural
  * (add, delete, wire, paste) rides [SnapshotCommand]: a before/after pair of the native BSON. That is
  * far less code than a bespoke command per mutation and cannot drift from the real save format, and the
  * cost - reloading the graph on undo - only lands on edits rare enough not to care.
- *
  * A library user can add their own command for a custom bulk edit; the editor never switches on the
  * concrete type.
  */
 interface GraphCommand {
-    /** A short human name, for a history panel or a tooltip. */
     val label: String
 
-    /** Re-perform the edit (redo). The graph is in the state it was in just before the edit. */
     fun apply(graph: NodeGraph)
 
-    /** Undo the edit. The graph is in the state it was in just after the edit. */
     fun revert(graph: NodeGraph)
 }
 
@@ -57,7 +51,31 @@ class MoveNodesCommand(private val moves: List<Move>, override val label: String
         for (m in moves) graph.byId(m.id)?.let { it.x = m.fromX; it.y = m.fromY }
     }
 
-    /** True if any node actually moved - a click that did not drag produces nothing worth recording. */
+    val moved: Boolean get() = moves.any { it.fromX != it.toX || it.fromY != it.toY }
+}
+
+/**
+ * Move a set of notes (comments) by stable id - the note twin of [MoveNodesCommand], so a group
+ * drag that includes notes stays a fine-grained undoable step.
+ */
+class MoveCommentsCommand(
+    private val moves: List<Move>,
+    override val label: String = "Move notes",
+) : GraphCommand {
+    class Move(val id: Int, val fromX: Float, val fromY: Float, val toX: Float, val toY: Float)
+
+    override fun apply(graph: NodeGraph) {
+        for (m in moves) graph.comments.firstOrNull { it.id == m.id }?.let {
+            it.x = m.toX; it.y = m.toY
+        }
+    }
+
+    override fun revert(graph: NodeGraph) {
+        for (m in moves) graph.comments.firstOrNull { it.id == m.id }?.let {
+            it.x = m.fromX; it.y = m.fromY
+        }
+    }
+
     val moved: Boolean get() = moves.any { it.fromX != it.toX || it.fromY != it.toY }
 }
 
@@ -76,7 +94,6 @@ class CommandStack(
     val canUndo: Boolean get() = undoStack.isNotEmpty()
     val canRedo: Boolean get() = redoStack.isNotEmpty()
 
-    /** Record an edit that has **already been applied** to the graph. */
     fun push(command: GraphCommand) {
         undoStack.addLast(command)
         while (undoStack.size > limit) undoStack.removeFirst()
@@ -100,11 +117,6 @@ class CommandStack(
 
     fun clear() { undoStack.clear(); redoStack.clear() }
 
-    /**
-     * Run [block] as one structural edit, capturing the graph before and after and pushing a
-     * [SnapshotCommand] only if it actually changed. The convenience for the many `record { mutate }`
-     * call sites that used to open-code a snapshot.
-     */
     fun record(label: String, block: () -> Unit) {
         val before = graph.toBson()
         block()

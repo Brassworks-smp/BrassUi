@@ -30,24 +30,19 @@ import sun.misc.Unsafe
  * The binary codec brassnet serialises through: every action input, server state value and action
  * result travels as one BSON document instead of a JSON string, and the node editor's native graph
  * format is BSON too (see [net.swzo.brass.ui.kit.node.NodeIO]).
- *
  * ### Why BSON
- *
  * A large node graph is the worst possible JSON payload: the editor serialises the whole graph on
  * every edit, Gson then *escapes* that text a second time inside the action envelope, and the
  * receiving side parses it all back. BSON is a typed binary format - numbers stay numbers, strings
  * stay strings, and a [ByteArray] travels as raw binary - so the graph serialises once, in compact
  * bytes, and parses once on the other side. No escaping, no string building, no character parsing.
- *
  * ### How values are shaped
- *
  * Encoding mirrors Gson's default reflective behaviour for exactly the value universe brassnet
  * actually moves (declared fields, nulls skipped, enums by name, map keys stringified, byte arrays
  * as binary), and decoding mirrors Gson's reflective *types* - including generic field types like
  * `Map<Int, Any?>` or `List<String>` - so a data class round-trips through BSON with the same shapes
  * it used to round-trip through JSON. Object allocation uses `sun.misc.Unsafe`, the same trick Gson
  * uses on the NeoForge 21.1 classpath, so Kotlin data classes need no no-arg constructor.
- *
  * The public surface takes and returns [ByteArray]; org.bson types never leak into brassui's API, so
  * consumers only need the (jar-in-jar'd, mirrored) BSON library on their runtime classpath.
  */
@@ -66,7 +61,6 @@ object BrassBson {
         f.get(null) as Unsafe
     }.getOrNull()
 
-    // ---- public API ----------------------------------------------------------------------------
 
     /** Serialize [value] (any plain data) to a BSON document's bytes. */
     fun toBytes(value: Any?): ByteArray {
@@ -76,15 +70,9 @@ object BrassBson {
         return writeDocument(root)
     }
 
-    /**
-     * Parse [bytes] into [type], or null when the bytes are not a valid document, carry no value, or
-     * do not match [type]. Unknown fields are skipped and malformed fields fall back to their
-     * defaults, so a newer build's value opens in an older build exactly like Gson used to.
-     */
     fun <T : Any> fromBytes(bytes: ByteArray, type: Class<T>): T? =
         fromBytes(bytes, type as Type)
 
-    /** [fromBytes] accepting a generic [type] (for `Map<String, String>` etc.). */
     fun <T : Any> fromBytes(bytes: ByteArray, type: Type): T? {
         if (bytes.isEmpty()) return null
         val root = parseDocument(bytes) ?: return null
@@ -93,7 +81,6 @@ object BrassBson {
         return decode(value, type) as T?
     }
 
-    /** The on-the-wire form of a [BrassActionResult] - the same flat shape Gson used to carry. */
     fun toWire(result: BrassActionResult): ByteArray = when (result) {
         is BrassActionResult.Success -> toBytes(Wire(true, null, null, result.payload))
         is BrassActionResult.Failure -> toBytes(Wire(false, result.code, result.args, null))
@@ -125,7 +112,6 @@ object BrassBson {
         )
     }.getOrNull()
 
-    // ---- encoding ------------------------------------------------------------------------------
 
     private fun encode(value: Any?): BsonValue = when (value) {
         null -> BsonNull.VALUE
@@ -156,28 +142,27 @@ object BrassBson {
         return doc
     }
 
-    // ---- decoding ------------------------------------------------------------------------------
 
     private fun decode(value: BsonValue?, type: Type): Any? {
         if (value == null || value.isNull) return null
         return when (type) {
-            Any::class.java, Object::class.java, Number::class.java -> natural(value)
+            Any::class.java, Number::class.java -> natural(value)
             String::class.java -> (value as? BsonString)?.value
-            Char::class.java, java.lang.Character.TYPE, java.lang.Character::class.java ->
+            Char::class.java, Char::class.javaPrimitiveType, java.lang.Character::class.java ->
                 (value as? BsonString)?.value?.firstOrNull()
-            Boolean::class.java, java.lang.Boolean.TYPE, java.lang.Boolean::class.java ->
+            Boolean::class.java, Boolean::class.javaPrimitiveType, java.lang.Boolean::class.java ->
                 (value as? BsonBoolean)?.value
-            Byte::class.java, java.lang.Byte.TYPE, java.lang.Byte::class.java ->
+            Byte::class.java, Byte::class.javaPrimitiveType, java.lang.Byte::class.java ->
                 (value as? BsonNumber)?.intValue()?.toByte()
-            Short::class.java, java.lang.Short.TYPE, java.lang.Short::class.java ->
+            Short::class.java, Short::class.javaPrimitiveType, java.lang.Short::class.java ->
                 (value as? BsonNumber)?.intValue()?.toShort()
-            Int::class.java, java.lang.Integer.TYPE, java.lang.Integer::class.java ->
+            Int::class.java, Int::class.javaPrimitiveType, java.lang.Integer::class.java ->
                 (value as? BsonNumber)?.intValue()
-            Long::class.java, java.lang.Long.TYPE, java.lang.Long::class.java ->
+            Long::class.java, Long::class.javaPrimitiveType, java.lang.Long::class.java ->
                 (value as? BsonNumber)?.longValue()
-            Float::class.java, java.lang.Float.TYPE, java.lang.Float::class.java ->
+            Float::class.java, Float::class.javaPrimitiveType, java.lang.Float::class.java ->
                 (value as? BsonNumber)?.doubleValue()?.toFloat()
-            Double::class.java, java.lang.Double.TYPE, java.lang.Double::class.java ->
+            Double::class.java, Double::class.javaPrimitiveType, java.lang.Double::class.java ->
                 (value as? BsonNumber)?.doubleValue()
             ByteArray::class.java -> (value as? BsonBinary)?.data
             else -> when {
@@ -255,13 +240,13 @@ object BrassBson {
 
     private fun convertKey(key: String, keyType: Type): Any? = when (keyType) {
         String::class.java -> key
-        Int::class.java, java.lang.Integer.TYPE, java.lang.Integer::class.java -> key.toIntOrNull()
-        Long::class.java, java.lang.Long.TYPE, java.lang.Long::class.java -> key.toLongOrNull()
-        Short::class.java, java.lang.Short.TYPE, java.lang.Short::class.java -> key.toShortOrNull()
-        Byte::class.java, java.lang.Byte.TYPE, java.lang.Byte::class.java -> key.toByteOrNull()
-        Double::class.java, java.lang.Double.TYPE, java.lang.Double::class.java -> key.toDoubleOrNull()
-        Float::class.java, java.lang.Float.TYPE, java.lang.Float::class.java -> key.toFloatOrNull()
-        Boolean::class.java, java.lang.Boolean.TYPE, java.lang.Boolean::class.java -> key.toBooleanStrictOrNull()
+        Int::class.java, Int::class.javaPrimitiveType, java.lang.Integer::class.java -> key.toIntOrNull()
+        Long::class.java, Long::class.javaPrimitiveType, java.lang.Long::class.java -> key.toLongOrNull()
+        Short::class.java, Short::class.javaPrimitiveType, java.lang.Short::class.java -> key.toShortOrNull()
+        Byte::class.java, Byte::class.javaPrimitiveType, java.lang.Byte::class.java -> key.toByteOrNull()
+        Double::class.java, Double::class.javaPrimitiveType, java.lang.Double::class.java -> key.toDoubleOrNull()
+        Float::class.java, Float::class.javaPrimitiveType, java.lang.Float::class.java -> key.toFloatOrNull()
+        Boolean::class.java, Boolean::class.javaPrimitiveType, java.lang.Boolean::class.java -> key.toBooleanStrictOrNull()
         Any::class.java, Object::class.java -> key
         else -> key
     }
@@ -284,9 +269,7 @@ object BrassBson {
         else -> value.toString()
     }
 
-    // ---- reflection helpers --------------------------------------------------------------------
 
-    /** Declared fields up the class hierarchy, minus statics, transients and synthetic plumbing. */
     private fun fieldsOf(type: Class<*>): List<Field> = fieldsCache.getOrPut(type) {
         val fields = ArrayList<Field>()
         var current: Class<*>? = type
@@ -302,6 +285,5 @@ object BrassBson {
         fields
     }
 
-    /** The flat on-the-wire result shape, matching the old JSON `Wire` document exactly. */
     private class Wire(val ok: Boolean, val code: String?, val args: List<String>?, val payload: String?)
 }

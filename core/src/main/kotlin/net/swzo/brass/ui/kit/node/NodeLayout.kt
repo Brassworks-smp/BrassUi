@@ -25,14 +25,12 @@ object NodeLayout {
     /** Height of the header + ports band (never folds). */
     fun baseHeight(node: GraphNode): Float = HEADER + 4f + portRows(node) * PORT_ROW + 6f
 
-    /** Height of the fields block when fully expanded, or 0 when there are none. */
     fun fieldsHeight(node: GraphNode): Float {
         val rows = node.fields.sumOf { it.reveal.value.toDouble() }.toFloat()
         val presence = node.fields.maxOfOrNull { it.reveal.value } ?: 0f
         return (1f + 5f + 4f) * presence + rows * FIELD_ROW
     }
 
-    /** Live height, folding the fields block away as the node rolls up. */
     fun height(node: GraphNode): Float = baseHeight(node) + fieldsHeight(node) * (1f - node.roll.value)
 
     private fun portY(node: GraphNode, ports: List<Port>, i: Int): Float {
@@ -47,7 +45,6 @@ object NodeLayout {
 
     fun fieldsTop(node: GraphNode): Float = node.y + baseHeight(node) + 1f + 5f
 
-    /** The animated row rect for [field], after every preceding row has reflowed. */
     fun fieldRow(node: GraphNode, field: NodeField): FloatArray {
         val index = node.fields.indexOf(field).coerceAtLeast(0)
         val offset = node.fields.take(index).sumOf { it.reveal.value.toDouble() }.toFloat() * FIELD_ROW
@@ -55,7 +52,6 @@ object NodeLayout {
         return floatArrayOf(node.x + PAD, y1, node.x + node.width - PAD, y1 + FIELD_CONTROL_H)
     }
 
-    /** Left edge of a field row's control area (the right [CTRL_W] of the row). */
     fun controlLeft(node: GraphNode): Float = node.x + node.width - PAD - CTRL_W
 
     fun chevronX(node: GraphNode): Float = node.x + node.width - 11f

@@ -8,7 +8,6 @@ import net.swzo.brass.ui.kit.base.*
 import net.swzo.brass.ui.kit.input.BrassColorPicker.Companion.PAD
 import net.swzo.brass.ui.kit.paint.BrassCard
 import net.swzo.brass.ui.kit.paint.BrassPaint
-import net.swzo.brass.ui.kit.text.BrassLabel
 import net.swzo.brass.ui.kit.text.BrassTextInput
 import java.awt.Color
 import net.swzo.brass.ui.kit.demo.BrassDemo
@@ -19,13 +18,10 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * beside it, a hue strip below, and an editable **hex field** along the bottom. Every gap - card edge to
  * square, square to swatch, square to hue strip, hue strip to hex field - is the same [PAD], so it reads
  * as one tidy panel.
- *
  * The hex field is a real [BrassTextInput]: type `#1FBF63` and the picker jumps to it; scrub the square
  * or the hue strip and the field rewrites itself. The two stay in sync without looping because the
  * write-back uses [BrassTextInput.setTextSilently], which does not re-fire the field's change callback.
- *
  * ### Smooth, in 8 quads
- *
  * Gradients are drawn as **vertex-coloured quads**, not a grid of flat cells: the SV square is a
  * hue-to-white horizontal quad with a transparent-to-black quad over it, and the hue strip is six quads,
  * one per 60-degree sector. Eight quads a frame, no texture, no banding at any size.
@@ -49,7 +45,6 @@ class BrassColorPicker(
     override fun onChange(listener: (Color) -> Unit) = holder.onChange(listener)
     override fun bind(state: BrassState<Color>) = holder.bind(this, state)
 
-    /** Decompose [c] into the HSV the picker draws from, and refresh the hex field. */
     private fun applyColor(c: Color) {
         val hsv = Color.RGBtoHSB(c.red, c.green, c.blue, null)
         hue = hsv[0]; sat = hsv[1]; brightness = hsv[2]
@@ -96,18 +91,10 @@ class BrassColorPicker(
 
     private var scrubbing = Region.NONE
 
-    /**
-     * The currently selected colour.
-     *
-     * Named `picked`, not `color`: `UIComponent` already declares a final `getColor`, and a property
-     * called `color` here compiles but collides at the JVM level (the same trap [BrassLabel] hit).
-     */
     val picked: Color get() = Color(Color.HSBtoRGB(hue, sat, brightness))
 
-    /** Set the picker to [c] without firing listeners. Alias of [setSilently]. */
     fun set(c: Color) = setSilently(c)
 
-    // ---- geometry (local, 0..width / 0..height) --------------------------------------------------
 
     private fun contentR() = getWidth() - PAD
     private fun contentB() = getHeight() - PAD
@@ -140,7 +127,6 @@ class BrassColorPicker(
         notifyPick()
     }
 
-    // ---- hex field -------------------------------------------------------------------------------
 
     private fun hexOf(c: Color): String = "#%02X%02X%02X".format(c.red, c.green, c.blue)
 
@@ -157,17 +143,8 @@ class BrassColorPicker(
         notifyPick()
     }
 
-    /**
-     * Announce the current [picked] colour.
-     *
-     * The HSV fields are the picker's real state - a round trip through RGB loses the hue of a fully
-     * desaturated colour, so letting the holder decompose the value back would make the square jump
-     * to red as you dragged the saturation to zero. So the holder is written silently to keep [value]
-     * correct, and the listeners are fired through [BrassValueHolder.notifyNow].
-     */
     private fun notifyPick() = holder.notifyNow(picked)
 
-    // ---- render ----------------------------------------------------------------------------------
 
     override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
         val cardL = x.toFloat(); val cardT = y.toFloat()
@@ -181,15 +158,11 @@ class BrassColorPicker(
         val hueTop = hueBottom - HUE_H
         val squareBottom = hueTop - PAD
         val squareRight = cr - SWATCH_W - PAD
-        val value = brightness
-
-        // ---- saturation / value square -----------------------------------------------------------
         val pure = Color(Color.HSBtoRGB(hue, 1f, 1f))
         gradient(m, cl, ct, squareRight, squareBottom, Color.WHITE, pure, pure, Color.WHITE)
         gradient(m, cl, ct, squareRight, squareBottom, CLEAR, CLEAR, Color.BLACK, Color.BLACK)
         cardFrame(m, cl, ct, squareRight, squareBottom)
 
-        // ---- preview swatch, framed like a little card too ---------------------------------------
         val sx = cr - SWATCH_W
         fill(m, sx, ct, cr, squareBottom, picked)
         cardFrame(m, sx, ct, cr, squareBottom)
@@ -197,9 +170,8 @@ class BrassColorPicker(
         // selection marker: the picked colour in the centre, ringed in black
         val selX = cl + sat * (squareRight - cl)
         val selY = ct + (1f - brightness) * (squareBottom - ct)
-        gripMark(m, selX, selY, MARKER_R)
+        gripMark(m, selX, selY)
 
-        // ---- hue strip ---------------------------------------------------------------------------
         val stripW = cr - cl
         for (i in 0 until 6) {
             val x1 = cl + stripW * i / 6f
@@ -244,24 +216,14 @@ class BrassColorPicker(
         UGraphics.disableBlend()
     }
 
-    /**
-     * A flat card outline - near-black outer ring plus a 1-px inner border - the same chrome
-     * [BrassCard] gives a panel, minus the fill and drop shadow.
-     */
     private fun cardFrame(m: UMatrixStack, x1: Float, y1: Float, x2: Float, y2: Float) =
         BrassCard.flat(m, x1, y1, x2, y2)
 
-    /**
-     * The SV selection handle: the currently picked colour filling the centre, ringed in black. Showing
-     * the selected shade in the handle itself makes the picker read at a glance - the marker is a live
-     * swatch you drag - and the black outline keeps it visible over any colour under it.
-     */
-    private fun gripMark(m: UMatrixStack, cx: Float, cy: Float, r: Float) {
-        fill(m, cx - r - 1f, cy - r - 1f, cx + r + 1f, cy + r + 1f, MARKER_OUTLINE)
-        fill(m, cx - r, cy - r, cx + r, cy + r, picked)
+    private fun gripMark(m: UMatrixStack, cx: Float, cy: Float) {
+        fill(m, cx - MARKER_R - 1f, cy - MARKER_R - 1f, cx + MARKER_R + 1f, cy + MARKER_R + 1f, MARKER_OUTLINE)
+        fill(m, cx - MARKER_R, cy - MARKER_R, cx + MARKER_R, cy + MARKER_R, picked)
     }
 
-    /** The hue handle: a slim vertical grip in the same grammar as [gripMark]. */
     private fun gripBar(m: UMatrixStack, cx: Float, y1: Float, y2: Float) {
         fill(m, cx - 3f, y1 - 1f, cx + 3f, y2 + 1f, Colors.UI_OUTER_BORDER)
         fill(m, cx - 2f, y1, cx + 2f, y2, GRIP)
@@ -273,38 +235,21 @@ class BrassColorPicker(
 
     companion object : BrassDemoSource {
 
-        /**
-         * The pointer dragged across the saturation square and down the hue strip.
-         *
-         * Two regions worth dragging across, and they do different things: the saturation square sets
-         * the shade, the hue strip under it sets the colour. Both are painted regions inside a single
-         * widget rather than child controls, so a recording that only touches one leaves the other
-         * looking decorative.
-         */
         override fun demo() = BrassDemo("color-picker", "Colour picker", 160f, 130f) {
             BrassColorPicker(Colors.BRASS_500)
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
-        /** The single, consistent gap used between every region and the card edge. */
         private const val PAD = 6f
         private const val HUE_H = 10f
         private const val HEX_H = 16f
-        /** Width of the preview swatch beside the square. */
         private const val SWATCH_W = 20f
-        /** Half-size of the square selection grip - the swatch that shows the picked colour. */
         private const val MARKER_R = 4f
-        /** The marker's ring - a true black outline so it reads on any shade beneath it. */
         private val MARKER_OUTLINE: Color = Color.BLACK
-        /** Fully transparent black - the top corners of the square's darkening pass. */
         private val CLEAR: Color get() = Colors.NONE
-        /** The seven fixed hue-strip endpoints (hue 0..1), computed once rather than every frame. */
         private val HUE_STOPS: Array<Color> = Array(7) { Color(Color.HSBtoRGB(it / 6f, 1f, 1f)) }
-        /** Grip fill + lighter top edge, lifted straight from the scrollbar handle. */
         private val GRIP: Color get() = Colors.GRIP
         private val GRIP_EDGE: Color get() = Colors.GRIP_EDGE
     }

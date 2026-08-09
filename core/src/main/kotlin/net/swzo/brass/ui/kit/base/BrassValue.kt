@@ -4,11 +4,8 @@ import gg.essential.elementa.UIComponent
 
 /**
  * One contract for every control that holds a value.
- *
  * ### Why this exists
- *
  * The twelve stateful widgets had twelve different answers to "read it, write it, listen to it":
- *
  * | | read | write | notifies? |
  * |---|---|---|---|
  * | `BrassToggle` | `toggled` | `set(v)` | yes |
@@ -19,53 +16,36 @@ import gg.essential.elementa.UIComponent
  * | `BrassScrollSelector` | `selectedIndex` | - | - |
  * | `BrassTextInput` | `text` | `setTextSilently(v)` | **no** |
  * | `BrassColorPicker` | `picked` | `set(c)` | **no** |
- *
  * Three separate problems in one table. Four controls were **write-only from the caller's side** - a
  * slider could not be moved, a dropdown could not be selected, so "restore the saved settings into
  * this form" was simply not expressible. `set` fired the callback on two widgets and deliberately did
  * not on two others, so the same method name meant opposite things. And the constructor callback was
  * the only listener slot there was: no second listener, no removal, no registering one after
  * construction.
- *
  * Here `value` always notifies, [setSilently] never does, and [onChange] returns a handle. The old
  * names survive as aliases so nothing at a call site has to change at once.
  */
 interface BrassValue<T> {
 
-    /** The current value. Assigning notifies every listener, if it actually changed. */
     var value: T
 
-    /**
-     * Set the value **without** firing listeners - for syncing one control from another, where the
-     * round trip would otherwise loop (the colour picker writing its hex field as you scrub).
-     */
     fun setSilently(value: T)
 
     /**
      * Call [listener] whenever the value changes. Returns a handle that removes it.
-     *
      * Unlike the constructor callback this can be called any number of times, at any point in the
      * widget's life.
      */
     fun onChange(listener: (T) -> Unit): () -> Unit
 
-    /**
-     * Two-way binding to [state]: the widget follows the state, and the state follows the widget.
-     *
-     * The binding is torn down automatically when the widget leaves the tree (see [BrassLifecycle]),
-     * which is what makes it safe to bind against a state that outlives the screen. Returns a handle
-     * for unbinding early.
-     */
     fun bind(state: BrassState<T>): () -> Unit
 }
 
 /**
  * The state and plumbing behind [BrassValue], for a widget to compose.
- *
  * Kotlin interfaces cannot hold state, and the alternative - repeating the listener list, the
  * equality guard and the re-entrancy guard in twelve widgets - is exactly the duplication this whole
  * contract exists to remove.
- *
  * @param initial the starting value
  * @param onApply called when the value changes, to update whatever the widget draws from
  */
@@ -76,19 +56,11 @@ class BrassValueHolder<T>(
 
     private val listeners = ArrayList<(T) -> Unit>()
 
-    /**
-     * True while listeners are being notified.
-     *
-     * A listener is allowed to write the value back - that is what makes two-way binding work - and
-     * without this a state and a widget bound to each other would recurse until the stack ran out.
-     * The equality guard catches the common case; this catches the rest.
-     */
     private var notifying = false
     private var current: T = initial
 
     /**
      * The three writes are deliberately separate rather than one setter with flags:
-     *
      * - [value] - the widget must show it *and* announce it (a user interaction, or code setting it)
      * - [setSilently] - show it, do not announce it (syncing one control from another)
      * - [notifyNow] - announce it, do **not** re-apply it
@@ -113,15 +85,6 @@ class BrassValueHolder<T>(
         return { listeners.remove(listener) }
     }
 
-    /**
-     * Record [v] and fire the listeners, **without** running [onApply].
-     *
-     * For a widget whose real state the holder cannot represent. The colour picker keeps hue,
-     * saturation and brightness; a round trip through RGB loses the hue of a fully desaturated
-     * colour, so re-applying the value would snap the square back to red as you dragged the
-     * saturation to zero. Such a widget owns its own state and uses the holder purely as the
-     * published value and the listener list.
-     */
     fun notifyNow(v: T) {
         current = v
         notifyAll(v)
@@ -138,7 +101,6 @@ class BrassValueHolder<T>(
         }
     }
 
-    /** Wire this holder to [state] in both directions, torn down when [owner] leaves the tree. */
     fun bind(owner: UIComponent, state: BrassState<T>): () -> Unit {
         val fromState = state.onChange { setSilently(it) }
         val toState = onChange { state.value = it }

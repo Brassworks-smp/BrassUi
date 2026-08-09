@@ -12,7 +12,6 @@ import java.awt.Color
  */
 object NodeGlyph {
 
-    /** A small left/right pointing triangle centred on ([cx],[cy]). */
     fun arrow(m: UMatrixStack, cx: Float, cy: Float, left: Boolean, color: Color = Colors.UI_TEXT_DARK, size: Float = 2.5f) {
         var k = 0
         while (k <= size) {
@@ -24,7 +23,6 @@ object NodeGlyph {
         }
     }
 
-    /** A chevron: pointing down when [open], right when collapsed. */
     fun chevron(m: UMatrixStack, cx: Float, cy: Float, open: Boolean, color: Color, size: Float = 2.5f) {
         var k = 0
         while (k <= size) {

@@ -22,7 +22,6 @@ class DevTree : UIContainer(), BrassDevOverlay {
     private var lastBuild = 0L
     private var dirty = true
     private var rowCount = 0
-    /** Widest row's content extent, measured each rebuild - drives the horizontal scroll range. */
     private var contentW = 0f
 
     init {
@@ -46,32 +45,16 @@ class DevTree : UIContainer(), BrassDevOverlay {
         BrassScrollbar.attach(this, scroll)
     }
 
-    /** The node whose branch is currently folding away, and when the fold started. */
     private var collapsing: UIComponent? = null
     private var collapseAt = 0L
 
-    /**
-     * Whether the next rebuild's rows animate in.
-     *
-     * Only an expand should: the tree also rebuilds once a second to pick up newly opened popups, and
-     * with the entrance always on that refresh re-played the whole cascade every second - the panel
-     * shimmered permanently.
-     */
     private var animateNext = false
 
     fun bind(newRoot: UIComponent) { if (root !== newRoot) { root = newRoot; dirty = true } }
     fun markDirty() { dirty = true }
 
-    /** Rebuild, with the new rows fading and rising in - for an expand. */
     fun markDirtyAnimated() { dirty = true; animateNext = true }
 
-    /**
-     * Begin folding [node]'s branch: its descendant rows are marked leaving and fade out, and the tree
-     * only rebuilds once they have.
-     *
-     * Expanding can rebuild immediately - the new rows animate themselves in on their entrance. A
-     * collapse cannot, because rebuilding is what destroys the rows that need to be seen leaving.
-     */
     fun beginCollapse(node: UIComponent) {
         collapsing = node
         collapseAt = System.nanoTime()
@@ -103,7 +86,6 @@ class DevTree : UIContainer(), BrassDevOverlay {
         addRows(r, 0, animate)
     }
 
-    /** The horizontal extent of one row's content - indent, glyph, name and tag - for the scroll range. */
     private fun rowWidth(c: UIComponent, depth: Int, hasChildren: Boolean): Float {
         val name = c.javaClass.simpleName.ifEmpty { "anon" }
         var w = 3f + depth * TreeRow.INDENT

@@ -18,7 +18,6 @@ import java.awt.Color
  */
 interface BrassDevOverlay
 
-/** Type → (tag label, tag colour), echoing the reference debugger's Container / Text / … palette. */
 internal fun tagFor(c: UIComponent): Pair<String, Color> = when (c) {
     is BrassLabel, is BrassWrappedLabel, is BrassTag -> "Text" to BrassTag.TEXT
     is ScrollComponent -> "Scroll" to BrassTag.CONTAINER

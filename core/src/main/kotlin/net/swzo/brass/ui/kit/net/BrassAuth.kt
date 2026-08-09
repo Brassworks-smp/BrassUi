@@ -2,7 +2,6 @@ package net.swzo.brass.ui.kit.net
 
 /**
  * Who is performing an action, in loader-independent terms.
- *
  * The game server fills [playerId] from the sender's `GameProfile` UUID and [opLevel] from the ops
  * list; the desktop transport fills both from its configuration. The toolkit never sees a
  * `ServerPlayer` - that stays on the platform side of the seam.
@@ -18,13 +17,11 @@ sealed interface AuthDecision {
 
     data object Grant : AuthDecision
 
-    /** [reason] is shown to the user (tooltip on the disabled control, toast on a server denial). */
     data class Deny(val reason: String) : AuthDecision
 }
 
 /**
- * Decides whether [action] may run for the player described by [ctx].
- *
+ * Decides whether an action may run for the player described by the context.
  * The server is always the source of truth: [BrassNet.dispatch] runs this before any handler. The
  * client mirror ([BrassNetTransport.can]) is only an optimisation for greying buttons out - it can
  * never be trusted.

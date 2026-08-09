@@ -10,13 +10,11 @@ import java.awt.Color
 /**
  * A theme built from an **ink ramp**: give it six greys, a foreground and an edge, and every surface,
  * border and muted-text role is derived from them.
- *
  * This is how the ported launcher themes are defined, and the easiest way to write a new one - the
  * launcher's own themes are exactly this, a ramp swap in CSS. The derivations mirror the relationships
  * the default palette already had: a panel is the ramp's 800, a control's hover fill is its 700, and a
  * border is the surface nudged toward the foreground, which is what keeps a border readable on a light
  * ramp as well as a dark one (mixing toward black would vanish on light).
- *
  * The accent ramp is optional: leave it null and the theme keeps brass, which is what most of the
  * launcher's themes do.
  */
@@ -29,16 +27,8 @@ open class BrassRampTheme(
     private val i800: Color,
     private val i700: Color,
     private val i600: Color,
-    /** Optional accent ramp, brightest to darkest. Null keeps the default brass. */
     private val accentRamp: List<Color>? = null,
-    /**
-     * True for a light ramp - flips the washes and shadow strengths that assume a dark surface.
-     *
-     * No built-in theme sets this today (the ported light theme was dropped), but every derivation
-     * that needs it still honours it, so adding a light theme back is a matter of supplying the ramp.
-     */
     val light: Boolean = false,
-    /** The accent this theme adopts when the user has not picked one. */
     private val themeAccent: Color? = null,
 ) : BrassTheme(name) {
 
@@ -61,7 +51,6 @@ open class BrassRampTheme(
     override val brass600: Color get() = accentRamp?.getOrNull(3) ?: super.brass600
     override val brass700: Color get() = accentRamp?.getOrNull(4) ?: super.brass700
 
-    // ---- surfaces, derived from the ramp -----------------------------------------------------
 
     override val innerBg: Color get() = i850
     override val innerBgSelected: Color by lazy { toward(i850, 0.06f) }
@@ -85,7 +74,6 @@ open class BrassRampTheme(
 
     override val keycapBottom: Color by lazy { Colors.mix(i800, Color.BLACK, if (light) 0.08f else 0.35f) }
 
-    /** Neutral washes flip direction on a light ramp, where a white overlay would be invisible. */
     private val washInk: Color get() = if (light) Color.BLACK else Color.WHITE
     override val hoverFill: Color by lazy { Colors.withAlpha(washInk, if (light) 14 else 12) }
     override val rowStripe: Color by lazy { Colors.withAlpha(washInk, if (light) 10 else 6) }
@@ -98,7 +86,6 @@ open class BrassRampTheme(
     override val codeBg: Color by lazy { Colors.withAlpha(i950, 200) }
     override val sliderChip: Color by lazy { Colors.withAlpha(i950, 220) }
 
-    /** A light theme needs a far weaker shadow, or every card looks smudged. */
     override val shadow: Color by lazy { Colors.withAlpha(Color.BLACK, if (light) 40 else 120) }
     override val softShadow: Color by lazy { Colors.withAlpha(Color.BLACK, if (light) 24 else 64) }
     override val cardShadowNear: Color by lazy { Colors.withAlpha(Color.BLACK, if (light) 30 else 90) }
@@ -107,7 +94,6 @@ open class BrassRampTheme(
     override val accentKeycapBg: Color by lazy { Colors.mix(i800, accent, if (light) 0.18f else 0.22f) }
     override val accentKeycapBgHover: Color by lazy { Colors.mix(i800, accent, if (light) 0.26f else 0.32f) }
 
-    // ---- semantics, tuned to the ramp --------------------------------------------------------
     // Danger/warn/good/info are not one fixed red, amber, green and teal across every theme. Two
     // reasons: a mid-tone red that reads as urgent on near-black is muddy on Nord's slate and
     // illegible on a white surface, and a semantic colour that ignores the palette around it looks
@@ -119,17 +105,6 @@ open class BrassRampTheme(
     override val patina400: Color by lazy { semantic(super.patina400) }
     override val patina500: Color by lazy { semantic(super.patina500) }
 
-    /**
-     * Re-seat a semantic hue on this ramp: temperature-match it to the surface, then set a brightness
-     * that carries against it.
-     *
-     * The tint toward [ink600] is what makes the same red feel warm on mocha and cool on ocean. It is
-     * deliberately restrained - push it much past a fifth and the colour stops reading as "red" and
-     * starts reading as "brown", which costs more than the theming gains. Raise the 0.16 below if you
-     * want the family resemblance to be more obvious. The brightness floor/ceiling is the part that actually matters: a light theme needs the
-     * hue *darker* than its surface to be visible at all, which is the opposite of what every dark
-     * theme needs.
-     */
     private fun semantic(base: Color): Color {
         val tinted = Colors.mix(base, i600, 0.16f)
         val hsb = Color.RGBtoHSB(tinted.red, tinted.green, tinted.blue, null)
@@ -139,50 +114,39 @@ open class BrassRampTheme(
         return Color(Color.HSBtoRGB(hsb[0], saturation, brightness))
     }
 
-    /** Nudge [c] toward the foreground - the direction that reads as "raised" on any ramp. */
     private fun toward(c: Color, amount: Float): Color = Colors.mix(c, fg, amount)
 }
 
 /**
  * The global theme registry: the list of themes an app can offer, which one is live, and the accent
  * tint layered on top of it.
- *
  * ### The static it syncs
- *
  * [Colors.theme] is the single static every widget reads. This object owns it - setting [current] or
  * [accent] recomposes and writes it, so the UI and the registry can never disagree. Read the toolkit's
  * live palette through [Colors] as usual; use this to *change* it.
- *
  * ### Persistence is the caller's job
- *
  * Nothing here touches disk. A mod (or the desktop app) decides where settings live, and this exposes
  * only the two primitives that need saving - the theme's [id][BrassTheme.name] and the accent hex:
- *
  * ```
  * // on save, from your own config code:
  * config.theme  = BrassThemes.currentId
  * config.accent = BrassThemes.accentHex
- *
  * // on load:
  * BrassThemes.apply(config.theme, config.accent)
- *
  * // or persist automatically whenever the user changes it:
  * BrassThemes.onChange { config.theme = BrassThemes.currentId; config.save() }
  * ```
- *
  * [apply] takes exactly what [currentId]/[accentHex] give back, so a round trip through a config file
  * needs no translation and an unknown id degrades to the default rather than throwing.
  */
 object BrassThemes {
 
-    // ---- built-in themes ---------------------------------------------------------------------
     // Ported from the BrassWorks launcher's globals.css, so a player's launcher theme and their
     // in-game UI can match. Each is the launcher's ink ramp; only `light` restates the accent, as
     // the brass green needs darkening to stay legible on a pale surface.
 
     private fun rgb(hex: Int) = Color(hex or -0x1000000, true)
 
-    /** The original: near-black with the brass green. */
     val DEFAULT: BrassTheme = BrassTheme.DARK
 
     val GREY: BrassTheme = BrassRampTheme(
@@ -240,7 +204,6 @@ object BrassThemes {
         themeAccent = rgb(0x10B981),
     )
 
-    /** The launcher's accent set, in its order - a hue wheel from green round to lime, ending in grey. */
     val ACCENT_SWATCHES: List<Color> = listOf(
         rgb(0x34D27A), rgb(0x10B981), rgb(0x14B8A6), rgb(0x06B6D4),
         rgb(0x3B82F6), rgb(0x6366F1), rgb(0x8B5CF6), rgb(0xA855F7),
@@ -248,13 +211,6 @@ object BrassThemes {
         rgb(0xF59E0B), rgb(0xEAB308), rgb(0x84CC16), rgb(0x9B9B9B),
     )
 
-    /**
-     * A keycap accent built from a single colour - what an accent swatch wears, and what a caller
-     * needs to theme a control to an arbitrary colour.
-     *
-     * The fill and lip are derived rather than asked for: a swatch has one colour, but a keycap needs
-     * four related ones to read as raised.
-     */
     fun accentFor(c: Color): net.swzo.brass.ui.kit.base.BrassAccent =
         net.swzo.brass.ui.kit.base.BrassAccent.derived(
             "swatch",
@@ -266,7 +222,6 @@ object BrassThemes {
             bottomHover = { Colors.mix(c, Color.BLACK, 0.30f) },
         )
 
-    // ---- registry ----------------------------------------------------------------------------
 
     private val registry = LinkedHashMap<String, BrassTheme>()
 
@@ -275,47 +230,32 @@ object BrassThemes {
             .forEach { register(it) }
     }
 
-    /** Add a theme (or replace one with the same name). Registering the live theme re-applies it. */
     fun register(theme: BrassTheme) {
         registry[theme.name] = theme
         if (theme.name == baseId) apply(theme.name, accentHex)
     }
 
-    /** Every registered theme, in registration order - what a theme picker lists. */
     fun all(): List<BrassTheme> = registry.values.toList()
 
-    /** Look a theme up by id, or null if nothing is registered under it. */
     fun byId(id: String?): BrassTheme? = id?.let { registry[it] }
 
-    // ---- current selection -------------------------------------------------------------------
 
     private var baseId: String = DEFAULT.name
     private var accentColor: Color? = null
     private val listeners = ArrayList<() -> Unit>()
 
-    /** The selected theme, ignoring any accent tint. Assigning applies it immediately. */
     var current: BrassTheme
         get() = byId(baseId) ?: DEFAULT
         set(value) = apply(value.name, accentHex)
 
-    /** The id to persist. */
     val currentId: String get() = baseId
 
-    /**
-     * The accent tint layered over the theme, or null for the theme's own accent. Assigning applies
-     * it immediately.
-     */
     var accent: Color?
         get() = accentColor
         set(value) = apply(baseId, value?.let(::toHex))
 
-    /** The accent to persist, as `#RRGGBB`, or null when the theme's own accent is in use. */
     val accentHex: String? get() = accentColor?.let(::toHex)
 
-    /**
-     * Apply a saved selection. Unknown ids fall back to the default and an unparseable accent to none,
-     * so a hand-edited or out-of-date config downgrades instead of failing.
-     */
     fun apply(themeId: String?, accentHex: String? = null) {
         val base = byId(themeId) ?: DEFAULT
         baseId = base.name
@@ -336,20 +276,10 @@ object BrassThemes {
         return { listeners.remove(listener) }
     }
 
-    // ---- accent tinting ----------------------------------------------------------------------
 
-    /**
-     * A theme wearing a different accent: the base palette with the whole brass ramp rebuilt around
-     * one colour.
-     *
-     * The ramp is generated rather than asking the user for five shades - the picker gives one. The
-     * shades are lightness steps either side of it, which is what the launcher's ramps are, so a
-     * generated ramp sits in the same relationship to its accent as a hand-tuned one.
-     */
     private class AccentTinted(base: BrassTheme, private val tint: Color) :
         BrassForwardingTheme(base) {
 
-        // ---- the tinted ramp -------------------------------------------------------------------
         override val brass300: Color by lazy { shade(tint, 0.35f) }
         override val brass400: Color by lazy { shade(tint, 0.18f) }
         override val brass500: Color get() = tint
@@ -366,7 +296,6 @@ object BrassThemes {
         override val accentKeycapBg: Color by lazy { Colors.mix(base.elementBg, tint, 0.22f) }
         override val accentKeycapBgHover: Color by lazy { Colors.mix(base.elementBg, tint, 0.32f) }
 
-        /** Lighten (positive) or darken (negative) in HSB, so the hue survives the step. */
         private fun shade(c: Color, amount: Float): Color {
             val hsb = Color.RGBtoHSB(c.red, c.green, c.blue, null)
             val b = (hsb[2] + amount).coerceIn(0.05f, 1f)
@@ -376,12 +305,9 @@ object BrassThemes {
         }
     }
 
-    // ---- hex helpers -------------------------------------------------------------------------
 
-    /** `#RRGGBB` for [c] - the form [apply] accepts and a config should store. */
     fun toHex(c: Color): String = "#%02X%02X%02X".format(c.red, c.green, c.blue)
 
-    /** Parse `#RRGGBB` / `RRGGBB`; null when it is not one, so bad config data is simply ignored. */
     fun parseHex(hex: String): Color? {
         val body = hex.trim().removePrefix("#")
         if (body.length != 6) return null

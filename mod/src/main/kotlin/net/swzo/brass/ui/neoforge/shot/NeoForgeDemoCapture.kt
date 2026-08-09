@@ -11,9 +11,7 @@ import kotlin.math.roundToInt
 
 /**
  * The game-side half of [BrassDemoCapture]: read a rectangle back off the frame, and encode PNGs/GIFs.
- *
  * ### Why it reads the screen rather than rendering offscreen
- *
  * The widget is already on screen — the browser is previewing it — drawn by the normal GUI pass with
  * every one of its clip rectangles resolved against the real framebuffer. An earlier version rendered
  * the component a second time into a small offscreen target, and everything that scissors its contents
@@ -24,23 +22,10 @@ import kotlin.math.roundToInt
  */
 object NeoForgeDemoCapture : BrassDemoCapture {
 
-    /**
-     * Where captures land. `.minecraft/screenshots/brassui/` by default, or wherever
-     * `-Dbrassui.shots.dir=...` points, so a dev regenerating the wiki can write straight into its
-     * `wiki/public/screenshots` folder instead of copying files across afterwards.
-     */
     private fun outDir(): Path =
         System.getProperty("brassui.shots.dir")?.let { Path.of(it) }
             ?: Minecraft.getInstance().gameDirectory.toPath().resolve("screenshots").resolve("brassui")
 
-    /**
-     * Read the GUI-space rectangle at ([x], [y]) sized [width] x [height] out of the main framebuffer.
-     *
-     * GUI units are scaled pixels; the framebuffer is real pixels, so every coordinate is multiplied by
-     * the window's GUI scale. The framebuffer's origin is bottom-left and a GUI's is top-left, so the
-     * whole texture is flipped once on the way down and the rectangle is then addressed from the top.
-     * Call this after the frame has drawn, so the pixels are the widget as just shown.
-     */
     override fun grab(x: Float, y: Float, width: Float, height: Float): BufferedImage? = runCatching {
         val mc = Minecraft.getInstance()
         val target = mc.mainRenderTarget
@@ -96,14 +81,6 @@ object NeoForgeDemoCapture : BrassDemoCapture {
         display(path)
     }.getOrNull()
 
-    /**
-     * A free path for `<name>.<ext>`, suffixed `-2`, `-3`… if one is taken.
-     *
-     * Manual capture is iterative — take a shot, nudge the demo, take another — and silently
-     * overwriting the previous attempt is the behaviour that loses the good one. The sweep this
-     * replaced could overwrite freely because it regenerated everything from scratch every run; a
-     * person pressing a shutter cannot.
-     */
     private fun unique(name: String, ext: String): Path {
         val dir = outDir()
         val first = dir.resolve("$name.$ext")
@@ -113,7 +90,6 @@ object NeoForgeDemoCapture : BrassDemoCapture {
         return dir.resolve("$name-$n.$ext")
     }
 
-    /** The path as the status line should show it — relative to the game directory, so it is short. */
     private fun display(path: Path): String =
         runCatching { Minecraft.getInstance().gameDirectory.toPath().relativize(path).toString() }
             .getOrDefault(path.fileName.toString())

@@ -17,52 +17,40 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 
 /**
  * One or more series plotted over time - TPS, ping, memory, frame time.
- *
  * ```kotlin
  * val chart = BrassChart(window = 120)
  * val tps = chart.series("TPS", Colors.BRASS_400)
  * // each tick:
  * chart.push(tps, currentTps)
  * ```
- *
  * ### A ring buffer, not a list
- *
  * A live chart is fed a sample per tick forever, and the obvious `list.add` plus `removeFirst` is a
  * shift of the whole window on every sample. Each series is a fixed-size ring instead: [push] writes
  * one slot and moves a cursor, so the cost per sample is constant and no allocation happens after the
  * series is created. That matters because this is the widget most likely to be on screen while
  * something is already going wrong with performance.
- *
  * ### Autoscaling, with hysteresis
- *
  * The y axis fits the data by default, but a scale recomputed exactly per frame makes a flat line
  * jitter and a spike squash everything else permanently. The maximum therefore grows immediately and
  * decays slowly, so a transient spike is visible and then quietly stops dominating the view.
- *
  * Set [fixedMax] when the axis has a meaningful ceiling - 20 for TPS - and the whole question
  * disappears.
  */
 class BrassChart(
-    /** How many samples are kept per series. */
     val window: Int = 120,
-    /** Pin the top of the y axis instead of autoscaling. */
     var fixedMax: Float? = null,
-    /** Pin the bottom of the y axis. Defaults to zero, which is almost always what is meant. */
     var min: Float = 0f,
 ) : BrassWidget(BrassAccent.DEFAULT) {
 
-    /** A named line. Create with [series]; feed with [push]. */
     inner class Series internal constructor(
         val label: String,
         val color: Color,
-        /** Fill under the line, for a chart with a single series where the area reads better. */
         val filled: Boolean,
     ) {
         internal val samples = FloatArray(window) { Float.NaN }
         internal var cursor = 0
         internal var count = 0
 
-        /** The most recent value, or null before anything has been pushed. */
         val latest: Float? get() = if (count == 0) null else samples[(cursor - 1 + window) % window]
 
         internal fun at(index: Int): Float = samples[(cursor - count + index + window * 2) % window]
@@ -70,37 +58,24 @@ class BrassChart(
 
     private val series = ArrayList<Series>()
 
-    /** Autoscaled ceiling, decayed rather than recomputed - see the class docs. */
     private var scaledMax = 1f
 
-    /** Whether to show the series names and their latest values along the top. */
     var legend: Boolean = true
 
-    /** Number of horizontal guide lines. */
     var gridLines: Int = 3
 
-    /** How the most recent value should be formatted in the legend. */
     var format: (Float) -> String = { "%.1f".format(it) }
 
-    /**
-     * A label for sample [index], shown as the tooltip's title.
-     *
-     * Defaults to how far back it is, because the only thing a bare index means to a reader of a live
-     * chart is "how long ago" - a caller with real timestamps should say so.
-     */
     var labelFor: (Int) -> String = { index ->
         val back = (sampleCount() - 1 - index).coerceAtLeast(0)
         if (back == 0) "now" else "-$back"
     }
 
-    /** The slice under the cursor, or [BrassPlotHover.NONE]. */
     private var hoveredSlice = BrassPlotHover.NONE
 
-    /** Plot geometry from the last frame, so the hover test agrees with what was actually drawn. */
     private var plotLeft = 0f
     private var plotWidth = 0f
 
-    /** The longest series - how many slices the plot is divided into. */
     private fun sampleCount(): Int = series.maxOfOrNull { it.count } ?: 0
 
     init {
@@ -122,24 +97,20 @@ class BrassChart(
         enableEffect(ScissorEffect())
     }
 
-    /** Add a series. Returns it, to be passed to [push]. */
     fun series(label: String, color: Color, filled: Boolean = false): Series =
         Series(label, color, filled).also { series.add(it) }
 
-    /** Record one sample. Constant time - see the class docs. */
     fun push(target: Series, value: Float) {
         target.samples[target.cursor] = value
         target.cursor = (target.cursor + 1) % window
         if (target.count < window) target.count++
     }
 
-    /** Forget every sample in every series, keeping the series themselves. */
     fun reset() {
         series.forEach { it.cursor = 0; it.count = 0; it.samples.fill(Float.NaN) }
         scaledMax = 1f
     }
 
-    /** The ceiling of the y axis for this frame. */
     private fun ceiling(): Float {
         fixedMax?.let { return it }
         var peak = 0f
@@ -154,6 +125,7 @@ class BrassChart(
         return (scaledMax * HEADROOM).coerceAtLeast(min + 1e-3f)
     }
 
+    @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun drawContent(matrixStack: UMatrixStack, bx: Int, by: Int, bw: Int, bh: Int) {
 
         val x = getLeft(); val y = getTop()
@@ -206,14 +178,6 @@ class BrassChart(
         }
     }
 
-    /**
-     * Plot one series as a run of one-pixel-wide columns.
-     *
-     * Columns rather than true line segments: a diagonal line has to be rasterised by hand, and at
-     * chart size the difference is invisible while the cost is a loop per pixel instead of a
-     * Bresenham walk per segment. Each column spans from the previous sample's height to this one's,
-     * which is what keeps a steep change connected rather than showing as two detached dots.
-     */
     private fun drawSeries(
         m: UMatrixStack,
         s: Series,
@@ -271,12 +235,6 @@ class BrassChart(
         }
     }
 
-    /**
-     * Every series' value at [index], as one line - `TPS 19.4   Ping 8.2`.
-     *
-     * One line because [BrassTooltip] renders a title and a single body line; a series per line would
-     * need a taller tooltip than the type supports, and at two or three series this reads fine.
-     */
     private fun sliceSummary(index: Int): String? {
         val parts = series.mapNotNull { s ->
             val v = s.at(index.coerceIn(0, (s.count - 1).coerceAtLeast(0)))
@@ -285,7 +243,6 @@ class BrassChart(
         return if (parts.isEmpty()) null else parts.joinToString("   ")
     }
 
-    /** Whether the cursor is over the chart - for a caller wanting to pause a live feed on hover. */
     fun hovered(): Boolean {
         if (!BrassCull.visible(this)) return false
         val (mx, my) = getMousePosition()
@@ -296,21 +253,6 @@ class BrassChart(
 
     companion object : BrassDemoSource {
 
-        /**
-         * A time series, seeded full.
-         *
-         * ### Why it is seeded rather than left empty
-         *
-         * This is a *streaming* chart — a rolling window that scrolls as samples arrive — so an empty
-         * one spends the first two seconds drawing itself in from a bare axis, which is a picture of
-         * the widget starting up rather than of the widget. Seeding [DEMO_WINDOW] samples up front
-         * means it opens looking like a chart that has been running.
-         *
-         * What it does *not* do is keep feeding itself. A demo that pushed samples on a timer would
-         * scroll whether or not you wanted it to, including through a still you were trying to line
-         * up. Hover it for the readout; if you want the scroll on film, push to it from a scratch
-         * screen where you control the rate.
-         */
         override fun demo() = BrassDemo("chart", "Chart", 270f, 100f) {
             val chart = BrassChart(window = DEMO_WINDOW, fixedMax = 20f)
             val a = chart.series("Requests", Colors.BRASS_400, filled = true)
@@ -321,17 +263,13 @@ class BrassChart(
             chart
         }
 
-        /** Samples the demo's chart holds — a full window, so it opens looking established. */
         private const val DEMO_WINDOW = 120
 
-        /** A repeatable wave with a burst in it, so the plot has a feature worth hovering over. */
         private fun sample(i: Int): Float =
             20f - (kotlin.math.sin(i / 9.0).toFloat() + 1f) * (if (i % 100 in 70..80) 4f else 0.6f)
 
         private fun noise(i: Int): Float = 8f + kotlin.math.sin(i / 14.0).toFloat() * 3f
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
@@ -340,14 +278,11 @@ class BrassChart(
         private const val LINE = 1f
         private const val SWATCH = 5f
         private const val GAP = 8f
-        /** How fast the autoscaled ceiling decays toward the actual peak, per frame. */
         private const val DECAY = 0.02f
-        /** Space left above the peak, so a line at maximum is not flush with the top edge. */
         private const val HEADROOM = 1.1f
         private const val FILL_ALPHA = 40
 
         private val GRID: Color get() = Colors.UI_INNER_BORDER
-        /** The hovered slice's wash. */
         private val SLICE: Color get() = Colors.UI_SELECTION_FAINT
     }
 }

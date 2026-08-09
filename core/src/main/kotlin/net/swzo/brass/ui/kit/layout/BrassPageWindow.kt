@@ -5,9 +5,7 @@ import net.swzo.brass.ui.kit.layout.BrassPageWindow.GAP
 
 /**
  * Which page numbers a pager shows: `1 … 7 8 [9] 10 11 … 40`.
- *
  * ### Why this is separate from the widget
- *
  * It is the only part of pagination with any logic in it, and it is entirely arithmetic - so it can
  * be tested directly, which the drawing cannot. It is also the part that is easy to get *nearly*
  * right: the window has to stay a constant width as the current page moves (otherwise the buttons
@@ -17,17 +15,14 @@ import net.swzo.brass.ui.kit.layout.BrassPageWindow.GAP
  */
 object BrassPageWindow {
 
-    /** A gap in the run of page numbers. */
     const val GAP = -1
 
     /**
      * Page numbers to show for [current] of [total], with [around] pages either side of the current
      * one, plus the first and last. Pages are **1-based**; [GAP] marks an elision.
-     *
      * The result is a **constant length** whenever the total is large enough to need eliding, so the
      * buttons keep their positions as the user pages through instead of sliding sideways - which is
      * the difference between a pager you can click twice in a row and one you have to re-aim at.
-     *
      * An ellipsis never stands in for a single page: hiding one number takes more room than showing
      * it, so near an end the run of numbers lengthens instead.
      */
@@ -68,7 +63,6 @@ object BrassPageWindow {
         return ((items + perPage - 1) / perPage).coerceAtLeast(1)
     }
 
-    /** The 0-based index range covered by 1-based [page], clamped to [items]. */
     fun range(page: Int, perPage: Int, items: Int): IntRange {
         if (perPage <= 0 || items <= 0) return IntRange.EMPTY
         val start = ((page - 1).coerceAtLeast(0)) * perPage

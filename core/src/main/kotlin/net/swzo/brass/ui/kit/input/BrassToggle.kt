@@ -12,7 +12,6 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * [BrassCard.filledTrack]): a recessed card that fills with brass as it turns on, with a grey grip knob
  * ([BrassCard.grip]) sliding from the left to the right of the track. Off is an empty card with the knob
  * at the left; on is a brass-filled card with the knob at the right. No Bedrock/OreUI bevelling.
- *
  * Rendered directly rather than through the keycap base: the switch should sit *into* the surface, not
  * raised off it. It still extends [BrassWidget] for the hover state and animation plumbing, but sets
  * [transparent] and [flat] so the base paints no keycap of its own.
@@ -34,10 +33,8 @@ class BrassToggle(
     override fun onChange(listener: (Boolean) -> Unit) = holder.onChange(listener)
     override fun bind(state: BrassState<Boolean>) = holder.bind(this, state)
 
-    /** The switch's state. Alias of [value], kept because every call site already reads it. */
     val toggled: Boolean get() = holder.value
 
-    /** 0 = fully off, 1 = fully on; eased, and drives both the knob slide and the fill wipe. */
     private val slideValue = BrassEased(if (initial) 1f else 0f, speed = SPEED)
     private val glowValue = BrassEased(0f, speed = GLOW_SPEED)
 
@@ -56,7 +53,6 @@ class BrassToggle(
 
     override fun proxyActivate() { if (active) toggle() }
 
-    /** Set the switch, firing listeners. Alias of assigning [value]. */
     fun set(value: Boolean) { this.value = value }
 
     override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
@@ -97,30 +93,17 @@ class BrassToggle(
 
     companion object : BrassDemoSource {
 
-        /**
-         * The handle sliding across, both ways.
-         *
-         * The travel is the widget. A still can only ever catch it parked at one end, where it is
-         * indistinguishable from a two-state box, so the demo switches it on and back off with enough
-         * of a beat between to read each resting state.
-         */
         override fun demo() = BrassDemo("toggle", "Toggle", 30f, 16f) {
             BrassToggle(initial = false)
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
         private const val SPEED = 15f
-        /** How fast the knob brightens on hover. */
         private const val GLOW_SPEED = 12f
-        /** How far past the track interior the knob sits when fully on. */
         private const val KNOB_OVERSHOOT = 1f
-        /** How far past the track's left edge the knob sits when fully off. */
         private const val KNOB_UNDERSHOOT = 2f
-        /** A constant rightward nudge applied at both ends, to centre the knob in the track. */
         private const val KNOB_NUDGE = 1f
     }
 }

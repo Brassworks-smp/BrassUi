@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.node
 
 import kotlin.math.hypot
@@ -85,6 +86,7 @@ class NodeSelectionController(private val graph: NodeGraph) {
     fun clear() {
         graph.nodes.forEach { it.selected = false }
         graph.links.forEach { it.selected = false }
+        graph.comments.forEach { it.selected = false }
     }
 
     fun select(node: GraphNode, additive: Boolean = false, toggle: Boolean = false) {
@@ -92,14 +94,21 @@ class NodeSelectionController(private val graph: NodeGraph) {
         node.selected = if (toggle) !node.selected else true
     }
 
+    fun selectComment(comment: GraphComment, additive: Boolean = false, toggle: Boolean = false) {
+        if (!additive) clear()
+        comment.selected = if (toggle) !comment.selected else true
+    }
+
     fun all() {
         graph.nodes.filterNot { it.closing }.forEach { it.selected = true }
         graph.links.filterNot { it.closing }.forEach { it.selected = true }
+        graph.comments.forEach { it.selected = true }
     }
 
     fun invert() {
         graph.nodes.filterNot { it.closing }.forEach { it.selected = !it.selected }
         graph.links.filterNot { it.closing }.forEach { it.selected = !it.selected }
+        graph.comments.forEach { it.selected = !it.selected }
     }
 
     fun inBox(x1: Float, y1: Float, x2: Float, y2: Float) {
@@ -112,6 +121,12 @@ class NodeSelectionController(private val graph: NodeGraph) {
             val nodeBottom = node.y + NodeLayout.height(node)
             if (node.x < right && nodeRight > left && node.y < bottom && nodeBottom > top)
                 node.selected = true
+        }
+        graph.comments.forEach { comment ->
+            val commentRight = comment.x + comment.width
+            val commentBottom = comment.y + comment.height
+            if (comment.x < right && commentRight > left && comment.y < bottom && commentBottom > top)
+                comment.selected = true
         }
     }
 }

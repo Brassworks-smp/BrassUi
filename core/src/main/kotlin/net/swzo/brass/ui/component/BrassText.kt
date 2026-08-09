@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.component
 
 import gg.essential.elementa.UIComponent
@@ -11,7 +12,6 @@ import gg.essential.elementa.dsl.constrain
 import gg.essential.elementa.dsl.percent
 import gg.essential.elementa.dsl.pixels
 import net.swzo.brass.ui.Colors
-import net.swzo.brass.ui.component.BrassText.body
 import net.swzo.brass.ui.component.BrassText.flat
 import net.swzo.brass.ui.kit.text.BrassLabel
 import net.swzo.brass.ui.kit.text.BrassWrappedLabel
@@ -19,51 +19,28 @@ import java.awt.Color
 
 /**
  * Text primitives for the toolkit. **Every one returns a [BrassLabel] / [BrassWrappedLabel]** - real
- * [net.swzo.brass.ui.kit.BrassWidget]s drawn through [net.swzo.brass.ui.kit.BrassFont], not Elementa's
+ * [net.swzo.brass.ui.kit.base.BrassWidget]s drawn through [net.swzo.brass.ui.kit.text.BrassFont], not Elementa's
  * `UIText`. That is deliberate: the brass labels show up in the dev-mode inspector, animate in with the
  * controls around them, and are the single seam where richer text (e.g. Minecraft `Component` support)
  * can be added later without callers changing. Use [flat] for dark-on-brass runs that want no shadow.
  */
 object BrassText {
 
-    /** Shadowed text in an explicit colour - a plain, static label (no entrance animation). */
     fun shadowed(text: String, color: Color): BrassLabel = plain(text, color, shadow = true)
 
-    /**
-     * The primitive: a static line of text with no entrance animation, for chrome (title bars, tabs,
-     * headers) where a fade-in would look wrong. It is still a [BrassLabel], so it inspects and measures
-     * itself exactly like the animated labels.
-     */
     fun plain(text: String, color: Color = Colors.UI_TEXT, shadow: Boolean = true): BrassLabel =
         BrassLabel(text, color, shadow).also { it.entranceEnabled = false }
 
-    /**
-     * A muted secondary label - used for captions and un-selected states.
-     *
-     * Returns a [BrassLabel] so captions fade and rise with the widgets around them instead of snapping
-     * in. It measures itself from the string, so layouts that only set a position keep working.
-     */
     fun label(text: String, color: Color = Colors.UI_TEXT_DARK): BrassLabel = BrassLabel(text, color)
 
-    /** Primary body text - white-ish on dark surfaces. */
     fun body(text: String, color: Color = Colors.UI_TEXT): BrassLabel = BrassLabel(text, color)
 
-    /** Brass section heading, set slightly larger. */
     fun heading(text: String, color: Color = Colors.UI_ACCENT_BRIGHT): BrassLabel =
         BrassLabel(text, color, scale = 1.15f)
 
-    /** Flat text (no shadow). Use on brass fills where any shadow would clash. */
     fun flat(text: String, color: Color): BrassLabel =
         BrassLabel(text, color, shadow = false).also { it.entranceEnabled = false }
 
-    /**
-     * Body text that **wraps** to the width of its parent instead of running off the edge. Give the
-     * returned component a width (usually `100.percent()`); it self-sizes its height from the wrap, so
-     * it reflows automatically when that width changes.
-     *
-     * Prefer this over [body] for any prose whose length isn't fixed - hand-placed `\n` breaks only
-     * happen to look right at one particular window size.
-     */
     fun wrapped(text: String, color: Color = Colors.UI_TEXT): BrassWrappedLabel =
         BrassWrappedLabel(text, color)
 }

@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.input
 
 import gg.essential.elementa.dsl.*
@@ -16,19 +17,15 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 /**
  * A text field for filtering: a search glyph, a clear button that appears once there is something to
  * clear, and a debounce so the filter runs when typing pauses rather than on every keystroke.
- *
  * ```kotlin
  * BrassSearchField("Filter players…") { query -> table.setRows(BrassFuzzy.rank(query, all) { it.name }) }
  * ```
- *
  * ### Why the debounce is the point
- *
  * [BrassTextInput] already reports every change, and for a form field that is right. For a search it
  * is not: the callback usually re-filters a list, re-sorts it and rebuilds a view, and running that
  * five times while someone types "diamond" is five times the work for four results nobody saw. The
  * delay is small enough to feel instant and long enough to collapse a burst of keystrokes into one
  * pass.
- *
  * [onSearchNow] fires immediately regardless - for Enter, where the user has said they are done.
  */
 class BrassSearchField(
@@ -40,13 +37,10 @@ class BrassSearchField(
 
     private val input = BrassTextInput(placeholder = placeholder)
 
-    /** Seconds since the last keystroke, or negative when there is nothing pending. */
     private var sinceEdit = -1f
 
-    /** The query as it stands right now, without waiting for the debounce. */
     val text: String get() = input.text
 
-    /** Called when Enter is pressed, with the current query. */
     var onSearchNow: ((String) -> Unit)? = null
 
     init {
@@ -76,29 +70,23 @@ class BrassSearchField(
         }
     }
 
-    /** Empty the field and run the search immediately - there is nothing to debounce. */
     fun clear() {
         input.value = ""
         sinceEdit = -1f
         onSearch("")
     }
 
-    /** Run the pending search now, as Enter should. */
     fun searchNow() {
         sinceEdit = -1f
         onSearch(input.text)
         onSearchNow?.invoke(input.text)
     }
 
-    /** Width the clear button occupies, which is zero while the field is empty. */
     private fun clearWidth(): Float = if (input.text.isEmpty()) 0f else CLEAR
 
-    /**
-     * Filter and rank [items] by the current query - the common case, so callers do not each reach
-     * for [BrassFuzzy] and pick a different ranking.
-     */
     fun <T> filter(items: List<T>, text: (T) -> String): List<T> = BrassFuzzy.rank(this.text, items, text)
 
+    @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun drawContent(matrixStack: UMatrixStack, bx: Int, by: Int, bw: Int, bh: Int) {
         if (sinceEdit >= 0f) {
             sinceEdit += BrassClock.dt
@@ -129,29 +117,16 @@ class BrassSearchField(
 
     companion object : BrassDemoSource {
 
-        /**
-         * Text typed in, then cleared.
-         *
-         * Typed a character at a time rather than assigned, so the caret moves and the placeholder
-         * gives way the same as it would under a real hand. The clear button at the trailing edge is
-         * pressed at a position because, like the number input's steppers, it is painted rather than
-         * being a child widget.
-         */
         override fun demo() = BrassDemo("search-field", "Search field", 200f, 18f) {
             BrassSearchField("Search items…")
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
-        /** Height a control takes when the caller does not say otherwise. */
         private const val DEFAULT_H = 16f
         private const val ICON = 7f
-        /** Width reserved for the search glyph on the left. */
         private const val ICON_BOX = 15f
-        /** Width reserved for the clear button on the right, while there is one. */
         private const val CLEAR = 14f
     }
 }

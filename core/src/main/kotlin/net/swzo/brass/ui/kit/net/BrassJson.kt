@@ -9,7 +9,6 @@ import java.util.zip.GZIPOutputStream
 
 /**
  * The one Gson instance the networking module serialises through, and the wire compression helpers.
- *
  * The action bus now rides **BSON bytes** (see [BrassBson]) rather than JSON strings, so this object
  * is left with the two JSON helpers brassnet still genuinely needs: the Gson instance that serialises
  * `ok(payload)` values and the NeoForge `/brassui action` command bridge, and the raw byte
@@ -21,12 +20,10 @@ object BrassJson {
     /** Payloads below this many bytes travel raw; larger ones are gzip-compressed by [compress]. */
     const val COMPRESS_THRESHOLD = 256
 
-    /** Shared instance. `disableHtmlEscaping` keeps `<` and `>` readable in payloads. */
     val gson: Gson = GsonBuilder().disableHtmlEscaping().create()
 
     fun toJson(value: Any?): String = gson.toJson(value)
 
-    /** Parse [json] into [type], or null when the JSON is malformed or absent. */
     fun <T : Any> fromJson(json: String?, type: Class<T>): T? {
         if (json == null) return null
         return runCatching { gson.fromJson(json, type) }.getOrNull()
@@ -54,7 +51,6 @@ object BrassJson {
         }
     }
 
-    /** The inverse of [compress]. Unknown flag bytes are returned as-is (defensive forward-compat). */
     fun decompress(bytes: ByteArray): ByteArray {
         val raw = when (bytes.getOrNull(0)) {
             0.toByte() -> bytes.copyOfRange(1, bytes.size)

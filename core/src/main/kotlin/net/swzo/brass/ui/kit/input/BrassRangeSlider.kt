@@ -16,25 +16,18 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 
 /**
  * A slider with two handles - a filter's "between 20 and 60", a price band, a level range.
- *
  * ```kotlin
  * BrassRangeSlider(BrassRange(0f, 100f, step = 1f), low = 20f, high = 60f) { lo, hi -> filter(lo, hi) }
  * ```
- *
  * ### Which handle you get
- *
  * A press grabs whichever handle is **nearer**, which is the behaviour that needs no explanation. The
  * one exception is when both sit on the same value: then the side of the press decides, so a collapsed
  * range can still be opened in either direction rather than being stuck.
- *
  * The two handles cannot cross. Pushing one past the other clamps it, rather than swapping them -
  * swapping means the handle under your cursor is suddenly the other one, and the drag you are halfway
  * through starts doing the opposite of what it was.
- *
  * Bounds and quantisation come from [BrassRange], shared with [BrassSlider] and [BrassNumberInput].
- *
  * ### Chrome
- *
  * [BrassSlider] with a second handle, drawn the same way: the same grip riding a pixel proud of the
  * groove, the same hover glow eased in rather than snapped, the same 1-px inner border capping the
  * band, and the same centred readout. It used to be a near-miss of the slider rather than a real
@@ -47,7 +40,6 @@ class BrassRangeSlider(
     val range: BrassRange = BrassRange(0f, 1f),
     low: Float = 0f,
     high: Float = 1f,
-    /** Text after each number in the readout. */
     var suffix: String = "",
     private val onChange: (low: Float, high: Float) -> Unit = { _, _ -> },
 ) : BrassWidget(BrassAccent.DEFAULT), BrassFocusable {
@@ -70,13 +62,10 @@ class BrassRangeSlider(
             onChange(this.low, field)
         }
 
-    /** Which handle a drag is moving: -1 low, 1 high, 0 none. */
     private var grabbed = 0
 
-    /** Which handle the cursor is nearest while merely hovering (not dragging), or 0. */
     private var hovered = 0
 
-    /** Per-handle brightness, eased exactly as [BrassSlider]'s single one is. */
     private val lowGlow = BrassEased(0f, speed = GLOW_SPEED)
     private val highGlow = BrassEased(0f, speed = GLOW_SPEED)
 
@@ -99,10 +88,6 @@ class BrassRangeSlider(
         onMouseRelease { grabbed = 0 }
     }
 
-    /**
-     * Whichever handle is nearer the press, or - when they coincide - whichever one the press is on
-     * the far side of, so a collapsed range can be reopened.
-     */
     private fun nearestHandle(localX: Float): Int {
         val target = range.valueAt(fractionAt(localX))
         val toLow = abs(target - low)
@@ -121,7 +106,6 @@ class BrassRangeSlider(
         if (grabbed < 0) low = target else if (grabbed > 0) high = target
     }
 
-    /** Left and right move the handle that was last grabbed, defaulting to the low one. */
     override fun onKeyPressed(keyCode: Int): Boolean {
         val handle = if (grabbed == 0) -1 else grabbed
         return when (keyCode) {
@@ -194,7 +178,6 @@ class BrassRangeSlider(
         }
     }
 
-    /** One handle - [BrassCard.grip], standing a pixel proud top and bottom exactly as the slider's does. */
     private fun drawHandle(
         m: UMatrixStack,
         centre: Float,
@@ -213,29 +196,15 @@ class BrassRangeSlider(
 
     companion object : BrassDemoSource {
 
-        /**
-         * Both handles moved, so the demo shows the span narrowing rather than a bar with two ticks.
-         *
-         * Worth moving both handles: a range slider is two controls sharing a track, and a recording
-         * that only ever moves one of them documents an ordinary slider with extra decoration.
-         */
         override fun demo() = BrassDemo("range-slider", "Range slider", 200f, 22f) {
             BrassRangeSlider(BrassRange(0f, 100f), low = 15f, high = 85f, suffix = "%")
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
-        /**
-         * Height a control takes when the caller does not say otherwise. Matches the 20 px
-         * `BrassForm.addSlider` gives an ordinary slider, so a form holding both does not step.
-         */
         private const val DEFAULT_H = 20f
-        /** How fast a handle brightens on hover or grab - the same speed BrassSlider's glow uses. */
         private const val GLOW_SPEED = 12f
-        /** Room left either side of the centred readout, matching BrassNumberInput's. */
         private const val PAD = 3f
     }
 }

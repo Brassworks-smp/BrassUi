@@ -8,25 +8,12 @@ import net.swzo.brass.ui.kit.net.BrassRateLimit
 import net.swzo.brass.ui.kit.net.brassAction
 import net.swzo.brass.ui.kit.net.brassAsyncAction
 import net.swzo.brass.ui.kit.net.brassValue
-import net.swzo.brass.ui.kit.net.err
 import net.swzo.brass.ui.kit.net.ok
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
-/**
- * The showcase action set - written exactly as a host mod would write its own, next to the screen.
- *
- * Nothing here is registered by hand. The `@BrassActionSet` annotation is what the NeoForge transport
- * finds in FML scan data (and the desktop transport finds on the classpath), loading this object and
- * thereby registering every action on both sides. The [brassValue]s are server-side shared state:
- * setting `.value` broadcasts the change to every subscribed client, and a client that subscribes late
- * is sent the current value.
- *
- * On the desktop the same handlers run in-process against the same registry - the demo is a single
- * screen on both hosts, and this file is the only "server" either of them has.
- */
 @BrassActionSet
 object BrassNetDemoActions : BrassActions {
 
@@ -46,7 +33,6 @@ object BrassNetDemoActions : BrassActions {
         Thread(runnable, "brassui-demo").apply { isDaemon = true }
     }
 
-    // ---- server-pushed state -------------------------------------------------------------------
 
     val teamName = brassValue("brassui.demo.team.name", "Brassworks")
     val lastActor = brassValue("brassui.demo.team.actor", "nobody")
@@ -61,7 +47,6 @@ object BrassNetDemoActions : BrassActions {
 
     private var tickTask: ScheduledFuture<*>? = null
 
-    // ---- actions -------------------------------------------------------------------------------
 
     val renameTeam = brassAction<RenameTeam>(
         id = "brassui.demo.team.rename",
@@ -138,7 +123,6 @@ object BrassNetDemoActions : BrassActions {
         ok(nowDisabled)
     }
 
-    /** Start a 20 Hz ticker; its broadcasts are coalesced to 4/s by the brassValue. */
     val startTicker = brassAction<Unit>(
         id = "brassui.demo.live.start",
         permission = "brassui.demo.live.start",
@@ -166,7 +150,6 @@ object BrassNetDemoActions : BrassActions {
         ok()
     }
 
-    /** A targeted push: the whisper only reaches the sender's client, not the whole server. */
     val whisper = brassAction<Whisper>(
         id = "brassui.demo.whisper",
         permission = "brassui.demo.whisper",

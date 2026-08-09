@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.text
 
 import com.google.gson.Gson
@@ -12,48 +13,36 @@ import java.util.regex.Pattern
  * Syntax highlighting for fenced code blocks, driven by `assets/brassui/syntax_rules.json` - 214
  * languages under 396 aliases, each a single regex with five named groups (`comment`, `string`,
  * `keyword`, `number`, `macro`).
- *
  * ### Loading and cost
- *
  * The JSON is read with Gson, once. What is *not* done up front is compiling the patterns: they run
  * up to 14 KB each, and compiling all 214 takes ~164 ms against ~20 ms to read the file - building
  * 213 automata a given screen will never use. Each pattern is compiled on the first request for that
  * language and cached, which costs ~14 ms once and nothing thereafter.
- *
  * Call [init] during mod startup to take the file read off the first render's critical path;
  * everything still works without it, just with the parse happening on first use.
  */
 object BrassSyntax {
 
-    /** One highlighted run of text within a line. */
     class Span(val text: String, val color: Color)
 
     private const val PATH = "/assets/brassui/syntax_rules.json"
 
-    // ---- brass palette ---------------------------------------------------------------------------
     // The JSON ships VS Code's default colours; these replace them so highlighted code sits in the
     // same palette as the rest of the toolkit instead of importing a second, unrelated theme.
 
-    /** Dim grey - comments recede. */
     private val COMMENT get() = Colors.SYNTAX_COMMENT
 
-    /** Warm brass/amber - the metal tone, for string literals. */
     private val STRING get() = Colors.SYNTAX_STRING
 
-    /** The accent green - keywords carry the toolkit's primary colour. */
     private val KEYWORD get() = Colors.SYNTAX_KEYWORD
 
-    /** Patina teal - numbers, cool against the warm strings. */
     private val NUMBER get() = Colors.SYNTAX_NUMBER
 
-    /** Copper - macros and preprocessor directives. */
     private val MACRO get() = Colors.SYNTAX_MACRO
 
     private val DEFAULT get() = Colors.SYNTAX_DEFAULT
 
-    // ---- model -----------------------------------------------------------------------------------
 
-    /** Gson binding for the file. Fields are populated reflectively, hence the nullable vars. */
     private class LangDef {
         var aliases: List<String>? = null
         var pattern: String? = null
@@ -63,34 +52,21 @@ object BrassSyntax {
         var languages: List<LangDef>? = null
     }
 
-    /** Lowercased alias to language index. */
     private val aliasToLanguage = HashMap<String, Int>(512)
 
-    /** Pattern source per language, kept as text until someone actually needs it compiled. */
     private var patterns: Array<String> = emptyArray()
 
-    /** Compiled patterns, filled in on demand; null means "not compiled yet". */
     private var compiled = arrayOfNulls<Pattern>(0)
 
-    /** Languages whose pattern failed to compile - recorded so a bad one is not retried per frame. */
     private val broken = HashSet<Int>()
 
     private var loaded = false
 
-    /**
-     * Why loading failed, if it did. A silent `runCatching` around a resource parse is how a feature
-     * ends up quietly doing nothing; this makes the reason retrievable instead.
-     */
     var lastError: String? = null
         private set
 
-    /** Number of languages the index holds; 0 if the file is missing or malformed. */
     val languageCount: Int get() { load(); return patterns.size }
 
-    /**
-     * Parse the rules file now, rather than on the first highlighted code block. Safe to call more
-     * than once and safe to skip entirely - it only moves the cost, it is not a prerequisite.
-     */
     fun init() = load()
 
     @Synchronized
@@ -135,11 +111,6 @@ object BrassSyntax {
         return p
     }
 
-    /**
-     * Highlight [code] as [language], returning one list of [Span]s per line. An unknown language (or
-     * none) yields a single default-coloured span per line, so callers render the result the same way
-     * either way.
-     */
     fun highlight(language: String?, code: String): List<List<Span>> {
         val lines = code.split("\n")
         if (language.isNullOrEmpty()) return plain(lines)
@@ -203,7 +174,6 @@ object BrassSyntax {
         else -> DEFAULT
     }
 
-    /** A named group may be absent from a pattern entirely, which throws rather than returning null. */
     private fun group(m: Matcher, name: String): Boolean =
         runCatching { m.group(name) != null }.getOrDefault(false)
 

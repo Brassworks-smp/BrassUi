@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.node
 
 fun interface NodeRenderer {
@@ -5,7 +6,6 @@ fun interface NodeRenderer {
 }
 
 fun interface ConnectionRule {
-    /** Return a user-facing rejection reason, or null to allow this rule. */
     fun validate(
         graph: NodeGraph,
         from: GraphNode,

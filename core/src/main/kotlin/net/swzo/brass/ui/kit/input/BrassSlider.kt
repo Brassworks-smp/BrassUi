@@ -1,6 +1,7 @@
 package net.swzo.brass.ui.kit.input
 
 import gg.essential.universal.UMatrixStack
+import gg.essential.universal.UKeyboard
 import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.kit.base.*
 import net.swzo.brass.ui.kit.paint.BrassCard
@@ -16,7 +17,6 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * ([BrassCard.grip], the scrollbar's handle) rides the fill edge, and the value is drawn centred over
  * the track, the same readout [BrassRangeSlider] and [BrassNumberInput] use. No Bedrock/OreUI
  * bevelling: it reads as a card, matching the toggle and the progress bar.
- *
  * Drawn directly rather than through the keycap base - the control should read as sunk into the panel,
  * not raised off it - so it sets `chrome = BrassChrome.NONE`.
  */
@@ -29,23 +29,10 @@ class BrassSlider(
     private val onChange: (Float) -> Unit = {},
 ) : BrassWidget(BrassAccent.DEFAULT), BrassValue<Float>, BrassFocusable {
 
-    /**
-     * The bounds and quantisation, as a [BrassRange] rather than three loose fields.
-     *
-     * The slider is where `snap` / `fraction` / the click-position inverse were first written; three
-     * more controls needed the identical arithmetic, so it moved out. The constructor still takes
-     * `min`/`max`/`step` individually because that is how a slider is naturally written at a call site.
-     */
     val range = BrassRange(min, max, step)
 
     private val holder = BrassValueHolder(range.snap(initial))
 
-    /**
-     * The slider's value.
-     *
-     * Now genuinely settable. It used to be read-only from outside, which meant a slider could not be
-     * driven from code at all - no restoring a saved setting, no linking two sliders, no reset button.
-     */
     override var value: Float
         get() = holder.value
         set(v) { holder.value = snap(v) }
@@ -54,13 +41,12 @@ class BrassSlider(
     override fun onChange(listener: (Float) -> Unit) = holder.onChange(listener)
     override fun bind(state: BrassState<Float>) = holder.bind(this, state)
 
-    /** Round to the nearest [step] and clamp to the range - every write goes through this. */
     private fun snap(v: Float): Float = range.snap(v)
 
-    /** True only while a press that started on this track is still held. */
     private var scrubbing = false
+    private var scrubStartValue = 0f
+    private var scrubStartX = 0f
 
-    /** Eased fill position, 0..1. Snapped straight to the cursor while scrubbing - see [drawContent]. */
     private val knob = BrassEased(0f, speed = KNOB_SPEED)
     private var knobPrimed = false
     private val glowValue = BrassEased(0f, speed = GLOW_SPEED)
@@ -72,16 +58,32 @@ class BrassSlider(
         // slider dropping a pixel when you grab it fights the handle you are trying to aim. The
         // pointer cursor is requested directly instead, in drawContent.
         onMouseClick { e ->
-            if (active && e.mouseButton == 0) { scrubbing = true; setFromLocal(e.relativeX) }
+            if (active && e.mouseButton == 0) {
+                scrubbing = true
+                scrubStartX = e.relativeX
+                setFromLocal(e.relativeX)
+                // Captured after the click so Shift's fine mode continues from the clicked value.
+                scrubStartValue = value
+            }
         }
         // Elementa delivers drag events to every component in the tree, not just the one under the
         // cursor - without the `scrubbing` gate, dragging anywhere on screen would move this slider.
-        onMouseDrag { mx, _, btn -> if (active && btn == 0 && scrubbing) setFromLocal(mx) }
+        onMouseDrag { mx, _, btn ->
+            if (active && btn == 0 && scrubbing) {
+                if (UKeyboard.isShiftKeyDown()) {
+                    // Shift turns the drag into a fine adjustment relative to where the press began -
+                    // one tenth of the pointer travel, so a long slider can still be aimed precisely.
+                    val avail = (bw - 2).coerceAtLeast(1)
+                    value = range.snap(scrubStartValue + (mx - scrubStartX) / avail * (max - min) * 0.1f)
+                } else {
+                    setFromLocal(mx)
+                }
+            }
+        }
         onMouseRelease { scrubbing = false }
         holder.onChange(onChange)
     }
 
-    /** Left/right nudge the value by one [step], or a hundredth of the range when there is none. */
     override fun onKeyPressed(keyCode: Int): Boolean {
         return when (keyCode) {
             org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT -> { value = range.nudge(value, -1); true }
@@ -139,7 +141,6 @@ class BrassSlider(
         val gx1 = (cx - gw / 2f).coerceIn(ix1, (ix2 - gw).coerceAtLeast(ix1))
         BrassCard.grip(m, gx1, y1 - 1f, gx1 + gw, y2 + 1f, glow)
 
-        // ---- value readout, centred ---------------------------------------------------------------
         // Centred and unbacked, exactly as BrassNumberInput draws its number: the whole family reads
         // its value from the same place, in the same way. This used to be right-aligned in a dark
         // chip on the theory that a centred value would be unreadable under the handle for half the
@@ -156,31 +157,28 @@ class BrassSlider(
                 true,
             )
         }
+        // The range is only noise on a track nobody is looking at; while the slider is hot (hovered
+        // or being scrubbed) the min and max appear at the track ends so the player can see the
+        // bounds the value is moving between.
+        if (hot && active && w > 140f) {
+            val lo = BrassFont.fit(this, format(min), w / 2f - 8f)
+            val hi = BrassFont.fit(this, format(max), w / 2f - 8f)
+            BrassFont.draw(m, this, lo, x + 3f, y + (h - BrassFont.LINE) / 2f, Colors.UI_TEXT_DARK, true)
+            BrassFont.draw(m, this, hi, x + w - 3f - BrassFont.width(this, hi), y + (h - BrassFont.LINE) / 2f, Colors.UI_TEXT_DARK, true)
+        }
     }
 
     companion object : BrassDemoSource {
 
-        /**
-         * The handle dragged along the track, with the readout following it.
-         *
-         * Worth dragging rather than clicking: a slider *jumps* to a click, so a recording built from
-         * clicks shows the handle teleporting, which is both ugly and a misleading picture of how the
-         * control is actually used.
-         */
         override fun demo() = BrassDemo("slider", "Slider", 190f, 16f) {
             BrassSlider(0f, 100f, 24f, format = { "${it.toInt()}%" })
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
-        /** How fast the fill catches up with a value the user did not drag. */
         private const val KNOB_SPEED = 18f
-        /** How fast the grip brightens on hover. */
         private const val GLOW_SPEED = 12f
-        /** Room left either side of the centred readout, matching BrassNumberInput's. */
         private const val PAD = 3f
     }
 }

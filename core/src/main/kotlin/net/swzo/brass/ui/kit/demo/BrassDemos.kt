@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.demo
 
 import net.swzo.brass.ui.kit.input.BrassButton
@@ -53,45 +54,30 @@ import net.swzo.brass.ui.kit.text.BrassWrappedLabel
 
 /**
  * Every widget that declares a demo, in the order a wiki would introduce them.
- *
  * ### Why there is still a list
- *
  * Because ordering is editorial and discovery is not free. The alternative — scanning the classpath
  * for companions implementing [BrassDemoSource] — sounds tidier and is worse on both counts: it
  * produces an arbitrary order that no reader would choose, and classpath scanning inside a mod loader
  * is exactly the kind of thing that works on one launcher and mysteriously finds nothing on another.
- *
  * What this list is *not* is the old catalogue. It carries no sizes, no sample data, no interaction
  * scripts — one line per widget, naming the companion that owns all of that. Adding a widget to the
  * showcase is one line here plus a demo beside the widget; changing how a widget demonstrates itself
  * does not touch this file at all.
- *
  * ### Not every widget is here
- *
  * A demo is optional by design (see [BrassDemoSource]), and some widgets genuinely have no sensible
  * standalone demo. The overlay surfaces — toast, popup, context menu, command palette, tooltip — are
  * the honest gap: each is *shown into a screen root* through a layer stack rather than existing as a
  * component in a box, so demonstrating one means demonstrating the screen around it. They are worth
  * adding once the demo model grows a notion of a host screen; faking it by hoisting a popup into a
  * bare container would document a widget the toolkit does not have.
- *
  * The pure helpers — [net.swzo.brass.ui.kit.layout.BrassLayout],
  * [net.swzo.brass.ui.kit.layout.BrassCull], [net.swzo.brass.ui.kit.text.BrassFuzzy] and the rest —
  * are not widgets and have nothing to show.
  */
 object BrassDemos {
 
-    /** Every declared demo, freshly built. */
     val ALL: List<BrassDemo> get() = SOURCES.map { it.demo() }
 
-    /**
-     * The companions, in presentation order: controls first, then values, then text and surfaces,
-     * then the composites, then game content.
-     *
-     * Held as sources rather than as built demos so nothing is constructed until it is asked for —
-     * building a demo constructs real widgets, and a list of forty of them created at class-load time
-     * would run every widget's constructor on the first touch of this object.
-     */
     private val SOURCES: List<BrassDemoSource> = listOf(
         // Buttons and clickable controls
         BrassButton,
@@ -162,9 +148,7 @@ object BrassDemos {
         BrassPlayerHead,
     )
 
-    /** The demo called [name], or null. */
     fun byName(name: String): BrassDemo? = ALL.firstOrNull { it.name.equals(name, ignoreCase = true) }
 
-    /** Every demo name, for a command's tab completion. */
     fun names(): List<String> = ALL.map { it.name }
 }

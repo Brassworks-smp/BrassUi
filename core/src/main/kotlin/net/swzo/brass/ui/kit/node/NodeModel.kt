@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.node
 
 import net.swzo.brass.ui.Colors
@@ -8,7 +9,6 @@ import java.awt.Color
 /**
  * A wire's colour-coded socket kind. A wire is only allowed between an output and an input of the
  * **same** type; the colour is read from the theme on every draw so it follows a retheme.
- *
  * The four built-ins cover the usual shapes (execution flow, a number, a colour, a vector), and a
  * library user can make their own - a `PortType` is just an id plus a colour, and two ports connect iff
  * their ids match.
@@ -27,10 +27,6 @@ class PortType(
     val wireStyle: WireStyle = WireStyle.SOLID,
     val arrow: Boolean = false,
     val symbol: String? = null,
-    /**
-     * A human-readable name for the wire kind, shown in a port's hover tooltip. Null falls back to the
-     * raw [id], which reads like a missing translation - set this to something a player understands.
-     */
     val label: String? = null,
     accepts: (PortType) -> Boolean = { it.id == id },
     private val colorOf: () -> Color,
@@ -52,7 +48,6 @@ class PortType(
 
 /**
  * One socket on a node's edge.
- *
  * [maxConnections] is enforced independently on both ends. A single input keeps Blueprint's useful
  * replace-on-drop behaviour; a full output or multi-input rejects another connection. Hidden ports keep
  * their stable list index for save compatibility but are omitted from layout and hit-testing. Dynamic
@@ -69,7 +64,6 @@ class Port(
     val dynamic: Boolean = false,
     val endLabel: String? = null,
     val showLabel: Boolean = true,
-    /** A short line for the port's hover tooltip, explaining what this socket carries or does. */
     val description: String? = null,
 ) {
     init {
@@ -94,14 +88,8 @@ class NodeType(
     /** Built fresh per node, so two nodes of a type never share field state. */
     val makeFields: () -> List<NodeField> = { emptyList() },
     val width: Float = 156f,
-    /** Optional runtime implementation. A graph remains editable and serializable without one. */
     val executor: NodeExecutor? = null,
-    /** Optional complete visual replacement for this node type. */
     val renderer: NodeRenderer? = null,
-    /**
-     * A short one-line explanation of what the node does, shown as the body of its hover tooltip in
-     * both the editor and the add-node palette. Null falls back to a terse port-count summary.
-     */
     val description: String? = null,
 )
 
@@ -164,23 +152,19 @@ class GraphNode internal constructor(
         fields.forEach { it.reveal.snapTo(if (it.visibleWhen()) 1f else 0f) }
     }
 
-    /** 0 = just spawned / closing, 1 = fully open - the miniature-modal pop. */
     val pop = BrassEased(0f, speed = 13f)
     val hover = BrassEased(0f, speed = 14f)
     val lift = BrassEased(0f, speed = 18f)
     val sel = BrassEased(0f, speed = 14f)
 
-    /** 0 = expanded, 1 = rolled up to header + ports. */
     val roll = BrassEased(0f, speed = 14f)
 
     val glowIn = FloatArray(type.inputs.size)
     val glowOut = FloatArray(type.outputs.size)
 
-    /** Per-port rejection glow, raised while a dragged wire hovers this port but cannot connect to it. */
     val rejectIn = FloatArray(type.inputs.size)
     val rejectOut = FloatArray(type.outputs.size)
 
-    /** True once the node is animating out; the editor removes it when [pop] reaches 0. */
     var closing: Boolean = false
 
     val width: Float get() = type.width
@@ -188,7 +172,6 @@ class GraphNode internal constructor(
     fun visibleFields(): List<NodeField> = fields.filter { it.visibleWhen() }
     fun field(key: String): NodeField? = fields.firstOrNull { it.key == key }
 
-    /** Copy this node's field values onto [other] (same type), for duplicate/paste. */
     fun copyValuesTo(other: GraphNode) {
         for (f in fields) other.field(f.key)?.decode(f.encode())
         other.collapsed = collapsed
@@ -202,9 +185,7 @@ class Link(val from: GraphNode, val fromPort: Int, val to: GraphNode, val toPort
     val sel = BrassEased(0f, speed = 14f)
     var flash: Float = 0f
 
-    /** True once the wire is animating out; the editor removes it when [fade] reaches 0. */
     var closing: Boolean = false
-    /** 1 = present, eased to 0 as the wire disconnects, so a cut retracts rather than blinking out. */
     val fade = BrassEased(1f, speed = 11f)
     val reroutes = ArrayList<ReroutePoint>()
 
@@ -245,7 +226,6 @@ class NodeGraph(val registry: NodeRegistry) {
     private var nextId = 1
     private var nextDecorationId = 1
 
-    /** Spawn a node of [typeId] at ([x],[y]), animating it in. Null if the type is not registered. */
     fun spawn(typeId: String, x: Float, y: Float): GraphNode? {
         val type = registry[typeId] ?: return null
         val node = GraphNode(nextId++, type, x, y).also { it.pop.target = 1f }
@@ -253,7 +233,6 @@ class NodeGraph(val registry: NodeRegistry) {
         return node
     }
 
-    /** Add a node whose id/type came from a file, keeping ids stable. */
     internal fun adopt(id: Int, typeId: String, x: Float, y: Float): GraphNode? {
         val type = registry[typeId] ?: return null
         if (id >= nextId) nextId = id + 1
@@ -267,11 +246,6 @@ class NodeGraph(val registry: NodeRegistry) {
         nodes.remove(node)
     }
 
-    /**
-     * Remove every node, wire, group, note and bookmark - the true "new graph" state. An editor treats
-     * it like any structural edit, so hosts call it inside a [BrassNodeEditor.edit] block and the whole
-     * wipe is a single undoable step.
-     */
     fun clear() {
         nodes.clear()
         links.clear()
@@ -280,10 +254,6 @@ class NodeGraph(val registry: NodeRegistry) {
         bookmarks.clear()
     }
 
-    /**
-     * Check the complete connection contract without mutating the graph. This is the single source of
-     * truth used by the model, hover feedback, plugins and tests.
-     */
     fun validateLink(from: GraphNode, fromPort: Int, to: GraphNode, toPort: Int): LinkValidation {
         val out = from.type.outputs.getOrNull(fromPort)
             ?: return LinkValidation(false, LinkRejection.MISSING_PORT)
@@ -308,7 +278,6 @@ class NodeGraph(val registry: NodeRegistry) {
         return LinkValidation(true)
     }
 
-    /** Wire an output to an input when [validateLink] allows it. Single inputs replace their old wire. */
     fun link(from: GraphNode, fromPort: Int, to: GraphNode, toPort: Int): Link? {
         val validation = validateLink(from, fromPort, to, toPort)
         if (!validation.allowed) {
@@ -321,7 +290,6 @@ class NodeGraph(val registry: NodeRegistry) {
         return Link(from, fromPort, to, toPort).also { links.add(it) }
     }
 
-    /** Add a bend pin to [link]. It remains part of the wire and is serialized with it. */
     fun reroute(link: Link, x: Float, y: Float): ReroutePoint =
         ReroutePoint(x, y).also { link.reroutes.add(it) }
 
@@ -379,13 +347,8 @@ class NodeGraph(val registry: NodeRegistry) {
         }
     }
 
-    /** Serialize to the portable JSON format - export, import, clipboard and hand-editing. */
     fun toJson(): String = NodeIO.toJson(this)
 
-    /**
-     * Replace this graph's contents from [json]. Unknown node types are skipped. Invalid documents
-     * return false without destroying the graph that is already open.
-     */
     fun load(json: String): Boolean {
         if (NodeIO.compatibility(json) == NodeIO.Compatibility.INVALID) return false
         val backup = toJson()

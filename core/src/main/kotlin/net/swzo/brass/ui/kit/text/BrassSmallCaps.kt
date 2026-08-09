@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.text
 
 import com.google.gson.Gson
@@ -17,23 +18,18 @@ import javax.imageio.ImageIO
 /**
  * The **small glyph sheets** [BrassTag] draws its text from - one cell per character, with a JSON
  * atlas beside each sheet giving the cell size and every glyph's advance width:
- *
  * | sheet | cells | covers |
  * |---|---|---|
  * | `small-caps.png` | 26 x 6x9 | `A`–`Z`, case-insensitive |
  * | `small-numbers.png` | 10 x 4x9 | `0`–`9` |
- *
  * Both rasterise to **5 px of ink** on a 9-px line box, which is the whole reason they exist together:
  * a tag's pill is sized to that ink height (see the geometry table on [BrassTag]), so a digit drawn
  * from the ordinary font - taller, and sitting on a different baseline - visibly broke the line of a
  * label like `1.21` or `v2`. Anything in neither sheet still falls through to [BrassFont].
- *
  * ### Why bitmaps and not the font
- *
  * The small capitals live in Minecraft's Unicode font pages - so they exist in game and nowhere else.
  * The standalone UniversalCraft font the desktop build uses covers little beyond ASCII and rendered
  * every one of them as a missing glyph, so tags came out as rows of blank boxes off-game.
- *
  * The caps sheet is those exact glyphs, rasterised once out of the running game and committed; in game
  * the result is pixel-identical to what the font produced, because the pixels came from the font. The
  * dev command that produced it has been removed - it existed to generate that file, the file is
@@ -43,31 +39,19 @@ import javax.imageio.ImageIO
  */
 object BrassSmallCaps {
 
-    /** Cell height, and therefore the height a glyph is drawn at: a full font line box. */
     val cellHeight: Int get() = caps.cellHeight
 
-    // ---- sheets ----------------------------------------------------------------------------------
 
     private val caps = Sheet("small-caps", LETTERS)
     private val numbers = Sheet("small-numbers", DIGITS)
 
-    /**
-     * One sheet and its atlas: `<name>.png` beside `<name>.json`, [count] cells laid out left to right.
-     *
-     * A class rather than a second copy of the loading code. The two sheets differ only in their file
-     * name and how many cells they hold, and the *interesting* parts - reading through this class's
-     * own loader, cropping every cell in one pass, NEAREST filtering - are exactly the parts that
-     * would have been quietly wrong in a copy.
-     */
     private class Sheet(name: String, private val count: Int) {
 
-        /** Gson binding for one atlas entry. Reflective, hence the vars. */
         private class GlyphMeta {
             var index: Int = 0
             var advance: Int = 0
         }
 
-        /** Gson binding for the atlas file. */
         private class AtlasFile {
             var cellWidth: Int = 0
             var cellHeight: Int = 0
@@ -97,7 +81,6 @@ object BrassSmallCaps {
         val cellWidth: Int get() = meta?.cellWidth ?: 0
         val cellHeight: Int get() = meta?.cellHeight ?: BrassFont.LINE
 
-        /** Advance width per cell index, or an empty list if the atlas is missing. */
         private val advances: List<Int> by lazy {
             val glyphs = meta?.glyphs ?: return@lazy emptyList()
             // Ordered by index rather than trusting file order, so the sheet and the code cannot
@@ -106,15 +89,6 @@ object BrassSmallCaps {
             (0 until count).map { byIndex[it]?.advance ?: 0 }
         }
 
-        /**
-         * Every cell, cropped in one pass on first use.
-         *
-         * Built eagerly behind a single `by lazy` rather than lazily per cell behind a `@Synchronized`
-         * method. The old shape acquired a monitor **once per character, per string, per frame** - a
-         * row of tags paid for a few hundred uncontended lock acquisitions a frame to look up an array
-         * slot that had been populated since the first one. There are a few dozen cells; cropping them
-         * together costs a fraction of a millisecond, once.
-         */
         private val glyphs: Array<UIImage?> by lazy {
             val img = image
             val cw = cellWidth
@@ -131,7 +105,6 @@ object BrassSmallCaps {
             }
         }
 
-        /** True when the sheet actually loaded - callers fall back to plain font text if not. */
         fun available(): Boolean = image != null && advances.isNotEmpty()
 
         fun advance(i: Int): Float = advances.getOrElse(i) { 0 }.toFloat()
@@ -139,7 +112,6 @@ object BrassSmallCaps {
         fun glyph(i: Int): UIImage? = if (i in 0 until count) glyphs[i] else null
     }
 
-    /** Which sheet carries [ch], and at which cell - or null for anything neither one has. */
     private fun locate(ch: Char): Pair<Sheet, Int>? {
         val upper = ch.uppercaseChar()
         return when {
@@ -149,10 +121,8 @@ object BrassSmallCaps {
         }
     }
 
-    /** True when at least the letters loaded. Digits alone are not enough to draw a tag from. */
     fun available(): Boolean = caps.available()
 
-    // ---- measuring + drawing ---------------------------------------------------------------------
 
     /**
      * Advance width of [s] as [drawString] will lay it out: sheet advances for the characters a sheet
@@ -163,7 +133,6 @@ object BrassSmallCaps {
 
     /**
      * [width] at scale 1, memoised.
-     *
      * The loop allocates a single-character String per non-sheet character and calls through to the
      * font for it. [net.swzo.brass.ui.kit.text.BrassTag] measures its label on **every frame it
      * draws** (the pill sizes itself to its text), so a row of tags was re-running this per character
@@ -183,11 +152,6 @@ object BrassSmallCaps {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Float>) = size > 512
     }
 
-    /**
-     * Draw [s] with its glyph-box top-left at ([x],[y]) - the same origin [BrassFont.draw] uses, so a
-     * caller can swap between them without moving anything. Sheet characters come from their sheet,
-     * the rest from the font. Returns the advanced width.
-     */
     fun drawString(
         m: UMatrixStack,
         c: UIComponent,
@@ -224,9 +188,7 @@ object BrassSmallCaps {
         return penX - x
     }
 
-    /** Cells in the small-caps sheet: A–Z. */
     private const val LETTERS = 26
 
-    /** Cells in the small-numbers sheet: 0–9. */
     private const val DIGITS = 10
 }

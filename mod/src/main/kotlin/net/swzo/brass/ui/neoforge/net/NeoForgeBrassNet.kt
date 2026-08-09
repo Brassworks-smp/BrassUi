@@ -36,7 +36,6 @@ import java.util.concurrent.atomic.AtomicLong
  * The NeoForge end of the networking seam: registers the payloads, discovers action sets from FML scan
  * data, adapts the game's threads to the unified API, and checks the protocol version so mixed
  * client/server brassui versions fail loudly instead of corrupting each other's state.
- *
  * Payload handlers arrive on the network thread and are [IPayloadContext.enqueueWork]'d onto the game
  * thread. Dispatch itself may complete asynchronously (a handler's future), so the reply is sent from
  * the server main thread when that future completes - never from a handler's worker thread.
@@ -67,11 +66,9 @@ object NeoForgeBrassNet {
     @Volatile
     var onActionChunkProgress: ((Long, Int, Int) -> Unit)? = null
 
-    /** How many wire chunks leave per throttle batch, and the pause between batches. */
     private const val CHUNKS_PER_BATCH = 3
     private const val CHUNK_BATCH_DELAY_MS = 50L
 
-    /** Collects one logical value from its wire chunks. */
     private class ChunkBuffer(private val total: Int) {
         /** Last chunk arrival - a sliding window, so a long active transfer never "expires". */
         var lastChunkAt = System.currentTimeMillis()
@@ -103,10 +100,6 @@ object NeoForgeBrassNet {
         }
     }
 
-    /**
-     * Called once per side from the mod event bus. Idempotent: discovery and registration are both
-     * safe to repeat, and the payload types are registered exactly once per registrar.
-     */
     fun init(registrar: PayloadRegistrar) {
         NeoForgeNetDiscovery.discoverAndLoad()
         if (!BrassNet.isBound()) {
@@ -291,6 +284,7 @@ object NeoForgeBrassNet {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun onPermsRequest(payload: BrassPermsRequestPayload, ctx: IPayloadContext) {
         val player = ctx.player() as? ServerPlayer ?: return
         ctx.enqueueWork {
@@ -406,14 +400,10 @@ object NeoForgeAuthorizer : BrassAuthorizer {
 
     /** The PermissionAPI node backing [action], created once per permission string. */
     internal fun nodeFor(action: BrassAction<*>): PermissionNode<Boolean> = nodes.getOrPut(action.permission) {
-        PermissionNode(
-            "brassui",
-            action.permission,
-            PermissionTypes.BOOLEAN,
-            PermissionResolver { player, _, _ ->
-                player?.hasPermissions(action.minOpLevel) == true
-            },
-        )
+        @Suppress("REDUNDANT_SAM_CONSTRUCTOR") // a vararg follows the resolver, so a bare lambda cannot fill it
+        PermissionNode("brassui", action.permission, PermissionTypes.BOOLEAN, PermissionResolver { player, _, _ ->
+            player?.hasPermissions(action.minOpLevel) == true
+        })
     }
 
     override fun check(action: BrassAction<*>, ctx: AuthContext): AuthDecision {

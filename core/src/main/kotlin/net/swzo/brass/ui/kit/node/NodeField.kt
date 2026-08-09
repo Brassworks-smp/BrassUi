@@ -6,6 +6,7 @@ import gg.essential.elementa.dsl.childOf
 import gg.essential.elementa.dsl.constrain
 import gg.essential.elementa.dsl.percent
 import gg.essential.elementa.dsl.pixels
+import gg.essential.universal.UKeyboard
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.kit.base.BrassAmbientFade
@@ -22,16 +23,7 @@ import net.swzo.brass.ui.kit.text.BrassTextInput
 import java.awt.Color
 import kotlin.math.roundToInt
 
-/**
- * The context a node control is drawn into: the matrix (already translated + scaled to the canvas'
- * zoom, so a control drawn in **world units** here scales uniformly with everything else), the host
- * component fonts are measured against, the zoom (for skipping detail when tiny), and the world-space
- * mouse for the control's own hover test.
- *
- * [screenX]/[screenY] map a world point to the on-screen GUI pixel it lands on, for the few things that
- * must work outside the canvas matrix - notably a [gg.essential.elementa.effects.ScissorEffect], whose
- * bounds are screen-space and ignore the active matrix.
- */
+/** The context a node control is drawn into: the zoomed canvas matrix, the host, and the mouse. */
 class NodeDrawCtx(
     val m: UMatrixStack,
     val host: UIComponent,
@@ -43,47 +35,25 @@ class NodeDrawCtx(
     val originY: Float = 0f,
     val panX: Float = 0f,
     val panY: Float = 0f,
-    /**
-     * The visible viewport in **world** coordinates (already expanded by a small margin). Geometry
-     * whose box does not overlap this can be skipped - when the canvas is zoomed in, most nodes and
-     * wires fall outside it, and drawing them anyway is where the quad count runs away. Defaults to an
-     * infinite rectangle so a renderer that is handed no bounds culls nothing.
-     */
+    // Geometry outside the visible viewport is skipped entirely - the quad count runs away otherwise.
     val visMinX: Float = Float.NEGATIVE_INFINITY,
     val visMinY: Float = Float.NEGATIVE_INFINITY,
     val visMaxX: Float = Float.POSITIVE_INFINITY,
     val visMaxY: Float = Float.POSITIVE_INFINITY,
-    /**
-     * Continuous level of detail, 0..1, derived from the canvas zoom: 0 is a flat overview (nodes
-     * become simple rects, wires straight lines), 1 is full chrome. Rendering fades detail in and
-     * out with this, so zooming never pops.
-     */
     val detail: Float = 1f,
 ) {
 
-    /**
-     * Shared quad batches for the current frame's **overview LOD** pass, if the host uses one: the
-     * editor creates them once per frame so every flat node rect and straight wire line joins a
-     * single GPU draw call instead of one call each. Null when a direct host draws unbatched.
-     */
     var lodRects: BrassPaint.QuadBatch? = null
 
-    /**
-     * Per-frame occlusion predicate: returns true when the given **world rect** of [node]'s interior
-     * (a title, a port nub, a field row) is fully covered by a node drawn above it. Set by the
-     * editor's occlusion sweep; null when no culling applies (overview zoom).
-     */
     var coveredBy: ((GraphNode, Float, Float, Float, Float) -> Boolean)? = null
 
     fun screenX(wx: Float): Float = originX + panX + wx * zoom
     fun screenY(wy: Float): Float = originY + panY + wy * zoom
 
-    /** Whether the world-space box `[x1,y1]..[x2,y2]` overlaps the visible viewport. */
     fun visible(x1: Float, y1: Float, x2: Float, y2: Float): Boolean =
         x2 >= visMinX && x1 <= visMaxX && y2 >= visMinY && y1 <= visMaxY
 
     companion object {
-        /** Smooth 0→1 transition between [a] and [b], for LOD fades. */
         fun smoothstep(a: Float, b: Float, x: Float): Float {
             val t = ((x - a) / (b - a)).coerceIn(0f, 1f)
             return t * t * (3f - 2f * t)
@@ -92,89 +62,59 @@ class NodeDrawCtx(
 }
 
 /**
- * A node's inline setting - its **sub-config**. A field draws its own control with the toolkit's shared
- * painters (so it looks and animates exactly like the real widgets), handles its own press/scrub, and
- * knows how to encode itself to a primitive for [NodeGraph]'s save/load.
- *
- * [visibleWhen] lets a node's panel rearrange itself as its own values change (pick *Worley* and the
- * "Ridged" toggle folds away) - the "sub-config per config" idea.
- *
- * ### Extending
- *
- * This is deliberately `open`, not `sealed`: a library user adds a custom field by subclassing it,
- * painting whatever they like in [drawControl] (through the same [BrassCard]/[BrassPaint] helpers), and
- * implementing [encode]/[decode]. The editor never switches on the concrete type, so a custom field is a
- * first-class citizen of the graph, its panel, and its saved file.
+ * A node's inline setting: draws its own control with the toolkit's shared painters, handles its own
+ * press/scrub, and encodes to a primitive for [NodeGraph]'s save/load. Open for custom fields - the
+ * editor never switches on the concrete type.
  */
 abstract class NodeField(val key: String, val label: String) {
 
     var visibleWhen: () -> Boolean = { true }
 
-    /**
-     * A short one-line explanation of what this option does, shown as the body of the field's hover
-     * tooltip (beneath [tip], which shows the label and current value). Null shows no explanation.
-     */
     var description: String? = null
 
-    /** Eased hover / press, driven by the editor and read by [drawControl] - the same feel as a keycap. */
     val hover = BrassEased(0f, speed = 14f)
     val press = BrassEased(0f, speed = 26f)
-    /** 0 = folded out of the node, 1 = fully present. Drives row reflow and card height together. */
     val reveal = BrassEased(1f, speed = 16f)
 
-    /** Gate this field's visibility on a predicate (usually another field's value). Chains. */
     fun onlyWhen(predicate: () -> Boolean): NodeField {
         visibleWhen = predicate
         return this
     }
 
-    /** Paint the control inside world rect `[x1,y1]..[x2,y2]`. [h]/[p] are the eased hover/press 0..1. */
     abstract fun drawControl(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, h: Float, p: Float)
 
-    /**
-     * A press landed inside the control at world x [wx] (the control spans [x1]..[x2]). Immediate
-     * controls (toggle, enum, stepper) apply the change here and return null; a slider applies and
-     * returns a drag handler that keeps scrubbing as the cursor moves.
-     */
     open fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit)? = null
 
-    /** Finish a live interaction. Sliders use this to resume eased programmatic motion after scrubbing. */
     open fun onRelease() {}
 
-    /** Whether a press should open a floating editor instead - a colour swatch, a text field. */
     open val opensEditor: Boolean get() = false
 
-    /** Open that editor, floating at screen ([sx],[sy]) under [root]. Reuses the real toolkit widgets. */
     open fun showEditor(root: UIComponent, host: UIComponent, sx: Float, sy: Float) {}
 
-    /**
-     * A right-press (quick-entry menu) landed on the control. [sx]/[sy] are screen coordinates for
-     * the floating menu; return true to consume the press so the editor skips its node context menu.
-     * [EnumField] opens a dropdown of its options, [StepperField] and [SliderField] open a focused
-     * text entry - see [openQuickTextEntry].
-     */
     open fun onRightPress(root: UIComponent, host: UIComponent, sx: Float, sy: Float): Boolean = false
 
-    /** A short line for the field's tooltip. */
-    open fun tip(): String = label
+    /**
+     * True for buttons whose presses the HOST must act on: executors run on a different copy of the
+     * graph, so a client-side latch could never fire a node.
+     */
+    open val manualPress: Boolean get() = false
 
     /**
-     * Size `[w, h]` of a **custom-painted** tooltip for this field, or null (the default) to use the
-     * plain text tooltip built from [tip] and [description]. When non-null the editor shows a custom
-     * tooltip card and calls [drawTooltip] to fill it - a frequency field paints its item slots there.
+     * Called by the hosting editor after a quick-entry commit, to record the edit and broadcast it.
+     * Every quick-entry commit must invoke this, or the machine never saves until some other edit.
      */
+    var onQuickEdit: (() -> Unit)? = null
+
+    open fun tip(): String = label
+
     open fun tooltipSize(host: UIComponent): FloatArray? = null
 
-    /** Paint the custom tooltip body at ([x],[y]), faded by [alpha]. Only called when [tooltipSize] is non-null. */
     open fun drawTooltip(m: UMatrixStack, host: UIComponent, x: Float, y: Float, alpha: Float) {}
 
-    /** The field's value as a JSON primitive (Boolean / Number / String) for [NodeGraph.toJson]. */
     abstract fun encode(): Any
 
-    /** Restore from a value produced by [encode] (Gson hands numbers back as Double). */
     abstract fun decode(v: Any?)
 
-    /** Vertically centre a control of [height] inside the row `[y1,y2]`, returning its own top/bottom. */
     protected fun centre(y1: Float, y2: Float, height: Float): Pair<Float, Float> {
         val cy1 = y1 + (y2 - y1 - height) / 2f
         return cy1 to cy1 + height
@@ -182,31 +122,31 @@ abstract class NodeField(val key: String, val label: String) {
 }
 
 /**
- * Open a small floating dropdown holding a focused text input that commits on Enter.
- *
- * The text input is given **sole** focus - [BrassFocus.focus] - so keystrokes go to the typed value
- * and nowhere else (a common pattern for quick-entry controls). Click-away or Escape dismisses
- * without applying; Enter applies via [commit].
+ * A floating focused text input that commits on Enter. Any dismissal that was not a successful Enter
+ * commits too, so a typed value is never silently rolled back.
  */
 fun openQuickTextEntry(root: UIComponent, sx: Float, sy: Float, initial: String, commit: (String) -> Boolean) {
     lateinit var menu: BrassContextMenu
     val input = BrassTextInput(initial)
     val content = UIContainer()
+    var committed = false
     input.constrain {
         x = 0.pixels(); y = 0.pixels()
         width = 100.percent(); height = 100.percent()
     } childOf content
-    input.onSubmit = { text -> if (commit(text)) menu.dismiss() }
+    input.onSubmit = { text ->
+        if (commit(text)) { committed = true; menu.dismiss() }
+    }
     menu = BrassContextMenu.custom(content, 170, 40)
+    menu.onDismiss = {
+        // A dismissal that did not come from a successful submit is still an answer: apply the text
+        // (invalid text simply leaves the field unchanged, and a no-op commit broadcasts nothing).
+        if (!committed) commit(input.text)
+    }
     menu.show(root, sx, sy)
     BrassFocus.focus(input)
 }
 
-/**
- * The raised chrome shared by every inline node control. It is the same [BrassKeycap] stack as a
- * normal widget and [BrassSwatch], including the outer ring, bottom lip, eased hover colours and
- * one-pixel press travel.
- */
 private object NodeControlChrome {
     data class Bounds(val x1: Float, val y1: Float, val x2: Float, val y2: Float)
 
@@ -276,6 +216,8 @@ class SliderField(
 ) : NodeField(key, label) {
     private val displayed = BrassEased(value.coerceIn(0f, 1f), speed = 18f)
     private var scrubbing = false
+    private var scrubStartValue = 0f
+    private var scrubStartWx = 0f
 
     override fun drawControl(ctx: NodeDrawCtx, x1: Float, y1: Float, x2: Float, y2: Float, h: Float, p: Float) {
         displayed.target = value.coerceIn(0f, 1f)
@@ -294,11 +236,23 @@ class SliderField(
                 (b.y1 + b.y2) / 2f - BrassFont.LINE / 2f, Colors.UI_TEXT_HOVER)
         }
     }
-    override fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit) {
+    override fun onPress(wx: Float, x1: Float, x2: Float): (Float) -> Unit {
         scrubbing = true
-        val set = { w: Float -> value = ((w - (x1 + 3f)) / (x2 - x1 - 6f)).coerceIn(0f, 1f) }
-        set(wx)
-        return set
+        scrubStartWx = wx
+        // Jump to the click, as the plain slider does; the drag continues from there.
+        value = ((wx - (x1 + 3f)) / (x2 - x1 - 6f)).coerceIn(0f, 1f)
+        // Captured after the jump so Shift's fine mode is relative to where the value actually is.
+        scrubStartValue = value
+        return { w -> scrubTo(w, x1, x2) }
+    }
+
+    private fun scrubTo(w: Float, x1: Float, x2: Float) {
+        val span = (x2 - x1 - 6f).coerceAtLeast(1f)
+        value = if (UKeyboard.isShiftKeyDown()) {
+            (scrubStartValue + (w - scrubStartWx) / span * 0.1f).coerceIn(0f, 1f)
+        } else {
+            ((w - (x1 + 3f)) / span).coerceIn(0f, 1f)
+        }
     }
     override fun onRelease() { scrubbing = false }
     override fun onRightPress(root: UIComponent, host: UIComponent, sx: Float, sy: Float): Boolean {
@@ -306,18 +260,18 @@ class SliderField(
             val pct = text.trim().toDoubleOrNull() ?: return@openQuickTextEntry false
             value = (pct / 100.0).toFloat().coerceIn(0f, 1f)
             displayed.snapTo(value)
+            onQuickEdit?.invoke()
             true
         }
         return true
     }
-    override fun tip() = "$label: ${(value * 100).toInt()}%"
+    override fun tip() = "$label: ${(value * 100).toInt()}% (0% - 100%)"
     override fun encode(): Any = value
     override fun decode(v: Any?) { value = (v as? Number)?.toFloat() ?: value }
 }
 
 /**
  * A cycler over [options], drawn as a mini keycap with prev/next arrows.
- *
  * [options] are the **stored** values (saved to JSON, read by executors), so they stay stable. [displayOf]
  * maps a stored value to the text actually shown - the hook a host uses to localise the labels without
  * changing what is persisted or compared.
@@ -363,6 +317,7 @@ class EnumField(
         val items = options.map { opt ->
             BrassContextMenu.Item(displayOf(opt)) {
                 changeTo(options.indexOf(opt))
+                onQuickEdit?.invoke()
             }
         }
         BrassContextMenu(items).show(root, sx, sy)
@@ -385,6 +340,8 @@ class StepperField(
 ) : NodeField(key, label) {
     private val change = BrassEased(1f, speed = 22f)
     private var previous = value.toString()
+    private var scrubStartValue = 0
+    private var scrubStartWx = 0f
 
     fun inc() = changeTo((value + step).coerceAtMost(max))
     fun dec() = changeTo((value - step).coerceAtLeast(min))
@@ -405,18 +362,34 @@ class StepperField(
         BrassFont.draw(ctx.m, ctx.host, "+", x2 - 6f, cy - BrassFont.LINE / 2f, Colors.UI_TEXT)
         animatedValueText(ctx, previous, value.toString(), change.advance(), x1 + 10f, x2 - 10f, cy)
     }
-    override fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit)? {
-        if (wx < (x1 + x2) / 2f) dec() else inc(); return null
+    override fun onPress(wx: Float, x1: Float, x2: Float): (Float) -> Unit {
+        scrubStartWx = wx
+        // The +/- halves still step once on a plain click; a drag from anywhere scrubs relative to
+        // the press point, so click-and-hold then move left/right tunes the value in either direction.
+        if (wx < (x1 + x2) / 2f) dec() else inc()
+        // Captured after the +/- click so the first small drag continues from the stepped value
+        // instead of reverting it.
+        scrubStartValue = value
+        return { w -> scrubTo(w) }
+    }
+
+    private fun scrubTo(w: Float) {
+        val fine = UKeyboard.isShiftKeyDown()
+        // A full control-width drag is roughly 8 steps normally, under one with shift.
+        val perPx = step * (if (fine) 0.008f else 0.08f)
+        val target = scrubStartValue + ((w - scrubStartWx) * perPx).roundToInt()
+        changeTo(target.coerceIn(min, max))
     }
     override fun onRightPress(root: UIComponent, host: UIComponent, sx: Float, sy: Float): Boolean {
         openQuickTextEntry(root, sx, sy, value.toString()) { text ->
             val next = text.trim().toIntOrNull() ?: return@openQuickTextEntry false
             changeTo(next.coerceIn(min, max))
+            onQuickEdit?.invoke()
             true
         }
         return true
     }
-    override fun tip() = "$label: $value"
+    override fun tip() = "$label: $value  ($min … $max)"
     override fun encode(): Any = value
     override fun decode(v: Any?) {
         value = (v as? Number)?.toInt()?.coerceIn(min, max) ?: value

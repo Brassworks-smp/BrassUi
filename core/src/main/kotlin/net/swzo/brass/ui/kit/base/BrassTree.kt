@@ -1,14 +1,12 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.base
 
 import gg.essential.elementa.UIComponent
-import net.swzo.brass.ui.kit.base.BrassTree.isAttachedTo
 import net.swzo.brass.ui.kit.base.BrassTree.isDescendantOf
 
 /**
  * Walking the component tree, once.
- *
  * ### Why this exists
- *
  * Eight places in the toolkit had each written the same ancestor loop - "climb `parent` until you
  * find X, guarding against the root, which is its own parent" - and they had settled on **three
  * different termination conditions**: `!hasParent`, `p === node`, and `!p.children.contains(node)`.
@@ -20,13 +18,6 @@ import net.swzo.brass.ui.kit.base.BrassTree.isDescendantOf
  */
 object BrassTree {
 
-    /**
-     * Whether [ancestor] is [c] itself or one of its parents.
-     *
-     * Follows `parent` links without checking that each parent still lists its child, which is the
-     * right question for *event routing*: a click's target is by definition live, and the caller
-     * wants to know which subtree it came from.
-     */
     fun isDescendantOf(c: UIComponent, ancestor: UIComponent): Boolean {
         var node: UIComponent = c
         while (true) {
@@ -41,7 +32,6 @@ object BrassTree {
     /**
      * Whether [c] is still **genuinely connected** to [root] - every ancestor must actually still
      * list the one below it.
-     *
      * The stricter counterpart to [isDescendantOf], and the right question for *lifetime*: a
      * component removed from the tree keeps its stale `parent` pointer, so the cheap walk says yes
      * long after it has stopped being drawn.
@@ -57,10 +47,8 @@ object BrassTree {
         }
     }
 
-    /** Whether [c] is still connected to whatever root it belongs to - [isAttachedTo] without a target. */
     fun isAttached(c: UIComponent): Boolean = isAttachedTo(c, rootOf(c))
 
-    /** The topmost ancestor of [c] - the component that is its own parent. */
     fun rootOf(c: UIComponent): UIComponent {
         var node: UIComponent = c
         while (true) {
@@ -71,7 +59,6 @@ object BrassTree {
         }
     }
 
-    /** [c]'s ancestors, nearest first, excluding [c] itself and stopping at the root. */
     fun ancestors(c: UIComponent): Sequence<UIComponent> = sequence {
         var node: UIComponent = c
         while (node.hasParent) {
@@ -82,10 +69,6 @@ object BrassTree {
         }
     }
 
-    /**
-     * Every descendant of [root] matching [type], in draw order - so the **last** entry is whatever
-     * ended up visually on top.
-     */
     fun <T : Any> descendantsOfType(root: UIComponent, type: Class<T>): List<T> {
         val out = ArrayList<T>()
         fun walk(c: UIComponent) {

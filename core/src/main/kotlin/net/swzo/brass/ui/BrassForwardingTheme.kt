@@ -5,17 +5,13 @@ import java.awt.Color
 /**
  * A [BrassTheme] that takes its **primitive** roles from another theme, so a subclass only has to
  * state what it actually changes.
- *
  * ### Why this exists
- *
  * [BrassThemes]' accent tinting used to be a hand-written list of 62 `override val x get() = base.x`
  * lines against a base class declaring 100 roles. The other 38 did not forward at all, and nothing
  * distinguished the ones that were *deliberately* not forwarded from the ones that had simply been
  * missed. Every role added to [BrassTheme] from then on would be broken under accent tinting by
  * default, silently.
- *
  * ### What is NOT forwarded, and why
- *
  * [BrassTheme] builds these out of the brass ramp:
  * - `accent`
  * - `accentBorder`
@@ -27,26 +23,21 @@ import java.awt.Color
  * - `selection`
  * - `selectionFaint`
  * - `syntaxKeyword`
- *
  * Forwarding them is **wrong**, and getting that wrong is what broke accent switching: they were
  * taken from the base theme's untinted ramp, so a window header's brass seam, a tooltip's left rule,
  * a dropdown's seam and every heading kept the old colour while the ramp underneath them changed.
- *
  * Leaving them out means [BrassTheme]'s own derivation runs, against whatever `brass300`…`brass700`
  * the subclass ends up with - the forwarded ones for a plain wrapper, the tinted ones for
  * `AccentTinted`. Both cases come out right without either having to restate the derivation.
- *
  * ```kotlin
  * class Tinted(base: BrassTheme, tint: Color) : BrassForwardingTheme(base) {
  *     override val brass500 get() = tint      // and the rest of the ramp; nothing else
  * }
  * ```
- *
  * **Generated shape, hand-maintained:** adding a role to [BrassTheme] means adding a matching line
  * here - unless it is derived from the ramp, in which case it belongs in the list above instead.
  */
 open class BrassForwardingTheme(
-    /** The theme every forwarded role reads from. */
     protected val base: BrassTheme,
     name: String = base.name,
 ) : BrassTheme(name) {

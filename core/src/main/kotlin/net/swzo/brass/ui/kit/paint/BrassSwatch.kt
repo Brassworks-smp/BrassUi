@@ -9,19 +9,12 @@ import java.awt.Color
  * fill of the colour, a lighter top-lit inner border, a near-black outer ring and a darker coloured lip
  * - so a colour shown inside a node reads as the identical control the theme picker uses rather than a
  * flat painted rectangle.
- *
  * Being a painter (not a widget) is what lets a node's inline [net.swzo.brass.ui.kit.node.ColorField]
  * draw one under the canvas' zoom, the same way the port nubs draw their keycaps. A translucent colour
  * gets a checkerboard behind it so its alpha reads honestly rather than muddying against the panel.
  */
 object BrassSwatch {
 
-    /**
-     * Paint a swatch filling `[x1,y1]..[x2,y2]` wearing [color].
-     *
-     * @param hot 0..1 hover, brightening the border toward the toolkit accent the way a keycap lifts.
-     * @param lip pixels the bottom lip has lost to a press, so a held swatch looks compressed.
-     */
     fun draw(m: UMatrixStack, x1: Float, y1: Float, x2: Float, y2: Float, color: Color, hot: Float = 0f, lip: Float = 0f) {
         if (x2 <= x1 || y2 <= y1) return
         if (color.alpha < 255) checker(m, x1, y1, x2, y2)
@@ -34,7 +27,6 @@ object BrassSwatch {
         )
     }
 
-    /** A 2-cell checkerboard behind a translucent swatch, so its alpha is visible against it. */
     private fun checker(m: UMatrixStack, x1: Float, y1: Float, x2: Float, y2: Float) {
         val s = 3f
         BrassPaint.rect(m, x1, y1, x2, y2, LIGHT)

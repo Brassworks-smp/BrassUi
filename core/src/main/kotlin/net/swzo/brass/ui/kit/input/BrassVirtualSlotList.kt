@@ -1,10 +1,10 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.input
 
 import gg.essential.elementa.effects.ScissorEffect
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.kit.base.BrassChrome
-import net.swzo.brass.ui.kit.layout.BrassCull
 import net.swzo.brass.ui.kit.layout.BrassScrollbar
 import net.swzo.brass.ui.kit.layout.BrassScrollbarModel
 import net.swzo.brass.ui.kit.paint.BrassCard
@@ -17,16 +17,13 @@ import kotlin.math.floor
 /**
  * A virtualized, scrollable one-column list of item slots - a catalogue or search-result list where
  * the rows are **real** [BrassInventoryGrid] slots.
- *
  * The whole drag vocabulary works exactly as it does in a grid: a row can be picked up, dragged into
  * any linked grid, shift-clicked, spread over by a drag, and hovered for its item tooltip or a
  * [net.swzo.brass.ui.kit.input.BrassInventoryGrid.highlight] - because the list *is* a grid (one
  * column, arbitrarily many rows) that happens to paint only the rows in its viewport. That is what
  * keeps a catalogue of ten thousand entries cheap: a row that is not on screen is never painted,
  * hit-tested or tooltipped, while the rows that are on screen behave like normal inventory slots.
- *
  * ### Why "portal" rows matter
- *
  * A painted-only list (see [net.swzo.brass.ui.kit.layout.BrassVirtualList]) cannot participate in
  * the shared cursor: an item dragged from it has nowhere to live, and the carried stack renders
  * *under* whatever card surrounds the list. Here the list joins the same
@@ -36,11 +33,9 @@ import kotlin.math.floor
 class BrassVirtualSlotList(
     slotSize: Float = 18f,
     gap: Float = 2f,
-    /** Whether each row draws the item's display name next to its slot. */
     var showNames: Boolean = true,
 ) : BrassInventoryGrid(columns = 1, rows = 1, slotSize = slotSize, gap = gap) {
 
-    /** Number of rows; the parent's slot grid is sized to it. */
     private var itemCount = 0
 
     private var scroll = 0f
@@ -62,19 +57,16 @@ class BrassVirtualSlotList(
         return bar.clamp(v)
     }
 
-    /** Replace the whole list; each row holds one of [ids]. Cheap until the rows are painted. */
     fun setItems(ids: List<String>) {
         itemCount = ids.size
         setContents(ids.mapIndexed { index, id -> index to Slot(id, 1) }.toMap())
         scroll = clampScroll(scroll)
     }
 
-    /** Current scroll offset in pixels, and settable - a caller refreshing the list keeps its place. */
     var scrollOffset: Float
         get() = scroll
         set(value) { scroll = clampScroll(value) }
 
-    // ---- geometry (one column, scrolled) --------------------------------------------------------
 
     override fun slotX(index: Int): Float = originX()
 
@@ -92,7 +84,6 @@ class BrassVirtualSlotList(
         return row
     }
 
-    // ---- scrollbar -------------------------------------------------------------------------------
 
     private fun gripRect(): FloatArray? {
         val m = bar
@@ -103,7 +94,6 @@ class BrassVirtualSlotList(
         return floatArrayOf(x, gripY, x + BrassScrollbar.WIDTH, gripY + m.gripHeight())
     }
 
-    // ---- paint -----------------------------------------------------------------------------------
 
     override fun drawContent(matrixStack: UMatrixStack, bx: Int, by: Int, bw: Int, bh: Int) {
         val platform = BrassPlatform.current
@@ -146,7 +136,6 @@ class BrassVirtualSlotList(
         }
     }
 
-    // ---- input -----------------------------------------------------------------------------------
 
     init {
         card = false

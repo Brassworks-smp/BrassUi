@@ -13,10 +13,6 @@ import net.swzo.brass.ui.kit.text.BrassWrappedLabel
 import java.awt.Color
 import kotlin.math.roundToInt
 
-/**
- * The bottom pane: everything known about the selected element - its type + tag, bounds, child count,
- * and (for a widget) its flags / text. Modelled on the reference debugger's selected-element panel.
- */
 internal class DevDetails : UIContainer(), BrassDevOverlay {
 
     override fun draw(matrixStack: UMatrixStack) {

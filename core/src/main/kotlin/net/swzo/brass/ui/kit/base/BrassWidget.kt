@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.base
 
 import gg.essential.elementa.UIComponent
@@ -7,14 +8,12 @@ import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.kit.dev.BrassDevMode
 import net.swzo.brass.ui.kit.paint.BrassPaint
 import net.swzo.brass.ui.kit.platform.BrassCursor
-import net.swzo.brass.ui.kit.text.BrassLabel
 import java.awt.Color
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
  * The base every Brass* widget extends, and the source of the toolkit's look and feel:
- *
  * - **Raised "keycap" render**: a flat fill, a 1-px inner border on all four sides, a 1-px outer ring
  *   just outside it, and a 2–3-px **bottom edge** (a soft shadow + a coloured or dark lip) so the control
  *   reads as a physical pixel button sitting above the surface. `flat` drops the ring/edge; `rounded`
@@ -25,7 +24,6 @@ import kotlin.math.roundToInt
  *   distance from the top-left so a screenful sweeps in diagonally.
  * - **Accent**: [accent] tints the control (see [BrassAccent]); the default accent uses neutral element
  *   colours.
- *
  * Subclasses implement [drawContent] to paint their interior; the base hands them the current pixel
  * bounds and exposes the live animated [bgColor]/[borderColor]/[textColor].
  */
@@ -33,27 +31,11 @@ abstract class BrassWidget(
     var accent: BrassAccent = BrassAccent.DEFAULT,
 ) : UIComponent() {
 
-    // ---- state ---------------------------------------------------------------------------------
-    /**
-     * Whether the widget responds to input. An inactive widget dims and stops reacting.
-     *
-     * Prefer [disable] over assigning this directly: a control that is off with no explanation is one
-     * of the most common complaints about any UI, and the toolkit had no way to say why.
-     */
     var active: Boolean = true
 
-    /**
-     * Why this widget is disabled, shown as a tooltip while it is.
-     *
-     * ```kotlin
-     * button.disable("Connect to a server first")
-     * button.enable()
-     * ```
-     */
     var disabledReason: String? = null
         private set
 
-    /** Turn the widget off, and say why. The reason becomes the widget's tooltip. */
     fun disable(reason: String? = null) {
         active = false
         disabledReason = reason
@@ -68,7 +50,6 @@ abstract class BrassWidget(
         }
     }
 
-    /** Turn the widget back on and forget the reason. */
     fun enable() {
         active = true
         disabledReason = null
@@ -76,29 +57,14 @@ abstract class BrassWidget(
     var selected: Boolean = false
     var selectable: Boolean = false
 
-    /**
-     * What the widget's background looks like - see [BrassChrome].
-     *
-     * Assigning this is the supported way to say "this control paints its own card" or "this is only
-     * text". The four booleans below are kept as views onto it so no existing call site had to change
-     * at once, but they are the old, error-prone spelling.
-     */
     var chrome: BrassChrome = BrassChrome.KEYCAP
 
     @Deprecated("Use chrome = BrassChrome.FLAT", ReplaceWith("chrome"))
     var flat: Boolean
         get() = chrome == BrassChrome.FLAT || chrome == BrassChrome.NONE
         set(value) { if (value && chrome == BrassChrome.KEYCAP) chrome = BrassChrome.FLAT }
-    /** Skip the keycap's *fill*. The border, ring and lip are still drawn - see [chromeless]. */
     var transparent: Boolean = false
 
-    /**
-     * Skip the keycap entirely - no fill, no border, no ring, no lip.
-     *
-     * [transparent] alone is not enough for a widget that is only content: it drops the fill but
-     * still paints the 1-px border, which is what put a faint box behind every text label when
-     * [BrassLabel] arrived. A widget that draws all of its own chrome (or none) wants this instead.
-     */
     @Deprecated("Use chrome = BrassChrome.NONE", ReplaceWith("chrome"))
     var chromeless: Boolean
         get() = chrome == BrassChrome.NONE
@@ -109,38 +75,18 @@ abstract class BrassWidget(
         get() = chrome == BrassChrome.ROUNDED
         set(value) { if (value) chrome = BrassChrome.ROUNDED }
     var roundness: Float = 6f
-    /** Disable the entrance cascade (e.g. for widgets added after the screen is already up). */
     var entranceEnabled: Boolean = true
 
-    /**
-     * Overall opacity, 0..1, multiplied into everything the widget paints.
-     *
-     * Set it to fade a widget in or out independently of its entrance - a closing frame drives its
-     * whole subtree through this (see [BrassFrameAnim]), which is what makes the contents disappear
-     * *with* the frame instead of hanging around fully opaque and then vanishing.
-     */
     var opacity: Float = 1f
 
     protected var hoveredState: Boolean = false
 
-    /**
-     * Set by a bound proxy (see [BrassProxy]) while the cursor is over the *proxy* rather than this
-     * widget, so a label standing in for a toggle lights the toggle up as you hover it. Treated
-     * exactly like real hover for colour and lift.
-     */
     var proxyHovered: Boolean = false
 
-    /**
-     * Whether this widget reacts to clicks. Drives the pressed animation and the pointer cursor;
-     * decorative widgets (a panel, a progress bar) leave it false so they neither depress nor claim
-     * the hand cursor.
-     */
     var clickable: Boolean = false
 
-    /** True between press and release on this widget. */
     private var pressedState = false
 
-    /** 0 = at rest, 1 = fully depressed; eased, drives the key travel and the shortened lip. */
     private var press = 0f
 
     // live animated colours (exposed to subclasses), faded by both the widget's own entrance and any
@@ -151,7 +97,6 @@ abstract class BrassWidget(
     protected val bottomColor: Color get() = animBottom.toColor(alpha)
     protected val outerColor: Color get() = animOuter.toColor(alpha)
 
-    /** Effective opacity: the widget's own [opacity], its entrance, and any inherited frame fade. */
     private val alpha: Float get() = entranceAlpha * opacity * BrassAmbientFade.current
 
     private val animBg = AnimColor(accent.dark.takeIf { !accent.isDefault } ?: Colors.UI_ELEMENT_BG)
@@ -167,11 +112,6 @@ abstract class BrassWidget(
     private var entranceProgress = 0f
     private var entranceAlpha = 1f
 
-    /**
-     * The fade a subclass should apply to content it colours itself (see [BrassLabel]) - its own
-     * entrance, times any ancestor frame's animation. Reading this rather than the raw entrance value
-     * is what makes a label inside a closing window fade out with the window.
-     */
     protected val entranceFade: Float get() = alpha
     private var entranceRise = 0f
 
@@ -190,7 +130,6 @@ abstract class BrassWidget(
         onMouseRelease { pressedState = false }
     }
 
-    /** Current pixel bounds, rounded so everything aligns to whole pixels. */
     protected val bx: Int get() = getLeft().roundToInt()
     protected val by: Int get() = getTop().roundToInt()
     protected val bw: Int get() = getRight().roundToInt() - getLeft().roundToInt()
@@ -229,15 +168,6 @@ abstract class BrassWidget(
         entranceProgress = 1f
     }
 
-    /**
-     * Drive the entrance, whose *start* is gated on the enclosing frame (see [BrassEntrance]).
-     *
-     * The trigger used to be this widget's first draw, which is also what happens when a widget is
-     * scrolled into view - so a long list popped its rows in one at a time as you scrolled, and the
-     * cascade that was meant to be a screen arriving became a permanent stutter. Now the frame says
-     * whether an entrance is appropriate, and a widget that shows up outside that window simply
-     * appears, already in place.
-     */
     private fun advanceEntrance(dt: Float) {
         if (!entranceEnabled) { settleEntrance(); return }
 
@@ -245,7 +175,6 @@ abstract class BrassWidget(
             EntranceState.WAITING -> when (BrassEntrance.phase) {
                 // The frame is opening (or has just settled): begin the cascade *now*, so the contents
                 // fade and rise in together with the frame growing.
-                //
                 // This used to hold every widget fully invisible for the whole open animation and only
                 // start the cascade once the frame had landed - a second animation stacked after the
                 // first. The result was a window that popped open empty, sat there for a beat, and only
@@ -286,7 +215,6 @@ abstract class BrassWidget(
         if (entranceProgress >= 1f) entranceState = EntranceState.DONE
     }
 
-    /** Where a widget is in its one-shot entrance. */
     private enum class EntranceState { WAITING, RUNNING, DONE }
 
     override fun draw(matrixStack: UMatrixStack) {
@@ -341,8 +269,8 @@ abstract class BrassWidget(
         if (BrassFocus.showRing && BrassFocus.isFocused(this) && w > 0 && h > 0) {
             BrassPaint.border(
                 matrixStack,
-                (x - FOCUS_RING).toFloat(), (y - FOCUS_RING).toFloat(),
-                (x + w + FOCUS_RING).toFloat(), (y + h + FOCUS_RING).toFloat(),
+                x - FOCUS_RING, y - FOCUS_RING,
+                x + w + FOCUS_RING, y + h + FOCUS_RING,
                 withAlpha(Colors.UI_ACCENT_BRIGHT, alpha),
             )
         }
@@ -361,13 +289,6 @@ abstract class BrassWidget(
         super.draw(matrixStack)
     }
 
-    /**
-     * The sharp-cornered raised keycap: fill + inner border + outer ring + bottom edge.
-     *
-     * The stack itself now lives in [net.swzo.brass.ui.kit.paint.BrassKeycap] so composites that paint
-     * their own keycap-shaped regions (the node editor) wear the identical chrome; this just hands it the
-     * widget's live animated colours and press state.
-     */
     private fun drawKeycap(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
         // the lip loses a pixel as the key goes down
         val lip = (press * PRESS_TRAVEL).roundToInt().toFloat()
@@ -384,7 +305,6 @@ abstract class BrassWidget(
     /**
      * What a click on this widget *means* - toggling, pressing, ticking. Subclasses that do something
      * on click override this, which lets any other component stand in for them via [BrassProxy].
-     *
      * Deliberately separate from the widget's own click listener: the listener is about *where* the
      * click landed, this is about what it does. Named `proxyActivate` rather than `activate` because
      * Elementa's UIComponent is full of final members and a collision is a link-time crash, not a
@@ -392,13 +312,8 @@ abstract class BrassWidget(
      */
     open fun proxyActivate() {}
 
-    /** Subclasses paint their interior here; [x],[y],[w],[h] are the current pixel bounds. */
     protected abstract fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int)
 
-    /**
-     * Apply [alpha] (0..1) to [c]'s alpha channel. Returns [c] unchanged at full alpha - the case
-     * every frame once a label has finished its entrance - so a settled screen allocates nothing here.
-     */
     protected fun withAlpha(c: Color, alpha: Float): Color =
         if (alpha >= 1f) c
         else Color(c.red, c.green, c.blue, (c.alpha * alpha.coerceIn(0f, 1f)).roundToInt())
@@ -406,9 +321,7 @@ abstract class BrassWidget(
     companion object {
         const val COLOR_SPEED = 14f
         const val MOVE_SPEED = 16f
-        /** How fast a key sinks and rebounds. Faster than the hover lift - a press should feel instant. */
         const val PRESS_SPEED = 28f
-        /** How far a pressed key travels, in pixels. One pixel, matched by one pixel off the lip. */
         const val PRESS_TRAVEL = 1f
         // Entrance is deliberately subtle: a short 4-px rise that resolves quickly, with only a slight
         // diagonal stagger. The earlier values (14 px over a long cascade) read as a loading screen
@@ -418,23 +331,17 @@ abstract class BrassWidget(
         const val ENTRANCE_RISE = 4f
         const val ENTRANCE_SPEED = 8f
         const val ENTRANCE_DELAY_FACTOR = 0.0004f
-        /** Longest an individual widget waits its turn in the cascade. */
         const val ENTRANCE_DELAY_MAX = 0.10f
         val SOFT_SHADOW: Color get() = Colors.SOFT_SHADOW
 
-        // ---- keycap bleed -------------------------------------------------------------------------
         // A keycap deliberately paints *outside* its own box: a 1-px outer ring on three sides, a 3–4-px
         // bottom lip, and it lifts 2 px while hovered. Any container that clips (a ScrollComponent
         // scissors to its bounds) must leave at least this much room, or the borders get shaved off.
         // Layout code should use these rather than re-deriving the numbers.
-        /** How far outside the keycap the focus ring sits. */
         const val FOCUS_RING = 2f
 
-        /** Bleed to the left and right of the box. */
         const val BLEED_X = 1f
-        /** Bleed above the box: the outer ring. */
         const val BLEED_TOP = 1f
-        /** Bleed below the box: the shadow and the coloured lip. */
         const val BLEED_BOTTOM = 4f
 
         /**
@@ -444,14 +351,6 @@ abstract class BrassWidget(
         const val CULL_BLEED = BLEED_BOTTOM + 1f
     }
 
-    /**
-     * A colour that eases toward a target each frame - mirrors ScreenManager's animated colour maps.
-     *
-     * [toColor] caches its result and only allocates when the rounded ARGB actually changes. It is
-     * read from getters several times per widget per frame (fill, border, text, lip, ring), and a
-     * widget at rest produces the *same* colour every frame - so an idle screen now allocates nothing
-     * here, and an animating one allocates only while its colours are genuinely in motion.
-     */
     protected class AnimColor(initial: Color) {
         private var r = initial.red.toFloat()
         private var g = initial.green.toFloat()

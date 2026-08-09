@@ -17,13 +17,10 @@ import net.swzo.brass.ui.kit.layout.BrassSpacing
 /**
  * A **dialog**: a titled modal with a bleed-safe body and, optionally, a footer of buttons - the shape
  * every "ask the user one thing" popup is, without the boilerplate each one otherwise repeats.
- *
  * ### Why this exists
- *
  * Every modal in an app is the same five-line incantation - `BrassPopup(title, modal = true, showHeader
  * = true, showCloseButton = true, scrollingBody = false)` … `popup.showModal(root, w, h)` - followed by
  * hand-placed content, and every one of them makes the same two mistakes:
- *
  * 1. **Buttons and controls clip.** A dialog's content area carries a `ScissorEffect` clipped to its own
  *    bounds. A keycap paints a 1-px outer ring and a 3–4-px bottom lip *outside* its box (see
  *    [BrassWidget]), so a button pinned flush to the content edge - `y = 0.pixels(alignOpposite = true)`,
@@ -31,11 +28,9 @@ import net.swzo.brass.ui.kit.layout.BrassSpacing
  *    scissor and shaved off. Widgets near the right edge lose their ring the same way.
  * 2. **The layout is bespoke every time**, so the buttons sit at slightly different insets in every
  *    dialog and none of them line up with the next.
- *
  * [BrassModal] fixes both. [body] is inset by exactly the keycap bleed, so anything placed in it keeps
  * its full border; [footer] lays buttons out in a wrapping row that reserves the same bleed, so they
  * never clip and never collide when the dialog is narrow.
- *
  * ```kotlin
  * BrassModal("Nickname", width = 220f, height = 120f)
  *     .body { host ->
@@ -48,7 +43,6 @@ import net.swzo.brass.ui.kit.layout.BrassSpacing
  *     )
  *     .show(root)
  * ```
- *
  * For a dialog whose body scrolls (a long list, a tall card), call [scrollBody] instead of [body] and
  * fill the [BrassScrollArea] it returns. For anything this does not cover, [popup] is the underlying
  * [BrassPopup].
@@ -57,14 +51,12 @@ class BrassModal @JvmOverloads constructor(
     title: String,
     private val width: Float,
     private val height: Float,
-    /** Show the close key in the title bar. */
     showClose: Boolean = true,
     /** Whether Escape dismisses the dialog. Turn off for one that must be answered by its buttons. */
     dismissOnEscape: Boolean = true,
     onClose: () -> Unit = {},
 ) {
 
-    /** The underlying popup, for anything this convenience does not expose. */
     val popup: BrassPopup = BrassPopup(
         title,
         onClose,
@@ -76,13 +68,8 @@ class BrassModal @JvmOverloads constructor(
         scrollingBody = false,
     )
 
-    /** The footer's button row, once [footer] has been called - null until then. */
     private var footerRow: BrassFlow? = null
 
-    /**
-     * The dialog's content, inset from the frame by the keycap bleed so nothing placed in it clips.
-     * Fills the space above the footer (if any). Add children here directly, or through [body].
-     */
     val body: UIContainer = UIContainer().constrain {
         x = BrassWidget.BLEED_X.pixels()
         y = BrassWidget.BLEED_TOP.pixels()
@@ -100,17 +87,11 @@ class BrassModal @JvmOverloads constructor(
         }
     } childOf popup.content
 
-    /** Fill the [body] through a builder, and return the modal so the call can chain. */
     fun body(build: (UIContainer) -> Unit): BrassModal {
         build(body)
         return this
     }
 
-    /**
-     * A scrolling body in place of the plain [body] - for a dialog whose content is taller than the
-     * frame (a long list, a tall card). The returned [BrassScrollArea] already reserves its scrollbar
-     * gutter and insets its content by the bleed; add rows to its `content`.
-     */
     fun scrollBody(): BrassScrollArea =
         BrassScrollArea().constrain {
             x = 0.pixels(); y = 0.pixels(); width = 100.percent(); height = 100.percent()
@@ -124,7 +105,6 @@ class BrassModal @JvmOverloads constructor(
      */
     fun footer(vararg buttons: BrassButton): BrassModal = footer(FOOTER_H, *buttons)
 
-    /** [footer] with a custom button [height]. */
     fun footer(height: Float, vararg buttons: BrassButton): BrassModal {
         val flow = BrassFlow(gapX = BrassSpacing.GAP, gapY = BrassSpacing.TIGHT, itemHeight = height, stretch = true)
         buttons.forEach { flow.add(it, FOOTER_MIN_W) }
@@ -140,20 +120,16 @@ class BrassModal @JvmOverloads constructor(
         return this
     }
 
-    /** Float the dialog over [root], centred, at the size it was built with. Returns the modal. */
     fun show(root: UIComponent): BrassModal {
         popup.showModal(root, width, height)
         return this
     }
 
-    /** Dismiss the dialog, animating it out. */
     fun dismiss() = popup.dismiss()
 
     private companion object {
-        /** Default footer button height. */
         const val FOOTER_H = 18f
 
-        /** Narrowest a footer button gets before the row wraps it onto a second line. */
         const val FOOTER_MIN_W = 72f
     }
 }

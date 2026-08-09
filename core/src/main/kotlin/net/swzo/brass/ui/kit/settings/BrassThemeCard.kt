@@ -21,26 +21,21 @@ import java.awt.Color
 
 /**
  * The **appearance card**: a theme picker and an accent picker, wired straight to [BrassThemes].
- *
  * A port of the BrassWorks launcher's Appearance settings card - a labelled dropdown listing the
  * registered themes, then a row of accent swatches with a check on the active one, ending in a custom
  * chip that opens a colour picker in a floating panel rather than inline. The picker is a popover for
  * the same reason it is in the launcher: a full HSV square is far taller than the row it belongs to,
  * and inlining it pushes every setting below it down the card.
- *
  * ### Wiring
- *
  * The card holds no state of its own. It reads [BrassThemes] to draw itself and writes to it on every
  * interaction, so it stays correct if something else changes the theme - a config load at startup, or
  * a second copy of this card on another screen. Persistence is not its business either: hook
  * [BrassThemes.onChange] from the mod's config code to write the change to disk.
- *
  * ```
  * BrassThemeCard() childOf settingsColumn
  * ```
  */
 class BrassThemeCard(
-    /** Where popovers are parented - normally the screen root. Defaults to the card's own window. */
     private val popoverRoot: (() -> UIComponent?)? = null,
 ) : UIContainer() {
 
@@ -56,7 +51,6 @@ class BrassThemeCard(
             x = PAD.pixels(); y = (PAD + 2f).pixels()
         } childOf this
 
-        // ---- theme ---------------------------------------------------------------------------
         BrassLabel("Theme").constrain { x = PAD.pixels(); y = ROW_THEME.pixels() } childOf this
 
         val dropdown = BrassDropdown(
@@ -76,7 +70,6 @@ class BrassThemeCard(
             width = 100.percent() - (PAD * 2f).pixels()
         } childOf this
 
-        // ---- accent --------------------------------------------------------------------------
         val accentLabel = BrassLabel("Accent").constrain {
             x = PAD.pixels()
             y = basicYConstraint { dropdown.getBottom() + 10f }
@@ -100,7 +93,6 @@ class BrassThemeCard(
         // second card on another screen, or code setting the theme directly all have to be reflected
         // here. Every interaction below writes to BrassThemes and lets the change come back through
         // this listener, so there is one path that updates the swatches instead of two.
-        //
         // Torn down when the card leaves the tree. It used to unsubscribe itself the *next time it
         // fired* after being orphaned - which meant a card on a closed screen stayed registered, and
         // kept itself alive, until some unrelated retheme happened to come along.
@@ -109,21 +101,16 @@ class BrassThemeCard(
         refresh()
     }
 
-    /** Whether this card is still in a live component tree, rather than orphaned by a closed popup. */
-    private fun isAttached(): Boolean = BrassTree.isAttached(this)
-
     private fun addSwatch(s: Swatch) {
         swatches.add(s)
         swatchRow.add(s, SWATCH)
     }
 
-    /** Re-read [BrassThemes] so every swatch shows the right selection. */
     private fun refresh() {
         val current = BrassThemes.accent
         for (s in swatches) s.syncTo(current)
     }
 
-    /** Measured from the real children, so an open dropdown makes the whole card taller. */
     private fun contentHeight(): Float =
         (children.maxOfOrNull { it.getBottom() } ?: getTop()) - getTop() + PAD
 
@@ -136,17 +123,6 @@ class BrassThemeCard(
         super.draw(matrixStack)
     }
 
-    /**
-     * One accent swatch: a [BrassCheckbox] wearing the colour it selects.
-     *
-     * A checkbox rather than a bespoke square because that is exactly the semantics - a set of boxes of
-     * which one is ticked - and it inherits the keycap, the hover lift and the tick glyph instead of
-     * reimplementing them. The colour is a [fixedAccent][BrassCheckbox], so an unticked swatch still
-     * shows which colour it is.
-     *
-     * [color] null is the leading "theme default" swatch; [custom] is the trailing chip that opens the
-     * picker and always shows a `+`.
-     */
     private inner class Swatch(
         private val color: Color?,
         private val custom: Boolean = false,
@@ -173,12 +149,6 @@ class BrassThemeCard(
             }
         }
 
-        /**
-         * Tick the box that matches the live accent.
-         *
-         * The leading swatch is ticked when nothing is overriding the theme, and the custom chip when
-         * the accent is not one of the presets.
-         */
         fun syncTo(accent: Color?) {
             val on = when {
                 custom -> accent != null && BrassThemes.ACCENT_SWATCHES.none { it.rgb == accent.rgb }
@@ -188,15 +158,8 @@ class BrassThemeCard(
             if (on != checked) set(on)
         }
 
-        /** The picker this chip opened, kept so a second click can close it. */
         private var openMenu: BrassContextMenu? = null
 
-        /**
-         * Open the picker, or close it if this chip already has one up.
-         *
-         * The chip's own handler runs before the menu's click-away handler, so checking here is what
-         * makes the second click land as "close" rather than "close then reopen".
-         */
         private fun togglePicker() {
             val current = openMenu
             if (current != null && current.isOpen) {
@@ -208,7 +171,7 @@ class BrassThemeCard(
         }
 
         private fun openPicker() {
-            val root = popoverRoot?.invoke() ?: findRoot() ?: return
+            val root = popoverRoot?.invoke() ?: findRoot()
             val start = BrassThemes.accent ?: Colors.UI_ACCENT
 
             val picker = BrassColorPicker(start) { picked ->
@@ -233,14 +196,6 @@ class BrassThemeCard(
     }
 
     private companion object {
-        /**
-         * The keycap accent a swatch wears.
-         *
-         * The leading "theme default" swatch tracks **the theme's own accent**, read fresh each time it
-         * is painted - deliberately not [Colors.UI_ACCENT], which is the *live* accent and therefore
-         * changes as soon as the user picks a colour. Reading that was why this swatch used to follow
-         * whatever was selected instead of standing for "no override".
-         */
         fun swatchAccent(color: Color?, custom: Boolean): BrassAccent = when {
             // The custom chip shows the colour it is holding, so the row reads as "this is your
             // colour" rather than "press + for something unknown". With nothing custom chosen there is
@@ -266,32 +221,15 @@ class BrassThemeCard(
             )
         }
 
-        /** The accent in force when it is *not* one of the presets - i.e. what the chip is holding. */
         fun customAccent(): Color? = BrassThemes.accent
             ?.takeIf { a -> BrassThemes.ACCENT_SWATCHES.none { it.rgb == a.rgb } }
 
-        /**
-         * The colour the leading "no override" swatch wears: **the default dark theme's brass green**,
-         * fixed.
-         *
-         * Deliberately not the selected theme's own accent, which is what this used to return. That
-         * made the swatch restate whatever colour was already in force, so the one chip in the row
-         * whose job is to stand for "reset" looked identical to the chip that was currently selected -
-         * and it moved every time the theme changed, which is exactly the opposite of what a reset
-         * control should do.
-         *
-         * A fixed green makes it a landmark: it is always the same colour, it always means "put the
-         * accent back", and it is visibly distinct from whatever is selected unless the accent already
-         * *is* the default.
-         */
         fun themeOwnAccent(): Color = BrassThemes.DEFAULT.brass500
 
         const val PAD = 10f
         const val SWATCH = 14f
-        /** The accent picker's floating panel. */
         const val PICKER_W = 150
         const val PICKER_H = 150
         const val ROW_THEME = 24f
-        const val ROW_ACCENT = 62f
     }
 }

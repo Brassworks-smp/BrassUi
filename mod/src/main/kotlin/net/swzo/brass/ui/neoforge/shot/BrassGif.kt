@@ -14,31 +14,24 @@ import javax.imageio.stream.FileImageOutputStream
 
 /**
  * Writing an animated, **transparent** GIF, using the encoder already in the JDK.
- *
  * ### Transparency
- *
  * GIF's transparency is one bit — a pixel is either fully clear or fully opaque, there are no partial
  * alphas. So the input's alpha channel is thresholded: anything below [ALPHA_CUTOFF] becomes the
  * transparent palette index, everything else is drawn opaque. The cost is a hard edge wherever the
  * toolkit anti-aliases (a widget's 1-px borders are crisp already; only curved glyph edges show it),
  * which is the accepted trade for a GIF that drops onto any wiki background instead of carrying a baked
  * theme-coloured rectangle around with it.
- *
  * Nothing the toolkit draws *relies* on partial alpha surviving this. That is not luck — the demo card
  * deliberately renders without its drop shadow for exactly this reason (see
  * [net.swzo.brass.ui.kit.demo.BrassDemoCard]), because a shadow is the one thing a one-bit format
  * cannot carry, and a PNG that had one while the GIF beside it did not was worse than neither having
  * it.
- *
  * ### Palette
- *
  * GIF allows 256 colours per frame. The toolkit's palette is flat fills and a short accent ramp, so the
  * opaque colours across an animation nearly always fit exactly — [buildPalette] collects them and, only
  * if there are more than 255, quantises by dropping low colour bits until they do. Index 0 is reserved
  * for transparency throughout.
- *
  * ### Why this is more than three lines
- *
  * `ImageIO` has always been able to write animated GIFs, but exposes no API for the animation: frame
  * delay and looping live in extension blocks reachable only by hand-building the metadata tree, with
  * attribute names from the `javax_imageio_gif_image_1.0` DTD. That, plus the indexing above, is the
@@ -46,15 +39,8 @@ import javax.imageio.stream.FileImageOutputStream
  */
 object BrassGif {
 
-    /** Alpha at or above which a pixel is drawn; below it the pixel is transparent. */
     private const val ALPHA_CUTOFF = 128
 
-    /**
-     * Write [frames] to [path] at [fps], looping forever, with transparency.
-     *
-     * Returns false if the JDK has no GIF writer, rather than throwing — a failed capture should not
-     * take the client down mid-run.
-     */
     fun write(path: Path, frames: List<BufferedImage>, fps: Int): Boolean {
         if (frames.isEmpty()) return false
 
@@ -85,13 +71,6 @@ object BrassGif {
         return true
     }
 
-    /**
-     * The colour model for the whole animation: index 0 transparent, then every opaque colour used.
-     *
-     * A single palette shared by all frames rather than one per frame — GIF allows per-frame palettes,
-     * but a shared one keeps the file small and the encoder simple, and the toolkit does not use enough
-     * colours for the shared cap to bite.
-     */
     private fun buildPalette(frames: List<BufferedImage>): IndexColorModel {
         val colours = LinkedHashSet<Int>()
         var shift = 0
@@ -131,7 +110,6 @@ object BrassGif {
         return IndexColorModel(bits, size, r, g, b, 0)
     }
 
-    /** Map an ARGB frame onto [palette], sending transparent pixels to index 0. */
     private fun toIndexed(frame: BufferedImage, palette: IndexColorModel): BufferedImage {
         val out = BufferedImage(frame.width, frame.height, BufferedImage.TYPE_BYTE_INDEXED, palette)
         val pixels = (out.raster.dataBuffer as DataBufferByte).data
@@ -168,7 +146,6 @@ object BrassGif {
         return best
     }
 
-    /** Drop [shift] low bits off each channel, for the quantise-until-it-fits loop. */
     private fun quantise(argb: Int, shift: Int): Int {
         if (shift == 0) return argb and 0xFFFFFF
         val mask = (0xFF shl shift) and 0xFF
@@ -178,7 +155,6 @@ object BrassGif {
         return (r shl 16) or (g shl 8) or b
     }
 
-    /** Set the per-frame delay and the loop-forever marker on a frame's metadata tree. */
     private fun applyAnimation(metadata: IIOMetadata, delayHundredths: Int) {
         val format = metadata.nativeMetadataFormatName
         val root = metadata.getAsTree(format) as IIOMetadataNode
@@ -206,7 +182,6 @@ object BrassGif {
         metadata.setFromTree(format, root)
     }
 
-    /** The existing child named [name], or a new empty one appended to [parent]. */
     private fun child(parent: IIOMetadataNode, name: String): IIOMetadataNode {
         for (i in 0 until parent.length) {
             val node = parent.item(i)

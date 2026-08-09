@@ -13,7 +13,6 @@ import net.swzo.brass.ui.kit.net.BrassJson
  * length-prefixed and gzip-compressed past [BrassJson.COMPRESS_THRESHOLD] by [BsonBytesCodec] -
  * the core registry already defines every action's shape, so a payload per action would duplicate
  * that knowledge in the transport and tie the toolkit to one loader's codec system.
- *
  * A null BSON value is encoded as an empty byte array, so `Unit` actions with no input travel as an
  * empty body rather than a sentinel byte.
  */
@@ -49,7 +48,6 @@ data class BrassActionPayload(
     val data: ByteArray,
     /** Index of this piece when [chunks] > 1 (large actions travel chunked). */
     val chunk: Int = 0,
-    /** Total piece count; 1 means the action travelled whole. */
     val chunks: Int = 1,
 ) : CustomPacketPayload {
 
@@ -97,9 +95,7 @@ data class BrassStatePayload(
     val data: ByteArray,
     /** Index of this piece when [chunks] > 1 (large states travel chunked). */
     val chunk: Int = 0,
-    /** Total piece count; 1 means the state travelled whole. */
     val chunks: Int = 1,
-    /** Identity shared by every piece of one logical state update. */
     val transferId: Long = 0L,
 ) : CustomPacketPayload {
 
@@ -140,7 +136,6 @@ data class BrassSubscribePayload(
 
 /**
  * Client -> server: "send me your permission decisions for every registered action."
- *
  * An `object`, not a class: the codec is [StreamCodec.unit], and NeoForge's unit codec rejects any
  * payload instance that is not the **same object** it was built with. A singleton guarantees the
  * instance sent by the transport is the instance the codec expects.

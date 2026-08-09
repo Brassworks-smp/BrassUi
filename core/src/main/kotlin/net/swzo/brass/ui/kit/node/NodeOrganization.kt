@@ -50,6 +50,9 @@ data class GraphComment(
     var tone: FrameTone = FrameTone.PATINA,
     var customColor: Int? = null,
 ) {
+    /** Transient editor state - whether the note is part of the current selection. Never serialized. */
+    var selected: Boolean = false
+
     fun color(): Color = customColor?.let { Color(it, true) } ?: tone.color()
 }
 

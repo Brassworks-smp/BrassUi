@@ -15,12 +15,9 @@ import kotlin.math.roundToInt
 /**
  * Everything a window-like frame does, in one place: chrome, drag, collapse, maximize, resize and the
  * open/close animation.
- *
  * ### Why this exists
- *
  * [BrassWindow] and [BrassPopup] were two independent implementations of the same object, and they
  * had drifted in ways the user could see:
- *
  * - the window animated a maximize by easing its bounds; the popup teleported;
  * - the window captured and restored its height **constraint** across a collapse, so a
  *   percentage-sized frame still tracked the screen afterwards, while the popup restored pixels and
@@ -28,38 +25,28 @@ import kotlin.math.roundToInt
  * - the window cancelled an in-flight maximize when you started dragging; the popup let the
  *   animation keep reapplying its own bounds underneath the drag;
  * - `EDGE` was 2 in one and 4 in the other, for the same clearance.
- *
  * Each of those was fixed once, in whichever file someone happened to be in. Three of the surviving
  * comments in the two files describe the same bug being found twice.
- *
  * Subclasses supply their chrome (a title bar, control keys, a scrim) and their body; everything
  * above is inherited and therefore identical.
  */
 abstract class BrassFrameBase(
-    /** Title bar height in pixels, or 0 for a frame with no header. */
     protected val titleBarH: Int,
-    /** Smallest the frame may be dragged or squeezed down to. */
     protected val minW: Float,
     protected val minH: Float,
-    /** Lay resize grips over the border. */
     private val resizable: Boolean = true,
-    /** Allow the frame to be rolled up to its title bar. */
     protected val collapsible: Boolean = true,
-    /** Inset of [content] from the frame's edges. */
     private val contentPad: Float = 0f,
 ) : UIComponent(), BrassFrame {
 
-    /** The frame's interior, below the header. */
     val content: UIContainer
 
     protected val anim = BrassFrameAnim()
 
-    // ---- drag ------------------------------------------------------------------------------------
 
     private var grabDX = 0f
     private var grabDY = 0f
 
-    /** True only between a press on the title bar and its release - see [installDrag]. */
     private var dragging = false
     private var lastTitleClick = 0L
 
@@ -69,7 +56,6 @@ abstract class BrassFrameBase(
      */
     protected var controlsBar: UIComponent? = null
 
-    /** The component drags are clamped inside. The parent by default; a popup uses its screen root. */
     protected open val dragBounds: UIComponent? get() = if (hasParent) parent else null
 
     init {
@@ -95,17 +81,9 @@ abstract class BrassFrameBase(
         }
     }
 
-    /** The body's height when the frame is open - restored after every collapse and maximize. */
     private fun openContentHeight(): HeightConstraint =
         100.percent() - (titleBarH + contentPad * 2).pixels()
 
-    /**
-     * Make [bar] the frame's drag handle: press and move to reposition, double-click to
-     * maximize/restore.
-     *
-     * Elementa broadcasts drag events to the whole tree, so the move is gated on a press that
-     * actually landed on this bar - the same gate `BrassSlider` and `BrassTable` need.
-     */
     protected fun installDrag(bar: UIComponent) {
         bar.onMouseClick { e ->
             if (e.mouseButton != 0) return@onMouseClick
@@ -138,7 +116,6 @@ abstract class BrassFrameBase(
         }
     }
 
-    /** What a double-click on the title bar does. Maximize by default. */
     protected open fun onTitleDoubleClick() = toggleMaximize()
 
     /**
@@ -160,7 +137,6 @@ abstract class BrassFrameBase(
 
     /**
      * Widen the hit area by the resize grips' [BrassResize.OUTREACH].
-     *
      * Elementa dispatches a click by walking down from the root, and only descends into a component
      * whose own `isPointInside` passes. The grips deliberately extend a few pixels past the frame so
      * an edge can be grabbed from just outside it - but the frame itself rejected those points, so
@@ -172,19 +148,16 @@ abstract class BrassFrameBase(
         return x > getLeft() - o && x < getRight() + o && y > getTop() - o && y < getBottom() + o
     }
 
-    // ---- collapse --------------------------------------------------------------------------------
 
     protected var collapsed = false
         private set
 
     private var collapsedFrom = 0f
 
-    /** 0 = open, 1 = fully rolled up. */
     private val collapseRoll = BrassEased(0f, speed = COLLAPSE_SPEED)
 
     /**
      * The height **constraint** the frame had before it was rolled up.
-     *
      * Captured as a constraint, not a number, and handed back once the roll-down finishes. A frame
      * sized by a percentage of the screen used to come back as fixed pixels after its first collapse
      * and stopped responding to resizes from then on. `BrassWindow` fixed that; `BrassPopup` never
@@ -212,7 +185,6 @@ abstract class BrassFrameBase(
         }
     }
 
-    /** Finish a roll open immediately - for a resize or maximize taking over the frame's bounds. */
     protected fun uncollapse() {
         collapsed = false
         collapseRoll.snapTo(0f)
@@ -232,7 +204,6 @@ abstract class BrassFrameBase(
         constrain { height = (open + (shut - open) * collapseRoll.value).pixels() }
     }
 
-    // ---- maximize --------------------------------------------------------------------------------
 
     protected var maximized = false
         private set
@@ -242,7 +213,6 @@ abstract class BrassFrameBase(
     private var toBounds: FloatArray? = null
     private val boundsSlide = BrassEased(1f, speed = MAXIMIZE_SPEED)
 
-    /** Bounds as fractions of the parent, so a maximized frame stays maximized across a resize. */
     private fun snapshot(): FloatArray {
         val p = parent
         val pw = p.getWidth().coerceAtLeast(1f)
@@ -276,12 +246,6 @@ abstract class BrassFrameBase(
         if (boundsSlide.settled) { fromBounds = null; toBounds = null }
     }
 
-    /**
-     * Fill the parent, or restore the pre-maximize frame - **animated**, by easing the bounds as
-     * fractions rather than swapping them in one frame. Easing fractions rather than pixels means the
-     * animation survives a screen resize halfway through and lands exactly where the un-animated
-     * version would have.
-     */
     override fun toggleMaximize() {
         // Any roll-up is finished off first, and without restoring the old constraint: maximize is
         // about to drive its own bounds, and a pending restore would overwrite them a few frames later.
@@ -318,15 +282,7 @@ abstract class BrassFrameBase(
         }
     }
 
-    // ---- draw ------------------------------------------------------------------------------------
 
-    /**
-     * Advance the frame's animations and paint its chrome, then the subtree.
-     *
-     * `final` on purpose: the push/pop pairing around `super.draw` restores two globals as well as
-     * the matrix, and a subclass that overrode this and forgot the `finally` would strand the ambient
-     * fade below 1 for the rest of the session. Subclasses paint through [drawChrome] instead.
-     */
     final override fun draw(matrixStack: UMatrixStack) {
         beforeDraw(matrixStack)
 
@@ -353,10 +309,6 @@ abstract class BrassFrameBase(
         }
     }
 
-    /**
-     * The frame's chrome: a card, and a header stacked on it sharing its top edge. Override to add
-     * more; call through for the standard look.
-     */
     protected open fun drawChrome(
         m: UMatrixStack,
         x1: Float, y1: Float, x2: Float, y2: Float,
@@ -366,13 +318,11 @@ abstract class BrassFrameBase(
         if (titleBarH > 0) BrassCard.header(m, x1, y1, x2, titleBarH.toFloat(), alpha = alpha)
     }
 
-    /** Run at the top of every frame, before the open/close animation advances. */
     protected open fun beforeAnim() {}
 
     /** The frame's current chrome alpha, each frame - for a sibling that must fade in step (a scrim). */
     protected open fun onAlpha(alpha: Float) {}
 
-    /** The close animation has landed and the frame may be torn down. Fires exactly once. */
     protected abstract fun onClosed()
 
     override fun requestClose() {
@@ -380,13 +330,10 @@ abstract class BrassFrameBase(
     }
 
     protected companion object {
-        /** How fast a frame rolls up and back down. */
         const val COLLAPSE_SPEED = 14f
 
-        /** How fast a frame travels between its restored and maximized bounds. */
         const val MAXIMIZE_SPEED = 16f
 
-        /** Parent-filling fractions - the maximize target. */
         private val FULL = floatArrayOf(0f, 0f, 1f, 1f)
     }
 }

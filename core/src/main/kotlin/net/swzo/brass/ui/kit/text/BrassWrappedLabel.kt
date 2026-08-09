@@ -16,17 +16,14 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * and grows taller as it wraps, drawn entirely through [BrassFont] so it is a real [BrassWidget] (it
  * shows up in the dev-mode inspector, animates in with its neighbours, and can grow richer later -
  * e.g. Minecraft `Component` support - without callers changing).
- *
  * Replaces Elementa's `UIWrappedText`, which is not a widget: it appeared instantly while the controls
  * around it faded in, and it drew through a path the toolkit's instrumentation cannot see.
- *
  * Give it a width (usually `100.percent()`); it self-sizes its height from the wrap, so a container
  * with a `ChildBasedSizeConstraint` height (or a sibling anchored to its `getBottom()`) reflows
  * correctly when the width changes.
  */
 class BrassWrappedLabel(
     text: String,
-    /** Colour at rest; the entrance fade multiplies it. Named `tint` - see [BrassLabel]. */
     var tint: Color = Colors.UI_TEXT,
     var shadow: Boolean = true,
 ) : BrassWidget(BrassAccent.DEFAULT) {
@@ -56,7 +53,6 @@ class BrassWrappedLabel(
         return cachedLines
     }
 
-    /** Greedy word-wrap: honour explicit line breaks, then pack words up to [maxWidth]. */
     private fun wrap(s: String, maxWidth: Float): List<String> {
         val out = ArrayList<String>()
         for (paragraph in s.split('\n')) {
@@ -77,17 +73,8 @@ class BrassWrappedLabel(
         return out
     }
 
-    /** The wrapped height at the current width - for callers that size a container around it. */
     fun contentHeight(): Float = (linesFor(getWidth()).size.coerceAtLeast(1) * BrassFont.LINE).toFloat()
 
-    /**
-     * The width of the **last** wrapped line - where a trailing annotation goes.
-     *
-     * A chat's "(edited)" marker, a footnote dagger, an inline status dot: all of them belong at the end
-     * of the text, which after wrapping is a point no caller can compute for itself. Without this the
-     * only options are to right-align the marker (leaving a gap after short messages) or to put it on a
-     * line of its own (which reads as another message).
-     */
     fun lastLineWidth(): Float =
         BrassFont.width(this, linesFor(getWidth()).lastOrNull().orEmpty())
 
@@ -103,7 +90,6 @@ class BrassWrappedLabel(
 
     companion object : BrassDemoSource {
 
-        /** A paragraph that wraps to its box. */
         override fun demo() = BrassDemo("wrapped-label", "Wrapped label", 220f, 60f) {
             BrassWrappedLabel(
                 "A longer run of text that wraps to the width it is given, rather than " +

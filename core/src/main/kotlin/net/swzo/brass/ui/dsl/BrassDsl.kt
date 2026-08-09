@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.dsl
 
 import gg.essential.elementa.UIComponent
@@ -17,11 +18,8 @@ typealias Pixels = gg.essential.elementa.constraints.PixelConstraint
 
 /**
  * A small builder over the layout boxes, so a column of controls reads as a column.
- *
  * ### Why this exists
- *
  * Placing a caption and a rail took six lines and two constraint helpers:
- *
  * ```kotlin
  * val nav = UIContainer().constrain {
  *     x = 12.pixels(); y = 12.pixels()
@@ -30,11 +28,9 @@ typealias Pixels = gg.essential.elementa.constraints.PixelConstraint
  * } childOf frame.content
  * BrassText.label("SECTIONS").constrain { x = 4.pixels(); y = 2.pixels() } childOf nav
  * ```
- *
  * [BrassVBox] and [BrassHBox] already removed the anchor chains; this removes the ceremony around
  * them, and is deliberately thin - it composes the existing types rather than introducing a parallel
  * layout system.
- *
  * ```kotlin
  * column(gap = 8f) {
  *     label("SECTIONS")
@@ -64,7 +60,6 @@ class BrassColumnScope(private val box: BrassVBox) {
         BrassDropdown(options, initial, onSelect).also { box.add(it) }
     fun spacer(size: Float) = box.addSpacer(size)
 
-    /** A nested row inside this column. */
     fun row(gap: Float = 6f, build: BrassRowScope.() -> Unit): BrassHBox =
         net.swzo.brass.ui.dsl.row(gap, bleed = true, build = build).also { box.add(it) }
 }
@@ -81,30 +76,25 @@ class BrassRowScope(private val box: BrassHBox) {
         BrassToggle(initial, onChange).also { box.add(it) }
     fun spacer(size: Float) = box.addSpacer(size)
 
-    /** Push everything after this to the right-hand end - see [BrassHBox.spring]. */
     fun spring() = box.spring()
 }
 
-/** Build a vertical stack. */
 fun column(gap: Float = 6f, bleed: Boolean = true, build: BrassColumnScope.() -> Unit): BrassVBox {
     val box = BrassVBox(gap, bleed)
     BrassColumnScope(box).build()
     return box
 }
 
-/** Build a horizontal row. */
 fun row(gap: Float = 6f, bleed: Boolean = true, build: BrassRowScope.() -> Unit): BrassHBox {
     val box = BrassHBox(gap, bleed)
     BrassRowScope(box).build()
     return box
 }
 
-/** Build a weighted grid - see [BrassGrid]. */
 fun grid(
     weights: List<Float>,
     rowHeight: Float = 20f,
     build: BrassGrid.() -> Unit,
 ): BrassGrid = BrassGrid(weights, rowHeight).apply(build)
 
-/** An empty container, for the cases the boxes do not cover. */
 fun box(build: UIContainer.() -> Unit = {}): UIContainer = UIContainer().apply(build)

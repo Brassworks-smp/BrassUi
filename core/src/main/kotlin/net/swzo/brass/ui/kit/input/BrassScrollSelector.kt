@@ -30,31 +30,19 @@ class BrassScrollSelector(
     override fun onChange(listener: (Int) -> Unit) = holder.onChange(listener)
     override fun bind(state: BrassState<Int>) = holder.bind(this, state)
 
-    /** Index of the centred option. Alias of [value]. */
     val selectedIndex: Int get() = holder.value
 
-    /** Eased carousel position; wrapped across the seam each frame - see [drawContent]. */
     private val strip = BrassEased(initialIndex.toFloat(), speed = STRIP_SPEED)
 
     companion object : BrassDemoSource {
 
-        /**
-         * Options cycled with the wheel, which is the gesture the widget is named for.
-         *
-         * Worth recording with the wheel rather than with clicks: this control exists precisely so a
-         * value can be changed without opening anything, and a recording of it being clicked
-         * documents a dropdown.
-         */
         override fun demo() = BrassDemo("scroll-selector", "Scroll selector", 150f, 20f) {
             BrassScrollSelector(listOf("Low", "Medium", "High", "Ultra"))
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
-        /** How fast the strip travels to the newly selected option. */
         private const val STRIP_SPEED = 10f
     }
 
@@ -66,7 +54,6 @@ class BrassScrollSelector(
         holder.onChange(onChange)
     }
 
-    /** Left/right step through the options, matching the two click zones. */
     override fun onKeyPressed(keyCode: Int): Boolean = when (keyCode) {
         org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT -> { step(-1); true }
         org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT -> { step(1); true }

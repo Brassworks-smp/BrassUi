@@ -6,19 +6,8 @@ import net.swzo.brass.ui.kit.input.BrassButton
 import net.swzo.brass.ui.kit.surface.BrassToast
 
 /**
- * A [BrassButton] wired to [action] end to end:
- *
- * - **Auth mirror** - disabled up front with the deny reason as tooltip when [BrassNet.can] says the
- *   current player cannot run the action, and re-evaluated whenever the server's synced permissions
- *   arrive or change.
- * - **Pending state** - disabled with "Sending…" while the request is in flight, re-enabled on the
- *   reply.
- * - **Errors** - failed replies surface as an error toast; successful ones are left to [onResult] so
- *   the caller can decide how loud success should be.
- * - **Optimistic updates** - pass [optimistic] to apply the change to local state before the server
- *   confirms it; the authoritative state push (or [onResult]) reconciles afterwards.
- *
- * The server-side handler runs independently of everything here - the button is only the client half.
+ * A [BrassButton] wired to [action]: auth-mirrored, disabled while pending, failed replies toast.
+ * Pass [optimistic] to apply the change locally before the server confirms it.
  */
 fun <T : Any> actionButton(
     label: String,

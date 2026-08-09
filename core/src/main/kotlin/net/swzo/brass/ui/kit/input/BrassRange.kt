@@ -8,22 +8,18 @@ import kotlin.math.roundToInt
 /**
  * A bounded numeric range with an optional step - what [BrassSlider], [BrassNumberInput] and
  * [BrassRangeSlider] all mean by "a value between min and max".
- *
  * ### Why this exists
- *
  * The slider carried `min`, `max`, `step`, a `snap` that rounded to the step, a `fraction` that mapped
  * value to 0..1, its inverse for a click position, and a `format` that picked a sensible number of
  * decimals from the step. Three more controls need exactly that arithmetic, and the decimal-picking in
  * particular is the sort of thing that quietly ends up subtly different in each copy - one showing
  * `0.30000001`, another `0`.
- *
  * Pure and immutable, so it is directly testable and can be shared between two handles of the same
  * slider without either being able to disturb the other.
  */
 data class BrassRange(
     val min: Float = 0f,
     val max: Float = 1f,
-    /** Quantisation. Zero means continuous. */
     val step: Float = 0f,
 ) {
 
@@ -33,29 +29,19 @@ data class BrassRange(
 
     val span: Float get() = max - min
 
-    /** Clamp to the range and quantise to [step]. */
     fun snap(value: Float): Float {
         val clamped = value.coerceIn(min, max)
         if (step <= 0f) return clamped
         return (min + ((clamped - min) / step).roundToInt() * step).coerceIn(min, max)
     }
 
-    /** Where [value] sits in the range, as 0..1. */
     fun fraction(value: Float): Float = ((value - min) / span).coerceIn(0f, 1f)
 
-    /** The value at [fraction] of the range, snapped. */
     fun valueAt(fraction: Float): Float = snap(min + fraction.coerceIn(0f, 1f) * span)
 
-    /** Move [value] by [steps] increments - one [step], or a hundredth of the span if continuous. */
     fun nudge(value: Float, steps: Int): Float =
         snap(value + steps * (if (step > 0f) step else span / 100f))
 
-    /**
-     * Decimal places worth showing, derived from [step].
-     *
-     * A step of 1 wants none, 0.5 wants one, 0.01 wants two. With no step, the *span* decides: a 0..1
-     * range needs two decimals to be readable at all, a 0..1000 range needs none.
-     */
     val decimals: Int get() {
         val basis = if (step > 0f) step else span / 100f
         if (basis <= 0f) return 0
@@ -67,7 +53,6 @@ data class BrassRange(
         return places.coerceIn(0, 4)
     }
 
-    /** [value] as text, at [decimals] precision, with a trailing `.0` trimmed to an integer. */
     fun format(value: Float): String {
         val d = decimals
         if (d == 0) return value.roundToInt().toString()

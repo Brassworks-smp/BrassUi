@@ -5,32 +5,23 @@ import gg.essential.universal.UGraphics
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.kit.base.BrassAmbientFade
 import net.swzo.brass.ui.kit.base.BrassStats
-import net.swzo.brass.ui.kit.paint.BrassPaint.rect
-import net.swzo.brass.ui.kit.paint.BrassPaint.ringAround
 import java.awt.Color
 import kotlin.math.roundToInt
 
 /**
  * The toolkit's only route to a filled quad.
- *
  * ### Why this exists
- *
  * Eight components had each grown a private `fill(m, x1, y1, x2, y2, c)` doing the same three
  * things - reject a degenerate rect, count the quad, apply the ambient frame fade, submit - and they
  * disagreed about which of the three to remember. [net.swzo.brass.ui.kit.text.BrassMarkdown] and
  * `BrassDropdown.Card` both skipped [BrassStats.quad], so a screenful of markdown or an open dropdown
  * was simply absent from the quad counter the dev overlay reported: the number was wrong and there
  * was no way to notice from inside either file.
- *
  * Routing every quad through here makes the three steps unforgettable rather than merely
  * conventional. Nothing in the toolkit should call [UIBlock.drawBlock] directly.
  */
 object BrassPaint {
 
-    /**
-     * Fill `[x1,y1]..[x2,y2]`. Degenerate and inverted rectangles are dropped rather than submitted,
-     * which is what lets callers do arithmetic on their bounds without guarding every result.
-     */
     fun rect(m: UMatrixStack, x1: Float, y1: Float, x2: Float, y2: Float, c: Color) {
         if (x2 <= x1 || y2 <= y1) return
         BrassStats.quad()
@@ -40,21 +31,12 @@ object BrassPaint {
         )
     }
 
-    /** [rect] with integer bounds - for callers already working in whole pixels. */
     fun rect(m: UMatrixStack, x1: Int, y1: Int, x2: Int, y2: Int, c: Color) =
         rect(m, x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(), c)
 
-    /** [rect] with its edges snapped to whole pixels, so a fill lands on the pixel grid. */
     fun rectSnapped(m: UMatrixStack, x1: Float, y1: Float, x2: Float, y2: Float, c: Color) =
         rect(m, x1.roundToInt(), y1.roundToInt(), x2.roundToInt(), y2.roundToInt(), c)
 
-    /**
-     * A border of [thickness] drawn **inside** `[x1,y1]..[x2,y2]`.
-     *
-     * The top and bottom runs span the full width and the sides sit between them, so no pixel is
-     * painted twice. That matters for translucent colours, where a doubled corner blends twice and
-     * shows up as four dark dots framing the shape.
-     */
     fun border(
         m: UMatrixStack,
         x1: Float, y1: Float, x2: Float, y2: Float,
@@ -69,24 +51,11 @@ object BrassPaint {
         rect(m, x2 - t, y1 + t, x2, y2 - t, c)
     }
 
-    /**
-     * A **filled** slab extending [thickness] beyond the given bounds.
-     *
-     * This is the cheap way to seat a card: paint one oversized rectangle in the ring colour and then
-     * paint the card's fill on top, leaving only the border visible. It is only correct when
-     * something opaque covers the interior afterwards.
-     *
-     * Named `ringUnder`, not `ring`, because the previous name promised an outline and delivered a
-     * solid block - and the one caller that did *not* paint a fill over it (a flat card frame) came
-     * out as a solid near-black rectangle, which is what turned the colour picker's gradients black.
-     * Use [ringAround] when there is no fill.
-     */
     fun ringUnder(m: UMatrixStack, x1: Float, y1: Float, x2: Float, y2: Float, c: Color, thickness: Float = 1f) =
         rect(m, x1 - thickness, y1 - thickness, x2 + thickness, y2 + thickness, c)
 
     /**
      * A hollow ring of [thickness] drawn **outside** the given bounds, leaving the interior untouched.
-     *
      * For a frame over content that must stay visible - a gradient, an image, an entity preview.
      */
     fun ringAround(m: UMatrixStack, x1: Float, y1: Float, x2: Float, y2: Float, c: Color, thickness: Float = 1f) =
@@ -113,20 +82,10 @@ object BrassPaint {
         rect(m, ix2, iy1, ox2, iy2, c)
     }
 
-    /** [c] with its alpha scaled by [a]. Returns [c] itself at full alpha, so the common case is free. */
     fun fade(c: Color, a: Float): Color =
         if (a >= 1f) c
         else Color(c.red, c.green, c.blue, (c.alpha * a.coerceIn(0f, 1f)).roundToInt().coerceIn(0, 255))
 
-    /**
-     * Batches many filled quads into a **single GPU draw**. [rect] is called once per [UIBlock.drawBlock]
-     * and each call is its own buffer submission - fine for a handful, ruinous for the thousands of tiny
-     * cells a node wire lays down, where the draw-call overhead, not the pixels, is the cost. A batch
-     * collects every quad into one tessellator buffer and submits it with one [flush].
-     *
-     * Colours still pass through the ambient fade and are still counted for the dev overlay, so a batched
-     * wire fades and reports exactly like an unbatched one - it just costs one draw instead of hundreds.
-     */
     class QuadBatch(private val m: UMatrixStack) {
         private val g = UGraphics.getFromTessellator()
         private var open = false
@@ -134,6 +93,7 @@ object BrassPaint {
         fun rect(x1: Float, y1: Float, x2: Float, y2: Float, c: Color) {
             if (x2 <= x1 || y2 <= y1) return
             if (!open) {
+                @Suppress("DEPRECATION")
                 UGraphics.enableBlend()
                 @Suppress("DEPRECATION")
                 g.beginWithDefaultShader(UGraphics.DrawMode.QUADS, UGraphics.CommonVertexFormats.POSITION_COLOR)
@@ -147,13 +107,13 @@ object BrassPaint {
             g.pos(m, x1.toDouble(), y1.toDouble(), 0.0).color(col).endVertex()
         }
 
-        /** A quad with arbitrary corners - a thick line segment, a rotated bar, a polygon cell. */
         fun quad(
             x1: Float, y1: Float, x2: Float, y2: Float,
             x3: Float, y3: Float, x4: Float, y4: Float,
             c: Color,
         ) {
             if (!open) {
+                @Suppress("DEPRECATION")
                 UGraphics.enableBlend()
                 @Suppress("DEPRECATION")
                 g.beginWithDefaultShader(UGraphics.DrawMode.QUADS, UGraphics.CommonVertexFormats.POSITION_COLOR)
@@ -167,10 +127,10 @@ object BrassPaint {
             g.pos(m, x4.toDouble(), y4.toDouble(), 0.0).color(col).endVertex()
         }
 
-        /** Submit everything collected so far. Safe to call when nothing was added. */
         fun flush() {
             if (!open) return
             g.drawDirect()
+            @Suppress("DEPRECATION")
             UGraphics.disableBlend()
             open = false
         }

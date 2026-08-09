@@ -23,7 +23,6 @@ class BrassSquareButton(
     private val onClick: () -> Unit = {},
 ) : BrassWidget(accent), BrassFocusable {
 
-    /** Fraction of the button's short side the icon occupies. */
     var iconScale = 0.5f
 
     init {
@@ -40,7 +39,6 @@ class BrassSquareButton(
 
     companion object : BrassDemoSource {
 
-        /** An icon key, at rest and under the pointer. */
         override fun demo() = BrassDemo("square-button", "Square button", 22f, 22f) {
             BrassSquareButton(BrassIcons.CHECK)
         }

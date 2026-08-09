@@ -14,7 +14,6 @@ import gg.essential.elementa.dsl.minus
 import gg.essential.elementa.dsl.percent
 import gg.essential.elementa.dsl.pixels
 import net.swzo.brass.ui.BrassScreen
-import net.swzo.brass.ui.BrassThemes
 import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.component.BrassText
 import net.swzo.brass.ui.demo.net.BrassNetDemoSection
@@ -24,7 +23,6 @@ import net.swzo.brass.ui.kit.base.BrassTree
 import net.swzo.brass.ui.kit.base.BrassWidget
 import net.swzo.brass.ui.kit.base.proxiedBy
 import net.swzo.brass.ui.kit.demo.BrassDemoBrowser
-import net.swzo.brass.ui.kit.demo.BrassDemoStrip
 import net.swzo.brass.ui.kit.demo.BrassDemos
 import net.swzo.brass.ui.kit.dev.BrassDevMode
 import net.swzo.brass.ui.kit.input.BrassButton
@@ -91,38 +89,30 @@ import net.swzo.brass.ui.kit.layout.BrassBreakpoint
 /**
  * The widget gallery: one screen showing every widget in the toolkit, hosted both by the standalone
  * desktop app and by the in-game `/brassui` command.
- *
  * A [BrassWindow] with a nav rail whose sections open functional [BrassPopup] sub-windows, an overview
  * panel with live controls, toasts, a right-click context menu and a running progress bar — every
  * control here actually does something. Toggle the layout inspector with Ctrl+Shift+D.
- *
  * ### One gallery, two hosts
- *
  * This was two screens once — `BrassDesktopDemoScreen` and `BrassUiShowcaseScreen` — and they had
  * drifted exactly as far apart as you would expect: the same twenty-odd sections written twice, each
  * host missing widgets the other had. Neither was a trustworthy answer to "what does the toolkit look
  * like right now", which is the only question a gallery exists to answer.
- *
  * They merge cleanly because the toolkit is game-free by construction — the item and entity widgets
  * take **string ids**, so naming `"minecraft:allay"` costs nothing off-game. What genuinely differs
  * between the hosts goes through [BrassDemoHost], which is short enough to read in one sitting: how to
  * close, what to call itself, whether game content can be drawn at all, and the raw-canvas cards.
- *
  * @param host the platform showing this gallery.
  */
 class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdropColor = host.backdrop) {
 
-    /** The showcase capture (Ctrl+Shift+S, or the panel's context menu) lands under this name. */
     override val showcaseName: String get() = "gallery"
 
     private val navRows = ArrayList<BrassButton>()
 
-    /** The nav sections, in order, so [openSectionOnStart] can reach one by name. */
     private val sections = ArrayList<Pair<String, () -> Unit>>()
 
     /**
      * A section to open as soon as the screen is up, from `-Dui.section=Chat`.
-     *
      * For working on one widget: relaunching straight into its section beats clicking through the nav
      * every time, and it means a section that *crashes on open* fails the launch rather than waiting for
      * someone to happen to click it. Cleared after the first frame — it is a starting position, not a
@@ -134,14 +124,11 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
     private var demoProgress = 0f
     private var downloadToast: BrassToast? = null
 
-    /** Charts currently on screen, with their two series, fed from the demo tick. */
     private val liveCharts = ArrayList<Triple<BrassChart, BrassChart.Series, BrassChart.Series>>()
     private var chartTick = 0
 
-    /** One row of the split pane's master list. */
     private data class Shard(val name: String, val players: Int, val tps: Float, val region: String)
 
-    /** A small tree of made-up files, so the tree view has real nesting to show. */
     private class DemoNode(val name: String, val children: List<DemoNode> = emptyList()) {
         companion object {
             private fun file(name: String) = DemoNode(name)
@@ -196,7 +183,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             } childOf background
         }
 
-        // ---- nav rail ------------------------------------------------------------------------
         val nav = UIContainer().constrain {
             x = 12.pixels(); y = 12.pixels()
             width = BrassBreakpoint.proportional(fraction = 0.26f, min = 110f, max = 170f)
@@ -257,7 +243,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             navRows.add(row)
         }
 
-        // ---- overview panel ------------------------------------------------------------------
         val mainScroll = ScrollComponent().constrain {
             x = basicXConstraint { nav.getRight() + 12f }
             y = 12.pixels()
@@ -361,13 +346,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         openSectionOnStart()
     }
 
-    /**
-     * Open the section named by `-Dui.section`, on the first frame rather than here.
-     *
-     * A section's popup expects a live screen — it measures against the window and scrolls itself — so
-     * opening one from `init`, before this screen has been shown, is the same mistake as seeding a chat
-     * before it is mounted. Waiting for the first update means the tree is up and laid out.
-     */
     private fun openSectionOnStart() {
         if (pendingSection == null) return
         background.addUpdateFunc { _, _ ->
@@ -388,7 +366,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         }
     }
 
-    // ---- popups ----------------------------------------------------------------------------------
 
     private fun popupBounds(w: Float, h: Float): FloatArray {
         val sw = frame.getWidth()
@@ -496,15 +473,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .show(background, b[0], b[1], b[2], b[3])
     }
 
-    /**
-     * The widgets that draw actual game content, shown only where [BrassDemoHost.gameWidgets] says the
-     * platform can draw it.
-     *
-     * Note how little of this is game code: every widget here names its content with a **string id**
-     * and the platform seam resolves it. That is the whole reason this section can live in a module
-     * that does not link against Minecraft. The one exception is the raw-canvas row, which the host
-     * supplies, because a demo of the drop-to-`GuiGraphics` escape hatch is game code by definition.
-     */
     private fun openItems() {
         val b = popupBounds(360f, 380f)
 
@@ -603,16 +571,13 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
 
     /**
      * Every widget's own demo, playing on a loop.
-     *
      * ### Why this section is not hand-built like the others
-     *
      * Because the others are the problem it solves. Each section above arranges its widgets by hand,
      * which is right for showing them *in context* — a form beside a table, a toast over a window —
      * but it means the gallery's account of a widget is written separately from the documentation's,
      * and the two drifted for exactly as long as both existed. This section holds no arrangement of
      * its own: it plays [BrassDemos.ALL], the same declarations the capture run photographs, so it
      * cannot disagree with the wiki.
-     *
      * The scrolled height comes from the strip rather than being guessed, because the demos size
      * themselves and the total changes whenever a widget's demo does.
      */
@@ -624,10 +589,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         host.open(BrassDemoBrowser(onExit = { host.open(BrassGalleryScreen(host)) }))
     }
 
-    /**
-     * The networking showcase: actions declared beside this screen, dispatched to the server (or run
-     * in-process on the desktop), authorized, rate-limited and mirrored back as pushed state.
-     */
     private fun openNetworking() {
         BrassNetDemoSection.open(background, popupBounds(440f, 580f))
     }
@@ -665,7 +626,7 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .addTags("Semantic tags", *semanticTags())
             .addTags("Theme tags", *themeTags())
             .addTags("Numeric tags (small-numbers sheet)", *numericTags())
-            .addField("Colour picker", BrassColorPicker(Colors.BRASS_500) { c ->
+            .addField("Colour picker", BrassColorPicker(Colors.BRASS_500) { _ ->
             }.also { it.constrain { height = 132.pixels() } })
             .addButtons(
                 BrassButton("Sticky download", BrassAccent.DEFAULT) { startDownloadToast() },
@@ -674,22 +635,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .show(background, b[0], b[1], b[2], b[3])
     }
 
-    /**
-     * The chat box, with a small roster of BrassWorks-API player heads above it.
-     *
-     * The chat echoes what you send and a teammate answers, so the log, the scroll-to-follow and the
-     * send-on-Enter are all live. The roster resolves its faces from the BrassWorks player API by name —
-     * which is why it works here on the desktop with no game skin cache behind it — and shows the
-     * canonical username in each head's tooltip.
-     *
-     * The seeded conversation is chosen to put every part of the widget on screen at once rather than to
-     * read naturally: a system broadcast with no head, a run of three messages from one author (so the
-     * card, the shared header and the hairlines between grouped messages are all visible), a line long
-     * enough to wrap onto several rows, a message with a hard line break in it, one already marked
-     * `(edited)`, and a reply quoting a message further up. [BrassChat.canModify] marks the local
-     * player's own lines as editable, so right-clicking one offers edit and delete while right-clicking a
-     * teammate's offers only copy and reply — the same asymmetry a real chat has.
-     */
     private fun openChat() {
         val b = popupBounds(360f, 430f)
 
@@ -757,20 +702,12 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .show(background, b[0], b[1], b[2], b[3])
     }
 
-    /** A throwaway teammate reply, so the demo chat answers back instead of talking to itself. */
     private fun cannedReply(to: String): String = when {
         "?" in to -> "good question — ask the admin"
         to.length < 4 -> "copy that"
         else -> listOf("sounds good", "on it", "meet at the nether portal", "nice").random()
     }
 
-    /**
-     * The layout containers and state bindings, which exist to remove the two things this file is
-     * otherwise full of: hand-written sibling anchors, and a tick loop pushing values into widgets.
-     *
-     * Nothing here names another component's position, and nothing polls: the progress bar and the
-     * caption below it are bound to one [BrassState] each, and the buttons only assign to those.
-     */
     private fun openLayout() {
         val b = popupBounds(360f, 300f)
 
@@ -796,10 +733,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .show(background, b[0], b[1], b[2], b[3])
     }
 
-    /**
-     * The numeric and filtering controls: steppers, a two-handled range, a debounced search wired to
-     * removable chips, pagination, relative timestamps, hold-to-confirm and key capture.
-     */
     private fun openMoreInputs() {
         val b = popupBounds(360f, 400f)
 
@@ -875,11 +808,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .show(background, b[0], b[1], b[2], b[3])
     }
 
-    /**
-     * A checkbox with a clickable caption — the shape every settings row has, and the shape
-     * [BrassCheckbox] deliberately does *not* have on its own (it is only the box). The caption is
-     * bound as a click proxy, exactly as `openToggles` does it.
-     */
     private fun labelledCheck(text: String, initial: Boolean): UIContainer {
         val row = UIContainer().constrain { width = 100.percent(); height = 13.pixels() }
         val box = BrassCheckbox(initial)
@@ -890,7 +818,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         return row
     }
 
-    /** Collapsible sections, a draggable divider, an empty state, and the command palette. */
     private fun openSections() {
         val b = popupBounds(380f, 380f)
 
@@ -971,7 +898,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .show(background, b[0], b[1], b[2], b[3])
     }
 
-    /** The palette, opened over the whole screen rather than inside a popup — that is its shape. */
     private fun openPalette() {
         val commands = listOf(
             BrassCommandPalette.Command("Open Preview Window", "View", "Ctrl+P") { openLayout() },
@@ -987,7 +913,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         BrassCommandPalette(commands).show(background)
     }
 
-    /** The data views: a tree, a live chart, two bar charts, and syntax-highlighted code. */
     private fun openData() {
         val b = popupBounds(400f, 420f)
 
@@ -1058,10 +983,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .show(background, b[0], b[1], b[2], b[3])
     }
 
-    /**
-     * The appearance card: theme dropdown + accent swatches, wired to the global [BrassThemes]. Nothing
-     * here stores a preference — a real app hooks `BrassThemes.onChange` and writes its own config.
-     */
     private fun openAppearance() {
         val b = popupBounds(300f, 200f)
         BrassPopup("Appearance")
@@ -1069,7 +990,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .show(background, b[0], b[1], b[2], b[3])
     }
 
-    /** Remote images fetched over HTTPS at runtime — plain and encased in cards. */
     private fun remoteImages(): UIContainer {
         val row = UIContainer().constrain { height = 72.pixels() }
         val urls = listOf(
@@ -1099,15 +1019,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         BrassTag("new", BrassTag.NEW), BrassTag("beta", BrassTag.BETA),
     )
 
-    /**
-     * Tags whose text is mostly digits — the case the small-numbers sheet exists for. The numerals are
-     * the same 5-px ink height as the small capitals beside them, so `v1.21` reads as one run of text
-     * rather than as short letters next to tall numbers.
-     *
-     * Worth having on the desktop specifically: the caps sheet was rasterised out of Minecraft's font
-     * precisely because that font does not exist here, so this is the build where a regression in
-     * either sheet actually shows.
-     */
     private fun numericTags(): Array<BrassTag> = arrayOf(
         BrassTag("1.21", BrassTag.BRASS),
         BrassTag("v2.0.4", BrassTag.PATINA),
@@ -1138,7 +1049,6 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
     }
 
     private companion object {
-        /** Something for the code view to highlight that is short enough to read at a glance. */
         val SAMPLE_CODE = """
             fun render(stack: ItemStack, x: Int, y: Int) {
                 // a marker sits on the line below

@@ -17,48 +17,36 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 
 /**
  * A multi-select shown as removable chips - selected filters, applied tags, chosen recipients.
- *
  * ```kotlin
  * val chips = BrassChips(onRemove = { filters.remove(it) })
  * chips.set(listOf("survival", "hardcore", "1.21"))
  * ```
- *
  * ### Why not a row of `BrassTag`s
- *
  * [net.swzo.brass.ui.kit.text.BrassTag] is a *label*: it says something about the thing next to it and
  * has no notion of being removed. A chip is a control - it has a hit area, a hover state and an X that
  * has to be aimed at - and a set of them reflows as items are added and removed. Building that from
  * tag components would mean adding and removing components from the tree every time the selection
  * changes, in the middle of Elementa's own iteration over them.
- *
  * So the chips are painted, and the widget owns its own flow: it wraps into as many rows as it needs
  * and reports [contentHeight] so a `basicHeightConstraint` can grow the container to match. The
  * colours come from [BrassTagStyle], so a chip and a tag saying the same thing are the same green.
  */
 class BrassChips(
-    /** How wide a chip may get before its label is clipped. */
     var maxChipWidth: Float = 120f,
-    /** Called when a chip's X is clicked. Removal is the caller's to perform. */
     var onRemove: ((String) -> Unit)? = null,
-    /** Called when a chip's body is clicked. */
     var onClick: ((String) -> Unit)? = null,
 ) : BrassWidget(BrassAccent.DEFAULT) {
 
-    /** One chip: its text and how it should be coloured. */
     data class Chip(val label: String, val style: BrassTagStyle = BrassTagStyle.NEUTRAL)
 
     private var chips: List<Chip> = emptyList()
 
-    /** Index of the chip under the cursor, or -1. */
     private var hovered = -1
 
-    /** Whether the cursor is on that chip's X rather than its body. */
     private var onClose = false
 
-    /** Replace the chips. */
     fun set(next: List<Chip>) { chips = next }
 
-    /** Replace the chips from plain strings, all neutral. */
     fun setLabels(next: List<String>) { chips = next.map { Chip(it) } }
 
     val size: Int get() = chips.size
@@ -80,15 +68,7 @@ class BrassChips(
         }
     }
 
-    // ---- layout ----------------------------------------------------------------------------------
 
-    /**
-     * Chip rectangles as `[x, y, w, h]`, relative to the widget's top-left, in chip order.
-     *
-     * Recomputed on demand rather than cached: it depends on the widget's width, which is a
-     * constraint and can change between any two frames, and the list is short enough that a cache
-     * keyed on width would cost more to maintain than it saves.
-     */
     private fun layout(): List<FloatArray> {
         val out = ArrayList<FloatArray>(chips.size)
         val avail = getWidth().coerceAtLeast(1f)
@@ -109,7 +89,6 @@ class BrassChips(
         return (PAD * 2 + text + closer).coerceAtMost(maxChipWidth)
     }
 
-    /** Total height the chips need, for a `basicHeightConstraint`. */
     fun contentHeight(): Float {
         val boxes = layout()
         if (boxes.isEmpty()) return 0f
@@ -125,15 +104,14 @@ class BrassChips(
         return null
     }
 
-    /** Whether [localX] falls on chip [index]'s close button rather than its label. */
     private fun onCloseAt(index: Int, localX: Float): Boolean {
         if (onRemove == null) return false
         val box = layout().getOrNull(index) ?: return false
         return localX >= box[0] + box[2] - CLOSE - PAD
     }
 
-    // ---- paint -----------------------------------------------------------------------------------
 
+    @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun drawContent(matrixStack: UMatrixStack, bx: Int, by: Int, bw: Int, bh: Int) {
 
         val (mx, my) = getMousePosition()
@@ -184,15 +162,6 @@ class BrassChips(
 
     companion object : BrassDemoSource {
 
-        /**
-         * A row of tags with one removed, which is the only thing a chip row does that a row of tags
-         * does not.
-         *
-         * The X is painted inside the chip rather than being its own widget, so the press lands at a
-         * fraction across the strip. The removal is the caller's to perform — the widget only reports
-         * it — so the demo's [onRemove] is what actually drops the chip, exactly as an application's
-         * would.
-         */
         override fun demo() = BrassDemo("chips", "Chips", 210f, 20f) {
             val chips = BrassChips()
             val items = mutableListOf(
@@ -208,8 +177,6 @@ class BrassChips(
             chips
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 

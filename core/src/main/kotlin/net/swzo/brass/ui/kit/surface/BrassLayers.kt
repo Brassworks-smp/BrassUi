@@ -1,3 +1,4 @@
+@file:Suppress("unused")
 package net.swzo.brass.ui.kit.surface
 
 import gg.essential.elementa.UIComponent
@@ -6,20 +7,15 @@ import net.swzo.brass.ui.kit.surface.BrassLayers.raise
 
 /**
  * Who sits above whom among a screen's floating layers.
- *
  * ### Why this exists
- *
  * Z-order was decided in three files that each knew a piece of the rule: [BrassPopup] raised itself
  * on a click but had to stop below any modal scrim; [BrassContextMenu] had `keepOnTop`, called by
  * the popup after it raised, to stop a menu being buried by the very popup it was opened from;
  * [net.swzo.brass.ui.kit.surface.BrassToast] and the tooltip opted out of the tree entirely. The
  * ordering rule existed, but it was distributed across the objects it governed, so adding a fourth
  * kind of layer meant finding and amending all three.
- *
  * Here the rule is stated once, as a rank.
- *
  * ### Every reorder goes through [raise]
- *
  * Elementa draws floating components in **tree child order**, so whoever reorders children decides
  * the stack - and any code that appends itself with a bare `childOf` jumps to the very top no matter
  * what its rank claims. That is exactly what the popup's own raise-on-click did, which is why a toast
@@ -34,13 +30,10 @@ object BrassLayers {
      * that outranks it however recently it was clicked.
      */
     enum class Rank {
-        /** Ordinary content - a window, a panel. */
         CONTENT,
 
-        /** A floating sub-window. Raises among its peers on a click. */
         POPUP,
 
-        /** A modal and its scrim. Nothing behind it is reachable, so no *window* may draw over it. */
         MODAL,
 
         /** Transient chrome - a context menu, a dropdown popover, the command palette. Above every
@@ -56,12 +49,10 @@ object BrassLayers {
         OVERLAY,
     }
 
-    /** A component that declares where it belongs in the stack. */
     interface Layer {
         val rank: Rank
     }
 
-    /** [c]'s rank, inferred for the built-in types that predate the interface. */
     fun rankOf(c: UIComponent): Rank = when {
         c is Layer -> c.rank
         c is BrassContextMenu -> Rank.TRANSIENT
@@ -70,10 +61,6 @@ object BrassLayers {
         else -> Rank.CONTENT
     }
 
-    /**
-     * Raise [layer] as high as its rank allows among [root]'s children: above everything of the same
-     * rank or lower, and below the lowest thing that outranks it.
-     */
     fun raise(root: UIComponent, layer: UIComponent) {
         if (!root.children.contains(layer)) return
         val rank = rankOf(layer)
@@ -84,7 +71,6 @@ object BrassLayers {
         else root.addChild(layer)
     }
 
-    /** The topmost layer of at least [minRank] under [root], or null. */
     fun topmost(root: UIComponent, minRank: Rank = Rank.CONTENT): UIComponent? =
         BrassTree.descendantsOfType(root, UIComponent::class.java)
             .lastOrNull { rankOf(it) >= minRank }

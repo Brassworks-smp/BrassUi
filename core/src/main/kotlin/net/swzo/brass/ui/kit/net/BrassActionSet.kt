@@ -1,12 +1,5 @@
 package net.swzo.brass.ui.kit.net
 
-/**
- * Marks a class - normally a Kotlin `object` - whose `brassAction` properties make up an action set.
- *
- * The annotation is what each transport's discovery scans for (FML scan data in NeoForge, classpath
- * entries on the desktop). Loading the class runs its property initializers, which is what registers
- * every action. Implement [BrassActions] as well so discovery can type-check the loaded class.
- */
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.CLASS)
 annotation class BrassActionSet
@@ -21,10 +14,6 @@ interface BrassActions
  */
 object BrassActionSets {
 
-    /**
-     * Load and initialise the class named [className] if it is an action set. Returns true when the
-     * class was found and exposes an instance implementing [BrassActions].
-     */
     fun load(className: String): Boolean {
         val clazz = runCatching {
             Class.forName(className, true, BrassActionSets::class.java.classLoader)
@@ -35,6 +24,5 @@ object BrassActionSets {
         return instance is BrassActions
     }
 
-    /** Load every name in [classNames]; returns how many were action sets. */
     fun loadAll(classNames: Collection<String>): Int = classNames.count { load(it) }
 }

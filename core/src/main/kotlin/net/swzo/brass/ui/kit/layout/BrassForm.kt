@@ -23,18 +23,14 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 
 /**
  * A scrolling stack of labelled rows, built with a small chaining API and readable back by caption.
- *
  * ### Why this is not part of [net.swzo.brass.ui.kit.surface.BrassPopup]
- *
  * It used to be. Along with the frame chrome, the drag, the collapse, the maximize, the resize, the
  * modal scrim and the z-order, which is how that one class reached 667 lines and fourteen
  * responsibilities - and why it imported the entire `input` and `text` packages from `surface`,
  * inverting the layering.
- *
  * The practical cost was that a form could only exist *inside a popup*. A settings panel in a window,
  * a form in a tab, a wizard step - none of them could use any of this, which is exactly why the
  * showcase screens hand-build their panels row by row instead.
- *
  * ```kotlin
  * val form = BrassForm()
  *     .addTextField("Address", "localhost")
@@ -46,14 +42,12 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * ```
  */
 class BrassForm(
-    /** Space between rows. Clears the keycap's bottom lip, plus breathing room. */
     private val rowGap: Float = BrassWidget.BLEED_BOTTOM + 6f,
 ) : UIContainer() {
 
     private val scroll: ScrollComponent
     private val column: UIContainer
 
-    /** The scroll view, for a caller that needs to drive it (scroll to a row, say). */
     val body: ScrollComponent get() = scroll
 
     init {
@@ -84,7 +78,6 @@ class BrassForm(
         } childOf scroll
     }
 
-    // ---- building --------------------------------------------------------------------------------
 
     private fun stack(c: UIComponent): BrassForm {
         c.constrain {
@@ -96,10 +89,8 @@ class BrassForm(
 
     private fun caption(text: String): BrassLabel = BrassLabel(text, Colors.UI_TEXT_DARK)
 
-    /** Append an arbitrary component as a full-width row. */
     fun add(component: UIComponent): BrassForm = stack(component)
 
-    /** A captioned control: small label above, [control] full-width below. */
     fun addField(label: String, control: UIComponent): BrassForm {
         val f = UIContainer().constrain { height = ChildBasedSizeConstraint(4f) }
         caption(label).constrain { x = 0.pixels(); y = 0.pixels() } childOf f
@@ -107,11 +98,6 @@ class BrassForm(
         return stack(f)
     }
 
-    /**
-     * A caption above one or more controls that **wrap** onto further lines when the form is too
-     * narrow to fit them side by side (see [BrassFlow]). Controls keep a readable minimum width
-     * rather than being squeezed to slivers, and the row grows taller as it wraps.
-     */
     fun addRow(label: String, controlHeight: Int, vararg controls: UIComponent): BrassForm {
         val row = UIContainer().constrain { height = ChildBasedSizeConstraint(3f) }
         if (label.isNotEmpty()) {
@@ -127,13 +113,6 @@ class BrassForm(
         return stack(row)
     }
 
-    /**
-     * A caption above a wrapping row of [tags], each at its **natural** width.
-     *
-     * Deliberately not [addRow]: that row stretches its controls to share the line and holds them to
-     * a readable minimum, which is right for buttons and wrong for chips - a tag stretched to 76
-     * pixels stops reading as a tag.
-     */
     fun addTags(label: String, vararg tags: BrassTag): BrassForm {
         val row = UIContainer().constrain { height = ChildBasedSizeConstraint(3f) }
         if (label.isNotEmpty()) {
@@ -193,11 +172,9 @@ class BrassForm(
 
     fun addButtons(vararg buttons: BrassButton): BrassForm = addRow("", 20, *buttons)
 
-    // ---- reading and writing ---------------------------------------------------------------------
 
     /**
      * Controls added through the builder, keyed by their caption.
-     *
      * The builder methods return the form so they can chain, which meant a form could be *built* in
      * one expression but never *read* - every value had to be captured through an `onChange` closure
      * into state the caller maintained by hand.
@@ -209,10 +186,8 @@ class BrassForm(
         return control
     }
 
-    /** The control added under [label], or null if there is none of that type. */
     inline fun <reified T : UIComponent> control(label: String): T? = controlsView[label] as? T
 
-    /** Read-only view of the registered controls; prefer the typed helpers below. */
     @PublishedApi
     internal val controlsView: Map<String, UIComponent> get() = controls
 
@@ -221,10 +196,6 @@ class BrassForm(
     fun number(label: String): Float? = (controls[label] as? BrassSlider)?.value
     fun choice(label: String): String? = (controls[label] as? BrassDropdown)?.selected
 
-    /**
-     * Every registered control's current value, keyed by caption - a one-call snapshot of the form,
-     * for handing straight to a config object or a network packet.
-     */
     fun values(): Map<String, Any> = controls.mapNotNull { (label, c) ->
         when (c) {
             is BrassTextInput -> label to c.text
@@ -235,14 +206,6 @@ class BrassForm(
         }
     }.toMap()
 
-    /**
-     * The inverse of [values]: write saved values back into the form.
-     *
-     * Silent by design - populating a form is not a user edit, and firing every control's `onChange`
-     * as a dialog opens would look to the caller exactly like the user having touched everything.
-     * Entries with no matching control, or of the wrong type, are ignored so a config that has since
-     * gained or lost a field still loads.
-     */
     @Suppress("UNCHECKED_CAST")
     fun setValues(values: Map<String, Any?>) {
         for ((label, raw) in values) {
@@ -262,19 +225,6 @@ class BrassForm(
 
     companion object : BrassDemoSource {
 
-        /**
-         * A settings form — the layout in the context it exists for.
-         *
-         * ### Why the demo is a whole form rather than an empty one
-         *
-         * [BrassForm] has no appearance of its own; it is row spacing and label alignment. An empty
-         * one captures as blank space. So the demo declares the sub-widgets — a text field, a
-         * dropdown, a toggle row, a slider and a button row — because the arrangement *is* the widget,
-         * and the only way to show it is to fill it with the controls it was built to arrange.
-         *
-         * The controls are then live, so the clip can work one of them and show that a form is a
-         * layout rather than a picture of one.
-         */
         override fun demo() = BrassDemo("form", "Form", 250f, 130f) {
             val form = BrassForm()
             form.addTextField("Server", "survival.example.net")
@@ -288,15 +238,11 @@ class BrassForm(
             form
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
-        /** Gap between the scrolling body and its scrollbar. */
         private const val SCROLLBAR_GAP = 3f
 
-        /** Narrowest a control in a row may get before the row wraps instead of squeezing it. */
         private const val MIN_CONTROL = 76f
     }
 }

@@ -5,37 +5,25 @@ import org.lwjgl.glfw.GLFW
 
 /**
  * A key or mouse binding: one main input plus whichever modifiers were held with it.
- *
  * ### Why this is a value type
- *
  * A binding stored as a bare `Int` cannot express `Ctrl+S` at all, and cannot distinguish "unbound"
  * from "key 0". It also has no name - every config screen that has ever stored keys as ints has grown
  * its own `keyName` function, and they disagree about `GLFW_KEY_GRAVE_ACCENT`. Making the chord the
  * value means [display] is defined once and comparison for conflict detection is `==`.
- *
  * Mouse buttons live in the same space via [MOUSE_BASE], so a binding can be "middle click" without
  * the surrounding code needing a second field to say which kind it is.
  */
 data class BrassKeyChord(
-    /** GLFW key code, or a mouse button offset by [MOUSE_BASE]. [GLFW.GLFW_KEY_UNKNOWN] means unbound. */
     val code: Int = GLFW.GLFW_KEY_UNKNOWN,
     val ctrl: Boolean = false,
     val shift: Boolean = false,
     val alt: Boolean = false,
 ) {
 
-    /** Whether anything is bound at all. */
     val bound: Boolean get() = code != GLFW.GLFW_KEY_UNKNOWN
 
-    /** Whether this chord is a mouse button rather than a key. */
     val isMouse: Boolean get() = code >= MOUSE_BASE
 
-    /**
-     * Human-readable form - `Ctrl+Shift+S`, `Mouse 4`, `Unbound`.
-     *
-     * Modifiers are listed in the conventional Ctrl, Shift, Alt order rather than the order they were
-     * pressed, so the same chord always prints the same way.
-     */
     val display: String get() {
         if (!bound) return "Unbound"
         val parts = ArrayList<String>(4)
@@ -46,7 +34,6 @@ data class BrassKeyChord(
         return parts.joinToString("+")
     }
 
-    /** The main input's name, without modifiers. */
     val baseName: String get() = when {
         !bound -> "Unbound"
         isMouse -> when (val button = code - MOUSE_BASE) {
@@ -65,20 +52,16 @@ data class BrassKeyChord(
 
     /**
      * Whether this chord is only a modifier - `Ctrl` with nothing else.
-     *
      * A capture widget must reject these: pressing Ctrl on the way to Ctrl+S would otherwise bind
      * Ctrl and stop listening before the S arrived.
      */
     val isModifierOnly: Boolean get() = code in MODIFIER_KEYS
 
     companion object {
-        /** Mouse buttons occupy codes from here up, so keys and buttons share one space. */
         const val MOUSE_BASE = 1_000
 
-        /** The unbound chord. */
         val NONE = BrassKeyChord()
 
-        /** A chord for mouse [button] (0 = left), with the given modifiers. */
         fun mouse(button: Int, ctrl: Boolean = false, shift: Boolean = false, alt: Boolean = false) =
             BrassKeyChord(MOUSE_BASE + button, ctrl, shift, alt)
 
@@ -89,12 +72,6 @@ data class BrassKeyChord(
             GLFW.GLFW_KEY_LEFT_SUPER, GLFW.GLFW_KEY_RIGHT_SUPER,
         )
 
-        /**
-         * Names for the keys `glfwGetKeyName` cannot name.
-         *
-         * That function only answers for keys that produce a character, and returns null for every
-         * function key, arrow, and editing key - which is most of what anyone actually binds.
-         */
         private val NAMES: Map<Int, String> = buildMap {
             put(GLFW.GLFW_KEY_SPACE, "Space")
             put(GLFW.GLFW_KEY_ENTER, "Enter")

@@ -33,17 +33,11 @@ import kotlin.math.sqrt
  * The NeoForge implementation of [BrassPlatform] — everything `brassui` needs from Minecraft, kept on
  * this side of the seam so the toolkit itself stays free of game imports and can be reused under
  * another loader by writing another one of these.
- *
  * Bound once during client setup by [BrassUiClientCommands].
  */
 object NeoForgePlatform : BrassPlatform {
 
-    // ---- cursors ---------------------------------------------------------------------------------
 
-    /**
-     * GLFW standard cursors, created lazily and kept for the process lifetime. Creating one per
-     * change would leak a handle per frame; GLFW expects them to be long-lived.
-     */
     private val cursors = HashMap<BrassCursor.Kind, Long>()
 
     private fun handleFor(kind: BrassCursor.Kind): Long = cursors.getOrPut(kind) {
@@ -69,9 +63,7 @@ object NeoForgePlatform : BrassPlatform {
         GLFW.glfwSetCursor(window.window, handleFor(kind))
     }
 
-    // ---- items -----------------------------------------------------------------------------------
 
-    /** Parsed stacks, cached by id — parsing a ResourceLocation per frame per slot would be silly. */
     private val stacks = HashMap<String, ItemStack>()
 
     private fun stackFor(itemId: String): ItemStack = stacks.getOrPut(itemId) {
@@ -85,7 +77,6 @@ object NeoForgePlatform : BrassPlatform {
         return if (stack.isEmpty) null else stack.hoverName.string
     }
 
-    /** The item's Minecraft tooltip (display name + lore) as coloured lines for a brassui tooltip. */
     override fun itemTooltip(itemId: String): List<Pair<String, Color>>? {
         val stack = stackFor(itemId)
         if (stack.isEmpty) return null
@@ -94,18 +85,16 @@ object NeoForgePlatform : BrassPlatform {
         val context = Item.TooltipContext.of(level)
         val flag = TooltipFlag.Default(mc.options.advancedItemTooltips, mc.player?.isCreative == true)
         return stack.getTooltipLines(context, mc.player, flag).map { line ->
-            val value = line.style?.color?.value
+            val value = line.style.color?.value
             line.getString() to (if (value != null) Color(value, true) else Color(0xAAAAAA))
         }
     }
 
-    /** The item's own limit — 16 for pearls, 1 for a sword — not a blanket 64. */
     override fun maxStackSize(itemId: String): Int {
         val stack = stackFor(itemId)
         return if (stack.isEmpty) 64 else stack.maxStackSize
     }
 
-    // ---- entities --------------------------------------------------------------------------------
 
     /**
      * Entities are expensive to construct and must not be rebuilt per frame, so each id is created
@@ -113,11 +102,6 @@ object NeoForgePlatform : BrassPlatform {
      */
     private val entities = HashMap<String, LivingEntity?>()
 
-    /**
-     * Only living entities can be drawn: vanilla's inventory renderer takes a LivingEntity, since it
-     * is what carries the pose and limb state the preview animates. Items, boats and the like return
-     * null and the widget falls back to its empty mark.
-     */
     private fun entityFor(entityId: String): LivingEntity? = entities.getOrPut(entityId) {
         val level = Minecraft.getInstance().level ?: return@getOrPut null
         val location = ResourceLocation.tryParse(entityId) ?: return@getOrPut null
@@ -130,25 +114,10 @@ object NeoForgePlatform : BrassPlatform {
         return BuiltInRegistries.ENTITY_TYPE.getOptional(location).orElse(null)?.description?.string
     }
 
-    /**
-     * End the current render batch, which is what actually puts queued glyphs on the screen.
-     *
-     * Vanilla's font renderer writes into the shared buffer source and only draws when the batch ends,
-     * so without this a label queued early in the frame lands *after* the tooltip quads drawn later
-     * and its shadow appears on top of the card.
-     */
     override fun flushText() {
         Minecraft.getInstance().renderBuffers().bufferSource().endBatch()
     }
 
-    /**
-     * Draw an entity with the inventory's lighting.
-     *
-     * This delegates to `InventoryScreen.renderEntityInInventory`, which is what the player preview
-     * in the inventory uses — reimplementing it would mean reproducing its light setup, and entities
-     * lit by hand come out flat and grey. The entity is scaled so its bounding box fits the widget,
-     * rather than at a fixed scale, so a bee and a ravager both fill their slot sensibly.
-     */
     override fun drawEntity(
         matrixStack: UMatrixStack,
         entityId: String,
@@ -210,7 +179,6 @@ object NeoForgePlatform : BrassPlatform {
             // collision box (a horse's head, an allay's wings) still spills over the card's edge and
             // paints across whatever is beside it. A scissor is the only hard bound, since the model is
             // drawn by the game's renderer and knows nothing about our layout.
-            //
             // Done by hand against raw GL rather than through GuiGraphics.enableScissor/disableScissor.
             // That pair is stack-based, and this GuiGraphics is created fresh per call, so its stack is
             // empty — `disableScissor` therefore did not restore the caller's clip, it turned
@@ -251,14 +219,6 @@ object NeoForgePlatform : BrassPlatform {
         }
     }
 
-    /**
-     * Draw an item at an arbitrary size in UI space.
-     *
-     * Minecraft's item renderer only draws at a fixed 16x16 at integer coordinates, so this scales
-     * the matrix around the target position instead: translate to where the slot is, scale by
-     * `size / 16`, then render at the origin. That is what lets an item slot participate in the
-     * toolkit's normal constraint-driven sizing rather than being locked to 16 px.
-     */
     override fun drawItem(
         matrixStack: UMatrixStack,
         itemId: String,
@@ -313,19 +273,7 @@ object NeoForgePlatform : BrassPlatform {
         }
     }
 
-    // ---- player heads ----------------------------------------------------------------------------
 
-    /**
-     * Draw a player's face: the 8x8 head front from their skin, with the hat overlay on top.
-     *
-     * The skin comes from the client's own skin cache, which resolves asynchronously — the first few
-     * frames after a name appears will draw Steve, then swap. That is vanilla's behaviour in the tab
-     * list too, so it looks normal rather than like a load failure.
-     *
-     * The two blits are the standard face rectangles: the head front lives at (8,8) in a 64x64 skin
-     * and the hat layer at (40,8). Drawing the hat *after* means an overlay with transparency composes
-     * over the face rather than punching a hole in it.
-     */
     override fun drawPlayerFace(
         matrixStack: UMatrixStack,
         player: String,
@@ -343,14 +291,6 @@ object NeoForgePlatform : BrassPlatform {
         }
     }
 
-    /**
-     * The skin texture for a name or UUID, via the client's player list.
-     *
-     * Only players the client already knows about — the tab list, in practice. Fetching an arbitrary
-     * name would mean a Mojang API round trip, which is a networking decision the toolkit has no
-     * business making on a caller's behalf; a mod that wants that can resolve it and pass the result
-     * to `drawNative` itself.
-     */
     private fun skinFor(player: String): ResourceLocation? {
         val connection = Minecraft.getInstance().connection ?: return null
         val info = runCatching { UUID.fromString(player) }.getOrNull()
@@ -359,9 +299,7 @@ object NeoForgePlatform : BrassPlatform {
         return info?.skin?.texture
     }
 
-    // ---- block models ----------------------------------------------------------------------------
 
-    /** Default block states, cached by id — a registry lookup per frame per preview would be silly. */
     private val blocks = HashMap<String, Block?>()
 
     private fun blockFor(blockId: String): Block? = blocks.getOrPut(blockId) {
@@ -371,15 +309,6 @@ object NeoForgePlatform : BrassPlatform {
 
     override fun blockName(blockId: String): String? = blockFor(blockId)?.name?.string
 
-    /**
-     * Draw a block as a real 3D model, rather than the flat GUI sprite its item form would give.
-     *
-     * The model is rendered through `BlockRenderDispatcher.renderSingleBlock`, which draws in *block*
-     * space: a unit cube from (0,0,0) to (1,1,1) with +Y up. Getting it onto the screen is four
-     * transforms in order — move to the middle of the target box, scale a unit up to the box, flip Y
-     * because the UI's axis points down while the world's points up, then rotate about the centre of
-     * the cube, which is why the model is translated by -0.5 on each axis last.
-     */
     override fun drawBlockModel(
         matrixStack: UMatrixStack,
         blockId: String,
@@ -414,6 +343,7 @@ object NeoForgePlatform : BrassPlatform {
             pose.translate(-0.5, -0.5, -0.5)
 
             val buffers = mc.renderBuffers().bufferSource()
+            @Suppress("DEPRECATION")
             mc.blockRenderer.renderSingleBlock(
                 block.defaultBlockState(),
                 pose,
@@ -426,7 +356,6 @@ object NeoForgePlatform : BrassPlatform {
         }
     }
 
-    // ---- status effects --------------------------------------------------------------------------
 
     private val effects = HashMap<String, Holder<MobEffect>?>()
 
@@ -438,13 +367,6 @@ object NeoForgePlatform : BrassPlatform {
     override fun effectName(effectId: String): String? =
         effectFor(effectId)?.value()?.displayName?.string
 
-    /**
-     * Draw a status effect's sprite, scaled from vanilla's fixed 18x18 to whatever size was asked for.
-     *
-     * The sprite comes from the mob-effect texture atlas via `MobEffectTextureManager`, which is the
-     * same source the inventory's effect list uses — so a modded effect with a registered icon draws
-     * correctly here with no extra work.
-     */
     override fun drawEffectIcon(
         matrixStack: UMatrixStack,
         effectId: String,
@@ -462,13 +384,11 @@ object NeoForgePlatform : BrassPlatform {
         }
     }
 
-    // ---- arbitrary vanilla drawing ---------------------------------------------------------------
 
     /**
      * Run an arbitrary `GuiGraphics` draw inside a UI-space box, with the same plumbing [drawItem] and
      * [drawEntity] each hand-roll: adopt Elementa's matrix, translate to the box, clip, fade, and
      * clean up after 3D content.
-     *
      * The pose is translated to the box's top-left before the callback runs, so callers draw at
      * `(0, 0)` and never have to know where their widget ended up on screen — which is the difference
      * between a snippet that works in a scroll view inside a dragged window and one that only works at
@@ -520,26 +440,7 @@ object NeoForgePlatform : BrassPlatform {
         }
     }
 
-    // ---- fading vanilla-rendered content ---------------------------------------------------------
 
-    /**
-     * Fade an item or entity toward the surface behind it, for a closing frame.
-     *
-     * **This darkens rather than dissolves, on purpose.** The obvious approach — `setShaderColor` with
-     * a falling *alpha* — does not work here: vanilla picks a `RenderType` per model, and the solid and
-     * cutout types that most items and entities use configure their own GL state when the batch is
-     * flushed, with blending **off**. Our alpha is written and then ignored, which is why an item slot
-     * sat there at full strength while the window around it faded and then blinked out.
-     *
-     * The `ColorModulator` uniform's *RGB* is honoured whatever the blend state, so multiplying the
-     * colour down to black is a fade that cannot be discarded. It works because every surface in this
-     * toolkit is near-black ([net.swzo.brass.ui.Colors.UI_INNER_BG] is `0x141414`), so "fade to black"
-     * and "fade to the card" are the same picture. On a light theme it would read as a fade to a
-     * silhouette instead, and would need reworking.
-     *
-     * The alpha component is still passed, since a translucent render type (enchanted items, glass)
-     * does blend and will use it.
-     */
     private fun applyFade(alpha: Float) {
         if (alpha >= 0.999f) return
         val a = alpha.coerceIn(0f, 1f)
@@ -554,23 +455,12 @@ object NeoForgePlatform : BrassPlatform {
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f)
     }
 
-    // ---- scissor save / restore ------------------------------------------------------------------
-    //
     // GuiGraphics owns a scissor *stack* and assumes it is the only thing touching GL_SCISSOR_TEST.
     // Elementa sets the scissor directly for its ScissorEffect, so the two cannot be mixed: popping
     // GuiGraphics' empty stack disables scissoring outright and silently drops Elementa's clip. These
     // two functions read the live GL state, intersect our box with whatever was already there, and put
     // the original back exactly as it was.
 
-    /**
-     * GL scissor boxes in effect before each [pushScissor], innermost last, with `null` marking "the
-     * test was off entirely".
-     *
-     * A *stack* rather than one saved box because these nest: a [drawNative] callback is free to draw
-     * an entity, which pushes a scissor of its own. With a single slot the inner push overwrites the
-     * outer save and the outer pop then restores the inner clip, leaving everything drawn afterwards
-     * cropped to a box that no longer exists.
-     */
     private val scissorStack = ArrayDeque<IntArray?>()
 
     /**
@@ -603,7 +493,6 @@ object NeoForgePlatform : BrassPlatform {
         RenderSystem.enableScissor(sx, sy, (sx2 - sx).coerceAtLeast(0), (sy2 - sy).coerceAtLeast(0))
     }
 
-    /** Restore whatever clip was in force before the matching [pushScissor]. */
     private fun popScissor() {
         // `removeLastOrNull` cannot be used here: a null entry is a *meaningful* value ("the test was
         // off"), indistinguishable from its empty-stack signal.

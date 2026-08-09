@@ -14,19 +14,15 @@ import net.swzo.brass.ui.kit.surface.BrassWindow
  * Makes a frame resizable by dragging its edges and corners, as eight invisible grips laid over the
  * border band. Used by both [BrassWindow] and [BrassPopup] - the drag maths is fiddly enough that having two
  * copies of it would guarantee two different sets of bugs.
- *
  * ```kotlin
  * BrassResize.attach(this, minW = 220f, minH = 140f)
  * ```
- *
  * ### Why absolute coordinates
- *
  * Elementa reports drag coordinates *relative to the component being dragged* - but a resize grip
  * moves as the frame resizes, so a naive `relativeX` delta feeds its own movement back in and the
  * frame accelerates away from the cursor. Every grip therefore converts straight back to absolute
  * (`grip.getLeft() + mx`) and works from the bounds captured at mouse-down, which is stable no matter
  * how far the grip has travelled since.
- *
  * Drags are also gated on a press that landed on the grip itself, because Elementa broadcasts drag
  * events to the entire tree (the same gate [BrassSlider] and [BrassPopup] need).
  */
@@ -37,7 +33,6 @@ class BrassResize private constructor(
     private val onResize: (() -> Unit)?,
 ) {
 
-    /** One edge or corner. The four booleans say which sides this grip moves. */
     private inner class Grip(
         val left: Boolean,
         val right: Boolean,
@@ -81,7 +76,6 @@ class BrassResize private constructor(
             super.draw(matrixStack)
         }
 
-        /** Ask for the cursor that matches what this grip does, while hovered or dragging. */
         private fun tickCursor() {
             if (!hovering && !active) return
             BrassCursor.request(
@@ -175,21 +169,12 @@ class BrassResize private constructor(
     }
 
     companion object {
-        /** Width of the draggable band along each edge. */
         const val BAND = 4f
-        /** Size of the corner grips, which take priority over the edges. */
         const val CORNER = 10f
-        /** Margin kept between a frame and its parent's edge. */
         const val EDGE = BrassMetrics.FRAME_EDGE
-        /** Distance at which an edge latches onto the parent's margin. */
         const val SNAP = 6f
-        /** How far outside the frame a grip still responds. */
         const val OUTREACH = 3f
 
-        /**
-         * Lay resize grips over [target]'s border. [onResize] fires after each change, for frames that
-         * need to react (clearing a "maximized" flag, say).
-         */
         fun attach(
             target: UIComponent,
             minW: Float = 160f,

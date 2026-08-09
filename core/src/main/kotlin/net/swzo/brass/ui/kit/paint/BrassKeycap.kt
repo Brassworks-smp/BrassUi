@@ -8,36 +8,19 @@ import java.awt.Color
  * The toolkit's raised **keycap** chrome, in one place: a flat fill, a 1-px inner border on all four
  * sides, a 1-px outer ring just outside it, and a 2–4-px bottom edge (a soft shadow plus a coloured or
  * dark lip) so the control reads as a physical pixel button sitting above the surface.
- *
  * ### Why this is extracted
- *
  * This is the exact fill/border/ring/lip stack that used to live privately inside
  * [net.swzo.brass.ui.kit.base.BrassWidget.drawContent] and *define* the toolkit's look. Pulling it out
  * lets a composite that paints its own keycap-shaped regions - the node editor's node headers, its port
  * nubs and its inline controls - draw the **identical** keycap rather than re-deriving a lookalike that
  * would drift. [net.swzo.brass.ui.kit.base.BrassWidget] now calls straight through here, so there is one
  * definition of a keycap and everything wears it.
- *
  * All bounds are floats and every offset is in the same units as the bounds, so a caller drawing under a
  * scaled matrix (the node canvas at some zoom) gets a keycap whose ring and lip scale at the same rate as
  * its body - which is the whole point of drawing it through the matrix rather than at fixed pixel sizes.
  */
 object BrassKeycap {
 
-    /**
-     * Paint a keycap filling `[x,y] .. [x+w, y+h]`.
-     *
-     * @param bg fill colour (skipped when [transparent]).
-     * @param border the 1-px inner border on all four sides.
-     * @param outer the near-black outer ring and lip base.
-     * @param bottom the coloured bottom lip, used only for a non-[defaultAccent] keycap.
-     * @param flat drop the outer ring and the bottom lip - a control that sits *in* the surface.
-     * @param defaultAccent neutral keycap (dark lip) vs a coloured accent keycap (coloured lip).
-     * @param lip pixels the bottom lip has lost to a press, so a pressed key looks compressed.
-     * @param shadow draw the soft translucent drop shadow the lip casts onto whatever is behind it.
-     *        Off keeps the raised 3D lip and ring but removes that back shadow - for a keycap sitting on
-     *        a busy surface (a node header) where the cast shadow reads as grime rather than depth.
-     */
     fun draw(
         m: UMatrixStack,
         x: Float, y: Float, w: Float, h: Float,

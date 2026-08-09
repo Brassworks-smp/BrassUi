@@ -27,7 +27,6 @@ object BrassNetDemoSection {
     fun open(root: UIComponent, bounds: FloatArray) {
         val unsubs = ArrayList<() -> Unit>()
 
-        // ---- server-pushed state, bound straight to labels --------------------------------------
         val stateName = BrassNet.state("brassui.demo.team.name", String::class.java)
         val stateActor = BrassNet.state("brassui.demo.team.actor", String::class.java)
         val stateOnline = BrassNet.state("brassui.demo.team.online", Boolean::class.java)
@@ -79,7 +78,6 @@ object BrassNetDemoSection {
         spamLabel.constrain { x = 0.pixels(); y = 56.pixels() } childOf status
         liveLabel.constrain { x = 0.pixels(); y = 70.pixels() } childOf status
 
-        // ---- action buttons ---------------------------------------------------------------------
         val field = BrassTextInput(initial = "Brassworks", placeholder = "Team name")
         field.constrain { width = 150.pixels(); height = 20.pixels() }
         val rename = actionButton("Rename", BrassNetDemoActions.renameTeam) {
@@ -109,14 +107,12 @@ object BrassNetDemoSection {
         }
         val whisperRow = BrassHBox(gap = 8f).add(whisperField, whisper)
 
-        // ---- audit hook -------------------------------------------------------------------------
         BrassNet.onActionExecuted = { actionId, _, result, durationMs ->
             BrassNet.onUiThread {
                 auditLabel.text = "last action: $actionId → ${if (result.ok) "ok" else result.message} (${durationMs}ms)"
             }
         }
 
-        // ---- how it works -----------------------------------------------------------------------
         val code = BrassCodeView(SNIPPET, language = "kotlin")
         code.constrain { height = 100.pixels() }
 

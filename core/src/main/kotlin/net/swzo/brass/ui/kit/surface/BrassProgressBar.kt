@@ -19,32 +19,25 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
 /**
  * A **determinate** progress bar: a recessed track with a brass fill, an optional caption on the left
  * and a percentage on the right.
- *
  * Distinct from [BrassLoading], which is the *indeterminate* animation for "something is happening, no
  * idea how long". Use this one whenever real progress is known - a download, a world transfer, a
  * shard migration - since a bar that reflects actual progress is far more informative than a sweep.
- *
  * [progress] is clamped to 0..1 and eased toward, so setting it in jumps still animates smoothly
  * rather than snapping.
  */
 class BrassProgressBar(
-    /** Caption drawn on the left, inside the bar. Empty for a bare bar. */
     var label: String = "",
-    /** Show the percentage on the right. */
     private val showPercent: Boolean = true,
 ) : BrassWidget(BrassAccent.DEFAULT) {
 
-    /** Target progress, 0..1. */
     var progress: Float = 0f
         set(value) { field = value.coerceIn(0f, 1f) }
 
-    /** Turns the fill red - for a failed operation. */
     var failed: Boolean = false
 
     /**
      * Follow [state]: the bar's [progress] tracks it for as long as both live, so the work reporting
      * progress never has to hold a reference to the widget showing it.
-     *
      * Returns this bar, so it can be bound and parented in one expression.
      */
     fun bind(state: BrassState<Float>): BrassProgressBar {
@@ -57,7 +50,6 @@ class BrassProgressBar(
         return this
     }
 
-    /** Eased display value, so a programmatic jump animates rather than snapping. */
     private val shownValue = BrassEased(0f, speed = FILL_SPEED)
 
     init {
@@ -99,36 +91,10 @@ class BrassProgressBar(
 
     companion object : BrassDemoSource {
 
-        /**
-         * A bar filling, rather than a bar parked at some fraction.
-         *
-         * A still would be a picture of 62%, which tells a reader what a progress bar is and nothing
-         * about this one. Driving [progress] across the scene shows the fill easing rather than
-         * jumping, which is the actual behaviour.
-         */
         override fun demo() = BrassDemo("progress-bar", "Progress bar", 200f, 14f) {
             SelfDriving(BrassProgressBar("Downloading"))
         }
 
-        /**
-         * A progress bar that fills itself, on a loop.
-         *
-         * ### Why this one demo drives itself
-         *
-         * Demos are otherwise hand-driven — you work the widget with the mouse and record what you did.
-         * A progress bar has nothing to work: it has no interaction at all, its state comes from
-         * whatever job it is reporting on, and a demo of it sitting at some fixed fraction is a picture
-         * of a coloured rectangle. So this is the case where scripting the state is not a shortcut, it
-         * is the only way to show the widget doing its job.
-         *
-         * ### Why the steps are uneven
-         *
-         * Because that is the behaviour worth showing. [progress] is *eased toward*, so a caller
-         * setting it in jumps — which is what a real job does, reporting 0.4 then 0.7 then done — still
-         * animates smoothly instead of snapping between fractions. A demo that crept up at a constant
-         * rate would hide the one thing this widget does that a plain filled rect does not. The
-         * keyframes are a download's shape on purpose: quick at first, a stall, then a rush to finish.
-         */
         private class SelfDriving(private val bar: BrassProgressBar) : UIContainer() {
 
             private var elapsed = 0f
@@ -147,7 +113,6 @@ class BrassProgressBar(
                 super.draw(matrixStack)
             }
 
-            /** The keyframe in force at [t] seconds. Held, not interpolated — the easing does that. */
             private fun at(t: Float): Float {
                 var value = 0f
                 for ((time, p) in KEYFRAMES) {
@@ -158,10 +123,6 @@ class BrassProgressBar(
             }
 
             private companion object {
-                /**
-                 * `time to progress`. A held step, because the bar eases between them itself — writing
-                 * a smooth ramp here would be doing the widget's own job for it and would hide it.
-                 */
                 val KEYFRAMES = listOf(
                     0.0f to 0.00f,
                     0.3f to 0.18f,
@@ -173,23 +134,13 @@ class BrassProgressBar(
                     3.5f to 1.00f,
                 )
 
-                /**
-                 * One full loop, including the beat at the end.
-                 *
-                 * The reset back to zero is eased like any other change, so the bar visibly drains
-                 * rather than cutting — which is the honest way for a loop to restart, and reads as the
-                 * demo starting over rather than as the bar glitching.
-                 */
                 const val CYCLE = 5.0f
             }
         }
 
-        // ---- widget internals ------------------------------------------------------
-        //
         // Private individually rather than on the companion, which has to be public now that
         // it carries the demo. Same visibility as before for everything below.
 
-        /** How fast the fill catches up with a changed [progress]. */
         private const val FILL_SPEED = 9f
         private val FAIL: Color get() = Colors.PROGRESS_FAIL
         private val FAIL_LIT: Color get() = Colors.PROGRESS_FAIL_LIT

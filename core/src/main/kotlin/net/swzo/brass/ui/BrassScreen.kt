@@ -21,65 +21,32 @@ import net.swzo.brass.ui.kit.surface.BrassToast
 import net.swzo.brass.ui.kit.surface.BrassTooltip
 import net.swzo.brass.ui.kit.text.BrassLabel
 import net.swzo.brass.ui.kit.text.BrassTextField
-import net.swzo.brass.ui.kit.text.BrassTextInput
 import org.lwjgl.glfw.GLFW
 import java.awt.Color
 import java.awt.image.BufferedImage
 import kotlin.math.roundToInt
 
 /**
- * Base Elementa screen for BrassSync UIs - a full-bleed [backdropColor] backdrop (the launcher's
- * `ink-900` by default) already laid into the window, so subclasses just add their content to
- * [background] (or straight to [window]). Uses the newest Elementa behaviour version so rendering
- * matches modern MC.
- *
- * Pass a **translucent** [backdropColor] (or a fully transparent one) for a screen that should sit over
- * the running game like an inventory - the world is always rendered behind the screen, so all this
- * takes is not painting an opaque fill over it. Elementa's own default background is turned off here so
- * that dim is entirely the backdrop's, never doubled.
+ * Base Elementa screen with a full-bleed [backdropColor] already laid into the window; subclasses
+ * add their content to [background]. A translucent backdrop lets the running game show through.
  */
 open class BrassScreen(
-    /**
-     * The app fill. Null - the default - tracks [Colors.UI_BACKGROUND], so the backdrop follows a theme
-     * change instead of keeping whatever the background was when the screen was constructed. Pass a
-     * colour to pin one (a translucent value for a screen that sits over the game).
-     */
     private val backdropColor: Color? = null,
 ) : WindowScreen(ElementaVersion.V8, drawDefaultBackground = false) {
 
-    /**
-     * The app fill, always the full screen. Nothing is added to this directly.
-     *
-     * It is a **separate component from [background]** because the dev inspector shrinks the content
-     * to make room for its panel - and when the fill and the content were the same component, that
-     * shrink left the strip beside the panel unpainted and the game showed through it.
-     */
     private val backdrop: UIBlock = UIBlock(basicColorConstraint { backdropColor ?: Colors.UI_BACKGROUND }).constrain {
         width = 100.percent()
         height = 100.percent()
     } childOf window
 
-    /**
-     * The content area; add screen content as children of this.
-     *
-     * A plain container laid over [backdrop], so it can be narrowed (by the dev inspector) without
-     * taking the app's own background with it.
-     */
     val background: UIContainer = UIContainer().constrain {
         width = 100.percent()
         height = 100.percent()
     } childOf backdrop
 
-    // ---- showcase capture -------------------------------------------------------------------------
 
-    /** Set by [captureShowcase], acted on at the end of the next frame's draw. See [captureShowcase]. */
     private var showcaseArmed = false
 
-    /**
-     * Escape peels off one floating layer at a time: the topmost open [BrassDismissable] (a popup
-     * sub-window or a context menu) is closed first, and the screen itself only closes once none are
-     * left. Without this, Escape tore the whole UI down from under an open dialog.
-     */
     override fun onKeyPressed(keyCode: Int, typedChar: Char, modifiers: UKeyboard.Modifiers?) {
         // Ctrl+Shift+D toggles the layout inspector (see BrassDevMode)
         if (keyCode == GLFW.GLFW_KEY_D && modifiers?.isCtrl == true && modifiers.isShift) {
@@ -106,7 +73,6 @@ open class BrassScreen(
             }
         }
 
-        // ---- transient layers get first refusal --------------------------------------------
         // Before navigation, before Escape, before the focused field. A command palette's up/down and
         // Enter belong to its result list, not to the query box they are typed into - and the block
         // below is skipped entirely while a field has focus, so there is no later point at which such
@@ -114,7 +80,6 @@ open class BrassScreen(
         val keyLayer = deepChildren(window, BrassKeyLayer::class.java).lastOrNull()
         if (keyLayer != null && keyLayer.onLayerKey(keyCode, modifiers)) return
 
-        // ---- keyboard navigation ----------------------------------------------------------
         // Skipped entirely while a text field is focused: Tab and Enter belong to the field, and
         // Space is a character.
         val typingNow = findFocusedInput(window)
@@ -176,18 +141,12 @@ open class BrassScreen(
         super.onKeyPressed(keyCode, typedChar, modifiers)
     }
 
-    /**
-     * The frame the window shortcuts apply to: the topmost floating popup if one is open, otherwise
-     * the screen's own window. Matches what Escape does, and what the user would point at as "the
-     * window in front".
-     */
     private fun topmostFrame(): BrassFrame? =
         deepChildren(window, BrassFrame::class.java).lastOrNull()
 
     /**
      * Every descendant of [root] of type [type], in draw order - so the **last** entry is whatever
      * is visually on top.
-     *
      * Deliberately a deep walk rather than a scan of `background.children`. A floating layer is not
      * necessarily a direct child of the content area: a [net.swzo.brass.ui.kit.surface.BrassContextMenu]
      * parents itself to whatever its opener resolves as the root, which walks all the way up to the
@@ -198,13 +157,6 @@ open class BrassScreen(
     private fun <T : Any> deepChildren(root: UIComponent, type: Class<T>): List<T> =
         BrassTree.descendantsOfType(root, type)
 
-    /**
-     * Tear the screen down: dispose every binding registered anywhere under it, and clear the
-     * floating layers that outlive a component tree.
-     *
-     * The polling sweep in [BrassLifecycle] cannot catch this one moment - the whole tree goes at
-     * once and nothing draws again to notice - so a closing screen has to say so.
-     */
     override fun onScreenClose() {
         super.onScreenClose()
         BrassLifecycle.disposeTree(window)
@@ -217,16 +169,6 @@ open class BrassScreen(
         BrassUiSession.reset()
     }
 
-    /**
-     * Depth-first search for a text field currently holding focus, anywhere in the tree.
-     *
-     * Matches on [BrassTextField], not on a concrete class. It used to name [BrassTextInput] directly,
-     * which quietly excluded [net.swzo.brass.ui.kit.text.BrassTextArea] from every check below: a
-     * focused text area had Enter taken as "activate the focused control" and Space with it, so the
-     * one thing a multi-line field exists to do — start a new line — did nothing at all, and the
-     * space bar typed nothing. The bug was here rather than in the widget, which is why it survived
-     * a reading of the widget.
-     */
     private fun findFocusedInput(root: UIComponent): BrassTextField? {
         if (root is BrassTextField && root.focused) return root
         for (child in root.children) {
@@ -235,11 +177,6 @@ open class BrassScreen(
         return null
     }
 
-    /**
-     * Draw the screen, then the dev-mode readout on top of it. Widgets record themselves into
-     * [BrassDevMode] as they paint; this puts the badge and the hover annotation above the finished
-     * frame so nothing can cover them.
-     */
     override fun onDrawScreen(matrixStack: UMatrixStack, mouseX: Int, mouseY: Int, partialTicks: Float) {
         // Counters reset before anything draws, so the numbers the overlay reports describe this
         // frame. Collection stays on with dev mode off - it is a few integer increments, and stats
@@ -281,20 +218,13 @@ open class BrassScreen(
         BrassCursor.apply()
     }
 
-    // ---- showcase capture -------------------------------------------------------------------------
 
-    /**
-     * The file stem a showcase capture writes to. Defaults to `showcase`; a screen worth naming (the
-     * gallery, a specific config screen) can override it so its shot lands under a recognisable name.
-     */
     protected open val showcaseName: String get() = "showcase"
 
     /**
      * Photograph the whole screen for a showcase page: **just the UI, isolated onto transparency**, the
      * game world (or anything else behind it) dropped rather than baked in.
-     *
      * ### How a transparent cut-out comes off an opaque framebuffer
-     *
      * The framebuffer has no usable alpha once the GUI has drawn — a widget's pixels and the world
      * showing through beside them are the same opaque colour, so a single read cannot tell them apart.
      * The way out is to photograph the UI **twice over known backgrounds** and solve for the coverage
@@ -302,15 +232,12 @@ open class BrassScreen(
      * for every pixel the gap between the two readings is exactly how much background still showed
      * through — i.e. `1 − alpha`. That recovers a true per-pixel alpha, so anti-aliased corners and the
      * window's own soft shadow come out as real partial transparency rather than a hard, fringed key.
-     *
      * Both repaints happen **inside one frame**, right here in [captureShowcaseNow], so the UI is in the
      * identical state for both — a live progress bar or chart cannot move between the two reads and
      * smear the matte. And because each read is off the real framebuffer (see [BrassDemoCapture]), every
      * scissor clip is already resolved: scrolled and clipped widgets isolate correctly, which an
      * offscreen re-render could not manage.
-     *
      * ### Why it arms rather than grabs
-     *
      * The controlled backgrounds are not on screen when this is called — a key press runs before the
      * frame draws. So this only *arms*; [onDrawScreen] does the two repaints and reads at the end of the
      * pass and reports where the file landed. With no [BrassDemoCapture] bound there is nothing to write
@@ -324,13 +251,6 @@ open class BrassScreen(
         showcaseArmed = true
     }
 
-    /**
-     * Repaint the content twice over black then white, read each back, and write the isolated cut-out.
-     *
-     * Runs at the tail of [onDrawScreen], so the normal pass has already drawn once; these two extra
-     * passes overpaint the content region and are what the [grab]s read. The last of them leaves the UI
-     * sitting on white for the one frame that remains visible — a blink, not worth restoring.
-     */
     private fun captureShowcaseNow(m: UMatrixStack) {
         val host = BrassDemoCapture.current ?: return
         val b = contentBounds() ?: run {
@@ -368,11 +288,6 @@ open class BrassScreen(
         )
     }
 
-    /**
-     * Fill `[x1,y1]..[x2,y2]` with [backdrop], then draw every content child on top of it, so the region
-     * holds the UI composited over exactly that colour. Returns a non-null marker on success so the
-     * caller can chain the grab, or null if there was nothing to draw.
-     */
     private fun paintBackdropAndContent(
         m: UMatrixStack,
         x1: Float, y1: Float, x2: Float, y2: Float,
@@ -386,11 +301,6 @@ open class BrassScreen(
         return Unit
     }
 
-    /**
-     * The bounding box of the real content — every child of [background], skipping any that has
-     * collapsed to nothing. Null when there is nothing to frame, so an empty screen reports that rather
-     * than capturing a stray pixel. In GUI units: x1, y1, x2, y2.
-     */
     private fun contentBounds(): FloatArray? {
         var x1 = Float.MAX_VALUE
         var y1 = Float.MAX_VALUE
@@ -411,7 +321,6 @@ open class BrassScreen(
     /**
      * Solve two opaque readings of the same UI — one over black, one over white — for a straight-alpha
      * cut-out.
-     *
      * For a pixel that ends up covering the UI with coverage `a`, the reading over a background `k` is
      * `a·fg + (1 − a)·k`. Subtracting the black reading (`k = 0`) from the white one (`k = 255`) leaves
      * `(1 − a)·255`, independent of the UI colour — so `a` falls straight out of the gap between them,
@@ -446,7 +355,6 @@ open class BrassScreen(
     }
 
     private companion object {
-        /** Slack left past the content on every side, so the shadow and anti-aliased edges are captured. */
         const val EDGE_PAD = 10f
     }
 }

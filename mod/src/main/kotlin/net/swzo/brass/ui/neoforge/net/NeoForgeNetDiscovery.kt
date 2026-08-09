@@ -13,7 +13,6 @@ import java.lang.annotation.ElementType
  */
 object NeoForgeNetDiscovery {
 
-    /** Load every discovered action set; returns how many were found and initialised. */
     fun discoverAndLoad(): Int {
         val classNames = ModList.get().allScanData
             .flatMap { it.getAnnotatedBy(BrassActionSet::class.java, ElementType.TYPE).toList() }

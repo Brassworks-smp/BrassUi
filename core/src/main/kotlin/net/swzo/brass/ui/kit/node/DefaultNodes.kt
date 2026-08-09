@@ -5,11 +5,9 @@ import net.swzo.brass.ui.kit.base.BrassAccent
 
 /**
  * A ready-made palette of node types - the ones the demo shows and a sensible starting set for an app.
- *
  * Kept as its own GL-free object (no editor, no window, no input classes) so the node model can be built
  * and its save/load exercised with nothing but the toolkit's data classes - which is what lets the
  * serialization be unit-tested off-game.
- *
  * An app builds its own [NodeRegistry] the same way: `NodeRegistry().register(NodeType(...))`, with its
  * own [NodeField]s (including custom subclasses).
  */
