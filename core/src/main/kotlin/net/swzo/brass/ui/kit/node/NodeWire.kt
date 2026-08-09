@@ -2,6 +2,7 @@ package net.swzo.brass.ui.kit.node
 
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
+import net.swzo.brass.ui.kit.base.BrassAmbientFade
 import net.swzo.brass.ui.kit.paint.BrassPaint
 import java.awt.Color
 import kotlin.math.abs
@@ -38,6 +39,11 @@ object NodeWire {
 
     private const val SPACING = 1f
     private const val CORE = 2f
+    /** Full stamp cells blend in across this zoom band; below it the cheaper polyline carries. */
+    private const val WIRE_LOD_MIN = 0.42f
+    private const val WIRE_LOD_MAX = 0.55f
+    /** One polyline segment per this many screen pixels at overview zoom. */
+    private const val SEGMENT_PX = 4f
     private const val DASH_ON = 5f
     private const val DASH_OFF = 4f
 
@@ -51,38 +57,81 @@ object NodeWire {
         dashed: Boolean = false,
         arrow: Boolean = false,
         symbol: String? = null,
+        /**
+         * Live signal strength 0..1. Drives the wire's brightness (a dark, dimmed wire when the signal
+         * is off, a bright one when it is at full strength) and the travelling motes, which only run
+         * while a signal is present and move faster the stronger it is.
+         */
+        strength: Float = 1f,
+        /** Whether to draw [symbol] at the wire's midpoint - data ports hide it, signal wires often do. */
+        showSymbol: Boolean = true,
+        /**
+         * 0..1 how strongly the travelling motes show. The LOD cross-fade ramps this in late, so the
+         * bright particles never flash in over the straight overview lines.
+         */
+        moteFade: Float = 1f,
     ) {
         val h = handle(x0, x3)
         val cx1 = x0 + h; val cy1 = y0
         val cx2 = x3 - h; val cy2 = y3
-        val cells = stampCells(x0, y0, cx1, cy1, cx2, cy2, x3, y3, dashed)
-
-        // Depth shadow, one world cell below.
-        stamp(ctx.m, cells, CORE, 0f, 1f, SHADOW)
-        // Selection / hover halo, one cell wider all round, drawn under the core.
-        if (sel > 0.01f) {
-            val halo = Colors.withAlpha(Colors.mix(color, Color.WHITE, 0.4f), (255 * sel).toInt())
-            stamp(ctx.m, cells, CORE + 2f, -1f, -1f, halo)
+        // One screen pixel in world units, the floor for every wire piece at any zoom - nothing
+        // sub-pixel can ever rasterize as a triangle fragment.
+        val px = maxOf(1f, 1f / ctx.zoom)
+        val s = strength.coerceIn(0f, 1f)
+        // Core. A wire carrying a signal brightens towards white as the strength rises; a wire with no
+        // signal sits dimmed and darker so the topology is still visible but clearly idle.
+        val base = when {
+            flash > 0f -> Colors.mix(color, Color.WHITE, flash * 0.7f)
+            s > 0f -> Colors.mix(color, Color.WHITE, 0.18f + s * 0.5f)
+            else -> Colors.mix(color, Color.BLACK, 0.42f)
         }
-        // Core.
-        val base = if (flash > 0f) Colors.mix(color, Color.WHITE, flash * 0.7f) else color
-        stamp(ctx.m, cells, CORE, 0f, 0f, base)
 
-        // Travelling motes.
-        if (!dashed) {
-            val mote = Colors.mix(color, Color.WHITE, 0.55f)
-            for (k in 0..2) {
-                val t = ((ctx.time * 0.35f + k / 3f) % 1f)
-                val (px, py) = bezier(x0, y0, cx1, cy1, cx2, cy2, x3, y3, t)
-                cell(ctx.m, floor(px - 1f), floor(py - 1f), CORE, mote)
+        // Two quality tiers over the same bezier, cross-fading by zoom: the full stamp-cell curve at
+        // high zoom, a cheaper thick polyline (segments fall off with zoom) at overview - so wires
+        // stay curved everywhere but cost like the old straight lines when zoomed way out.
+        val stamps = NodeDrawCtx.smoothstep(WIRE_LOD_MIN, WIRE_LOD_MAX, ctx.zoom)
+        val batch = BrassPaint.QuadBatch(ctx.m)
+
+        if (stamps > 0.01f) {
+            val size = maxOf(CORE, px)
+            val spacing = maxOf(SPACING, px / 2f)
+            val cells = stampCells(x0, y0, cx1, cy1, cx2, cy2, x3, y3, dashed, spacing)
+            val saved = BrassAmbientFade.current
+            BrassAmbientFade.current = saved * stamps
+            // Depth shadow, one world cell below.
+            stamp(batch, ctx, cells, size, 0f, size / 2f, SHADOW)
+            // Selection / hover halo, one cell wider all round, drawn under the core.
+            if (sel > 0.01f) {
+                val halo = Colors.withAlpha(Colors.mix(color, Color.WHITE, 0.4f), (255 * sel).toInt())
+                stamp(batch, ctx, cells, size + 2f * px, -px, -px, halo)
             }
+            stamp(batch, ctx, cells, size, 0f, 0f, base)
+
+            // Travelling motes: only while a signal is present, and hidden until ~30% zoom so a
+            // zoomed-out overview never fills with moving bright specks.
+            if (!dashed && s > 0f && moteFade > 0.01f) {
+                val mote = Colors.withAlpha(Colors.mix(base, Color.WHITE, 0.55f), (255 * moteFade).toInt())
+                val speed = 0.18f + s * 1.1f
+                for (k in 0..2) {
+                    val t = ((ctx.time * speed + k / 3f) % 1f)
+                    val (mx, my) = bezier(x0, y0, cx1, cy1, cx2, cy2, x3, y3, t)
+                    cell(batch, ctx, floor(mx - size / 2f), floor(my - size / 2f), size, mote)
+                }
+            }
+            BrassAmbientFade.current = saved
         }
 
-        if (arrow) {
+        if (stamps < 0.99f) {
+            drawPolyline(batch, ctx, x0, y0, cx1, cy1, cx2, cy2, x3, y3, base, 1f - stamps)
+        }
+
+        batch.flush()
+
+        if (arrow && stamps > 0.5f) {
             val (ax, ay) = bezier(x0, y0, cx1, cy1, cx2, cy2, x3, y3, 0.76f)
             NodeGlyph.arrow(ctx.m, ax, ay, left = false, color = Colors.mix(color, Color.WHITE, 0.25f))
         }
-        if (symbol != null && ctx.zoom > 0.65f) {
+        if (symbol != null && showSymbol && ctx.zoom > 0.65f) {
             val (sx, sy) = bezier(x0, y0, cx1, cy1, cx2, cy2, x3, y3, 0.5f)
             val label = net.swzo.brass.ui.kit.text.BrassFont.fit(ctx.host, symbol, 18f)
             net.swzo.brass.ui.kit.text.BrassFont.draw(
@@ -91,6 +140,43 @@ object NodeWire {
                 sy - net.swzo.brass.ui.kit.text.BrassFont.LINE - 2f,
                 Colors.UI_TEXT_DARK,
             )
+        }
+    }
+
+    /**
+     * The overview tier: the same bezier drawn as a thick polyline, with one segment per ~4 screen
+     * pixels (clamped 4..256), so segment count falls off with zoom and a zoomed-out tree costs
+     * almost as little as the old straight lines - while the wire still reads as a curve.
+     */
+    private fun drawPolyline(
+        batch: BrassPaint.QuadBatch,
+        ctx: NodeDrawCtx,
+        x0: Float, y0: Float, cx1: Float, cy1: Float, cx2: Float, cy2: Float, x3: Float, y3: Float,
+        color: Color, alpha: Float,
+    ) {
+        val poly = hypot(cx1 - x0, cy1 - y0) + hypot(cx2 - cx1, cy2 - cy1) + hypot(x3 - cx2, y3 - cy2)
+        val segments = ((poly * ctx.zoom) / SEGMENT_PX).toInt().coerceIn(4, 256)
+        // Never thinner than one screen pixel, so the rotated segments can't fragment.
+        val half = maxOf(0.7f, 0.5f / ctx.zoom)
+        val c = BrassPaint.fade(color, alpha)
+        var prevX = x0
+        var prevY = y0
+        for (i in 1..segments) {
+            val (bx, by) = bezier(x0, y0, cx1, cy1, cx2, cy2, x3, y3, i / segments.toFloat())
+            val dx = bx - prevX
+            val dy = by - prevY
+            val len = hypot(dx, dy)
+            if (len > 1e-4f) {
+                val nx = -dy / len * half
+                val ny = dx / len * half
+                batch.quad(
+                    prevX + nx, prevY + ny, bx + nx, by + ny,
+                    bx - nx, by - ny, prevX - nx, prevY - ny,
+                    c,
+                )
+            }
+            prevX = bx
+            prevY = by
         }
     }
 
@@ -118,6 +204,7 @@ object NodeWire {
     private fun stampCells(
         x0: Float, y0: Float, cx1: Float, cy1: Float, cx2: Float, cy2: Float, x3: Float, y3: Float,
         dashed: Boolean,
+        spacing: Float = SPACING,
     ): LongArray {
         // A generous polyline: the control polygon's length caps how far the curve can wander, so it
         // sizes the sampling without a chicken-and-egg measure of the curve itself.
@@ -136,13 +223,13 @@ object NodeWire {
         while (i < n) {
             val segLen = hypot(px[i + 1] - px[i], py[i + 1] - py[i])
             if (segLen < 1e-4f) { i++; continue }
-            var d = SPACING - carried
+            var d = spacing - carried
             while (d <= segLen) {
                 val f = d / segLen
                 addCell(cells, seen, px[i] + (px[i + 1] - px[i]) * f, py[i] + (py[i + 1] - py[i]) * f, dashed, i, f, n)
-                d += SPACING
+                d += spacing
             }
-            carried = (segLen - (d - SPACING)).let { if (it < 0f) 0f else it }
+            carried = (segLen - (d - spacing)).let { if (it < 0f) 0f else it }
             i++
         }
         // Always seat the endpoints so a wire never stops a pixel short of its nub.
@@ -166,16 +253,22 @@ object NodeWire {
     }
 
     /** Paint every cell as a [size] square, shifted by ([dx],[dy]) world units, in [color]. */
-    private fun stamp(m: UMatrixStack, cells: LongArray, size: Float, dx: Float, dy: Float, color: Color) {
+    private fun stamp(
+        batch: BrassPaint.QuadBatch, ctx: NodeDrawCtx, cells: LongArray,
+        size: Float, dx: Float, dy: Float, color: Color,
+    ) {
         for (key in cells) {
             val ix = (key shr 32).toInt().toFloat()
             val iy = (key and 0xFFFFFFFFL).toInt().toFloat()
-            cell(m, ix + dx, iy + dy, size, color)
+            cell(batch, ctx, ix + dx, iy + dy, size, color)
         }
     }
 
-    private fun cell(m: UMatrixStack, ix: Float, iy: Float, size: Float, color: Color) =
-        BrassPaint.rect(m, ix, iy, ix + size, iy + size, color)
+    /** A single [size]-square cell, dropped if it falls outside the visible viewport. */
+    private fun cell(batch: BrassPaint.QuadBatch, ctx: NodeDrawCtx, ix: Float, iy: Float, size: Float, color: Color) {
+        if (!ctx.visible(ix, iy, ix + size, iy + size)) return
+        batch.rect(ix, iy, ix + size, iy + size, color)
+    }
 
     private fun bezier(
         x0: Float, y0: Float, x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float, t: Float,

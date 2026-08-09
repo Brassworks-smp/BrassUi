@@ -85,6 +85,9 @@ class BrassInventoryLink {
     internal fun maxStack(itemId: String): Int =
         (BrassPlatform.current?.maxStackSize(itemId) ?: DEFAULT_STACK).coerceAtLeast(1)
 
+    /** Whether the cursor is over a valid slot of any member grid right now. */
+    internal fun cursorOverSlot(): Boolean = members.any { it.cursorOverSlot() }
+
     // ---- drags -----------------------------------------------------------------------------------
 
     /**

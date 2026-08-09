@@ -14,7 +14,7 @@ built-in networking module, a node editor, and dev tools, all in one dependency.
   virtual lists, built on Elementa constraints.
 - **Text, done properly** — markdown, syntax-highlighted code, fuzzy search, tags, time-ago, and a
   full text editor stack.
-- **Node editor** — a Blender-style node graph with undo/redo, JSON persistence and a plugin API.
+- **Node editor** — a Blender-style node graph with undo/redo, BSON native persistence (JSON export) and a plugin API.
 - **Networking, baked in** — declare an action once and get automatic registration, permissions,
   per-player rate limiting, validation, server-pushed state, optimistic updates and translated
   errors. No boilerplate, no manual registration.

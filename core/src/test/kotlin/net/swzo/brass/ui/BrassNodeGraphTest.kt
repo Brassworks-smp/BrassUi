@@ -83,4 +83,23 @@ class BrassNodeGraphTest {
         val restored = NodeGraph.fromJson(registry(), json)
         assertEquals(1, restored.nodes.size, "a file from a newer build opens, dropping types this build lacks")
     }
+
+    @Test
+    fun `clear removes nodes, wires, groups, notes and bookmarks`() {
+        val g = NodeGraph(registry())
+        val a = g.spawn("time", 0f, 0f)!!
+        val b = g.spawn("noise", 100f, 0f)!!
+        g.link(a, 0, b, 0)
+        g.frame("Group", listOf(a.id, b.id))
+        g.comment("note", 0f, 0f)
+        g.bookmark("view", 0f, 0f, 1f)
+
+        g.clear()
+
+        assertTrue(g.nodes.isEmpty(), "nodes are cleared")
+        assertTrue(g.links.isEmpty(), "wires are cleared")
+        assertTrue(g.frames.isEmpty(), "groups are cleared")
+        assertTrue(g.comments.isEmpty(), "notes are cleared")
+        assertTrue(g.bookmarks.isEmpty(), "bookmarks are cleared")
+    }
 }

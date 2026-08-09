@@ -34,6 +34,9 @@ object BrassKeycap {
      * @param flat drop the outer ring and the bottom lip - a control that sits *in* the surface.
      * @param defaultAccent neutral keycap (dark lip) vs a coloured accent keycap (coloured lip).
      * @param lip pixels the bottom lip has lost to a press, so a pressed key looks compressed.
+     * @param shadow draw the soft translucent drop shadow the lip casts onto whatever is behind it.
+     *        Off keeps the raised 3D lip and ring but removes that back shadow - for a keycap sitting on
+     *        a busy surface (a node header) where the cast shadow reads as grime rather than depth.
      */
     fun draw(
         m: UMatrixStack,
@@ -43,6 +46,7 @@ object BrassKeycap {
         flat: Boolean = false,
         defaultAccent: Boolean = true,
         lip: Float = 0f,
+        shadow: Boolean = true,
     ) {
         if (w <= 0f || h <= 0f) return
         fun fill(x1: Float, y1: Float, x2: Float, y2: Float, c: Color) = BrassPaint.rect(m, x1, y1, x2, y2, c)
@@ -58,12 +62,13 @@ object BrassKeycap {
         fill(x - 1f, y, x, y + h, outer)                  // outer left
         fill(x + w, y, x + w + 1f, y + h, outer)          // outer right
 
-        val shadow = Colors.SOFT_SHADOW
-        fill(x, y + h + 1f, x + w, y + h + 4f - lip, shadow)
+        val shadowCol = Colors.SOFT_SHADOW
+        // The soft cast shadow just below the lip - the only piece that darkens the surface behind.
+        if (shadow) fill(x, y + h + 1f, x + w, y + h + 4f - lip, shadowCol)
         fill(x - 1f, y + h, x + w + 1f, y + h + 3f - lip, outer)
         if (defaultAccent) {
             fill(x, y + h, x + w, y + h + 2f - lip, bg)
-            fill(x, y + h, x + w, y + h + 2f - lip, shadow)
+            if (shadow) fill(x, y + h, x + w, y + h + 2f - lip, shadowCol)
         } else {
             fill(x, y + h, x + w, y + h + 2f - lip, bottom)
         }

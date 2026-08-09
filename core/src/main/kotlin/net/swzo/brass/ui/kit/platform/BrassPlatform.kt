@@ -2,6 +2,7 @@ package net.swzo.brass.ui.kit.platform
 
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.kit.surface.BrassTooltip
+import java.awt.Color
 
 /**
  * The seam between `brassui` and Minecraft.
@@ -57,6 +58,17 @@ interface BrassPlatform {
 
     /** A human-readable name for [itemId], for tooltips and labels; null if unknown. */
     fun itemName(itemId: String): String?
+
+    /**
+     * The item's game tooltip (display name + any lore) as coloured lines for a brassui rich
+     * tooltip, or null when the item is unknown.
+     *
+     * This is what lets a slot show the *real* item tooltip without the toolkit knowing anything
+     * about Minecraft: [net.swzo.brass.ui.kit.input.BrassInventoryGrid.showItemTooltips] turns it on
+     * for every slot of a grid by default. A caller that needs a different tooltip (a custom label,
+     * a frequency item's name) can still override it per-grid with `itemTooltip`.
+     */
+    fun itemTooltip(itemId: String): List<Pair<String, Color>>? = null
 
     /**
      * How many of [itemId] fit in one stack.

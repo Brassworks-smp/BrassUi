@@ -30,21 +30,21 @@ interface BrassNetTransport {
      * Send an action request. The reply is delivered to [reply] on the UI thread (possibly much
      * later - the button helper keeps the control disabled until then).
      */
-    fun sendAction(requestId: Long, actionId: String, json: String?, reply: (BrassActionResult) -> Unit)
+    fun sendAction(requestId: Long, actionId: String, data: ByteArray?, reply: (BrassActionResult) -> Unit)
 
     /**
-     * Subscribe to server-pushed state [stateId]. [onUpdate] receives the JSON value (or null for
+     * Subscribe to server-pushed state [stateId]. [onUpdate] receives the BSON value (or null for
      * "no value") on the UI thread - transports must deliver a **snapshot of the current value**
      * shortly after subscribe, so a client opening a screen sees existing state without waiting for
      * the next change. The returned handle unsubscribes.
      */
-    fun subscribe(stateId: String, onUpdate: (String?) -> Unit): () -> Unit
+    fun subscribe(stateId: String, onUpdate: (ByteArray?) -> Unit): () -> Unit
 
     /**
-     * Publish [json] for [stateId]. On a server this broadcasts to all players (or to [toPlayer]'s
+     * Publish [data] for [stateId]. On a server this broadcasts to all players (or to [toPlayer]'s
      * UUID when set); on a local transport it delivers to in-process subscribers.
      */
-    fun publish(stateId: String, json: String?, toPlayer: String? = null)
+    fun publish(stateId: String, data: ByteArray?, toPlayer: String? = null)
 
     /** Run [runnable] on the UI/render thread. */
     fun onUiThread(runnable: Runnable)

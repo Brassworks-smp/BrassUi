@@ -5,10 +5,22 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
+import net.swzo.brass.ui.kit.net.BrassBson
+import org.bson.BsonArray
+import org.bson.BsonBoolean
+import org.bson.BsonDocument
+import org.bson.BsonDouble
+import org.bson.BsonInt32
+import org.bson.BsonInt64
+import org.bson.BsonNumber
+import org.bson.BsonString
+import org.bson.BsonValue
 
 /**
- * The native save/load format for a [NodeGraph] - a small, versioned JSON document that any app or user
- * can read, diff and hand-edit:
+ * The native save/load formats for a [NodeGraph]: a versioned **BSON document** for the wire and the
+ * editor's fast save path (numbers stay numbers, byte arrays stay binary, and there is no text to
+ * escape or parse), plus the equivalent versioned JSON document for portable export, import and
+ * hand-editing:
  *
  * ```json
  * {
@@ -29,7 +41,9 @@ import com.google.gson.JsonPrimitive
  * [compatibility] lets a host warn before that tolerant future-version read, while versions
  * [OLDEST_SUPPORTED_VERSION] through [CURRENT_VERSION] are the explicit compatibility contract.
  *
- * Uses Gson, already on the classpath (see [net.swzo.brass.ui.kit.media.BrassIcons]); no new dependency.
+ * BSON comes from MongoDB's pure-JVM `org.mongodb:bson` (jar-in-jar'd by the mod and mirrored to the
+ * Brassworks maven, so consumers add no repository). JSON uses Gson, already on the classpath (see
+ * [net.swzo.brass.ui.kit.media.BrassIcons]).
  */
 object NodeIO {
 
@@ -51,6 +65,118 @@ object NodeIO {
             version < CURRENT_VERSION -> Compatibility.LEGACY
             else -> Compatibility.CURRENT
         }
+    }
+
+    /** The same [Compatibility] check for a BSON document. */
+    fun compatibility(bytes: ByteArray): Compatibility {
+        val root = BrassBson.parseDocument(bytes) ?: return Compatibility.INVALID
+        if (!root.containsKey("nodes")) return Compatibility.INVALID
+        val version = (root["version"] as? BsonNumber)?.intValue() ?: OLDEST_SUPPORTED_VERSION
+        return when {
+            version > CURRENT_VERSION -> Compatibility.FUTURE
+            version < CURRENT_VERSION -> Compatibility.LEGACY
+            else -> Compatibility.CURRENT
+        }
+    }
+
+    /**
+     * Serialize [graph] to the native **BSON** format. Structurally identical to [toJson] - the same
+     * version, nodes/links/frames/comments/bookmarks and per-field values - so a graph round-trips
+     * through either format and a host can switch between them freely.
+     */
+    fun toBson(graph: NodeGraph): ByteArray {
+        val root = BsonDocument()
+        root.put("version", BsonInt32(CURRENT_VERSION))
+
+        val nodes = BsonArray()
+        for (n in graph.nodes) {
+            if (n.closing) continue
+            val o = BsonDocument()
+            o.put("id", BsonInt32(n.id))
+            o.put("type", BsonString(n.type.id))
+            o.put("x", BsonDouble(n.x.toDouble()))
+            o.put("y", BsonDouble(n.y.toDouble()))
+            o.put("collapsed", BsonBoolean(n.collapsed))
+            val fields = BsonDocument()
+            for (f in n.fields) {
+                when (val v = f.encode()) {
+                    is Boolean -> fields.put(f.key, BsonBoolean(v))
+                    is Byte, is Short, is Int -> fields.put(f.key, BsonInt32((v as Number).toInt()))
+                    is Long -> fields.put(f.key, BsonInt64(v))
+                    is Number -> fields.put(f.key, BsonDouble(v.toDouble()))
+                    is String -> fields.put(f.key, BsonString(v))
+                    else -> fields.put(f.key, BsonString(v.toString()))
+                }
+            }
+            o.put("fields", fields)
+            nodes.add(o)
+        }
+        root.put("nodes", nodes)
+
+        val links = BsonArray()
+        for (l in graph.links) {
+            if (l.closing) continue
+            val o = BsonDocument()
+            o.put("from", BsonInt32(l.from.id))
+            o.put("fromPort", BsonInt32(l.fromPort))
+            o.put("to", BsonInt32(l.to.id))
+            o.put("toPort", BsonInt32(l.toPort))
+            if (l.reroutes.isNotEmpty()) {
+                val reroutes = BsonArray()
+                for (point in l.reroutes) {
+                    val p = BsonDocument()
+                    p.put("x", BsonDouble(point.x.toDouble()))
+                    p.put("y", BsonDouble(point.y.toDouble()))
+                    reroutes.add(p)
+                }
+                o.put("reroutes", reroutes)
+            }
+            links.add(o)
+        }
+        root.put("links", links)
+
+        val frames = BsonArray()
+        for (frame in graph.frames) {
+            val o = BsonDocument()
+            o.put("id", BsonInt32(frame.id))
+            o.put("title", BsonString(frame.title))
+            o.put("tone", BsonString(frame.tone.name))
+            frame.customColor?.let { o.put("customColor", BsonInt32(it)) }
+            o.put("autoResize", BsonBoolean(frame.autoResize))
+            frame.parentFrameId?.let { o.put("parent", BsonInt32(it)) }
+            o.put("x", BsonDouble(frame.x.toDouble())); o.put("y", BsonDouble(frame.y.toDouble()))
+            o.put("width", BsonDouble(frame.width.toDouble())); o.put("height", BsonDouble(frame.height.toDouble()))
+            val ids = BsonArray()
+            frame.nodeIds.forEach { ids.add(BsonInt32(it)) }
+            o.put("nodes", ids)
+            frames.add(o)
+        }
+        root.put("frames", frames)
+
+        val comments = BsonArray()
+        for (comment in graph.comments) {
+            val o = BsonDocument()
+            o.put("id", BsonInt32(comment.id))
+            o.put("text", BsonString(comment.text))
+            o.put("x", BsonDouble(comment.x.toDouble())); o.put("y", BsonDouble(comment.y.toDouble()))
+            o.put("width", BsonDouble(comment.width.toDouble())); o.put("height", BsonDouble(comment.height.toDouble()))
+            o.put("tone", BsonString(comment.tone.name))
+            comment.customColor?.let { o.put("customColor", BsonInt32(it)) }
+            comments.add(o)
+        }
+        root.put("comments", comments)
+
+        val bookmarks = BsonArray()
+        for (bookmark in graph.bookmarks) {
+            val o = BsonDocument()
+            o.put("name", BsonString(bookmark.name))
+            o.put("panX", BsonDouble(bookmark.panX.toDouble())); o.put("panY", BsonDouble(bookmark.panY.toDouble()))
+            o.put("zoom", BsonDouble(bookmark.zoom.toDouble()))
+            bookmarks.add(o)
+        }
+        root.put("bookmarks", bookmarks)
+
+        return BrassBson.writeDocument(root)
     }
 
     fun toJson(graph: NodeGraph): String {
@@ -226,9 +352,105 @@ object NodeIO {
         }
     }
 
+    /** Read [bytes] into [graph] (which should be empty), skipping anything unknown - the BSON twin of [into]. */
+    fun intoBson(graph: NodeGraph, bytes: ByteArray) {
+        val root = BrassBson.parseDocument(bytes) ?: return
+
+        (root["nodes"] as? BsonArray)?.forEach { el ->
+            val o = el as? BsonDocument ?: return@forEach
+            val id = (o["id"] as? BsonNumber)?.intValue() ?: return@forEach
+            val type = (o["type"] as? BsonString)?.value ?: return@forEach
+            val x = (o["x"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f
+            val y = (o["y"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f
+            val node = graph.adopt(id, type, x, y) ?: return@forEach
+            node.collapsed = (o["collapsed"] as? BsonBoolean)?.value ?: false
+            node.roll.snapTo(if (node.collapsed) 1f else 0f)
+            (o["fields"] as? BsonDocument)?.let { fields ->
+                for (f in node.fields) {
+                    val el2 = fields[f.key] ?: continue
+                    f.decode(primitive(el2))
+                }
+            }
+        }
+
+        (root["links"] as? BsonArray)?.forEach { el ->
+            val o = el as? BsonDocument ?: return@forEach
+            val from = graph.byId((o["from"] as? BsonNumber)?.intValue() ?: return@forEach) ?: return@forEach
+            val to = graph.byId((o["to"] as? BsonNumber)?.intValue() ?: return@forEach) ?: return@forEach
+            graph.link(
+                from,
+                (o["fromPort"] as? BsonNumber)?.intValue() ?: 0,
+                to,
+                (o["toPort"] as? BsonNumber)?.intValue() ?: 0,
+            )?.let { link ->
+                (o["reroutes"] as? BsonArray)?.forEach { point ->
+                    val p = point as? BsonDocument ?: return@forEach
+                    graph.reroute(
+                        link,
+                        (p["x"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f,
+                        (p["y"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f,
+                    )
+                }
+            }
+        }
+
+        (root["frames"] as? BsonArray)?.forEach { el ->
+            val o = el as? BsonDocument ?: return@forEach
+            val ids = (o["nodes"] as? BsonArray)?.mapNotNull {
+                (it as? BsonNumber)?.intValue()?.takeIf { id -> graph.byId(id) != null }
+            }?.toMutableSet() ?: mutableSetOf()
+            graph.adoptFrame(GraphFrame(
+                id = (o["id"] as? BsonNumber)?.intValue() ?: return@forEach,
+                title = (o["title"] as? BsonString)?.value ?: "Group",
+                nodeIds = ids,
+                tone = runCatching { FrameTone.valueOf((o["tone"] as? BsonString)?.value ?: "") }
+                    .getOrDefault(FrameTone.BRASS),
+                autoResize = (o["autoResize"] as? BsonBoolean)?.value ?: true,
+                parentFrameId = (o["parent"] as? BsonNumber)?.intValue(),
+                x = (o["x"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f,
+                y = (o["y"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f,
+                width = (o["width"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 160f,
+                height = (o["height"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 100f,
+                customColor = (o["customColor"] as? BsonNumber)?.intValue(),
+            ))
+        }
+
+        (root["comments"] as? BsonArray)?.forEach { el ->
+            val o = el as? BsonDocument ?: return@forEach
+            graph.adoptComment(GraphComment(
+                id = (o["id"] as? BsonNumber)?.intValue() ?: return@forEach,
+                text = (o["text"] as? BsonString)?.value ?: "",
+                x = (o["x"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f,
+                y = (o["y"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f,
+                width = (o["width"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 132f,
+                height = (o["height"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 48f,
+                tone = runCatching { FrameTone.valueOf((o["tone"] as? BsonString)?.value ?: "") }
+                    .getOrDefault(FrameTone.PATINA),
+                customColor = (o["customColor"] as? BsonNumber)?.intValue(),
+            ))
+        }
+
+        (root["bookmarks"] as? BsonArray)?.forEach { el ->
+            val o = el as? BsonDocument ?: return@forEach
+            graph.bookmark(
+                (o["name"] as? BsonString)?.value ?: return@forEach,
+                (o["panX"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f,
+                (o["panY"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 0f,
+                (o["zoom"] as? BsonNumber)?.doubleValue()?.toFloat() ?: 1f,
+            )
+        }
+    }
+
     private fun primitive(p: JsonPrimitive): Any = when {
         p.isBoolean -> p.asBoolean
         p.isNumber -> p.asDouble
         else -> p.asString
+    }
+
+    private fun primitive(v: BsonValue): Any = when (v) {
+        is BsonBoolean -> v.value
+        is BsonNumber -> v.doubleValue()
+        is BsonString -> v.value
+        else -> v.toString()
     }
 }

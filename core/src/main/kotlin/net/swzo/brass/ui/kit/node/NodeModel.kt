@@ -27,6 +27,11 @@ class PortType(
     val wireStyle: WireStyle = WireStyle.SOLID,
     val arrow: Boolean = false,
     val symbol: String? = null,
+    /**
+     * A human-readable name for the wire kind, shown in a port's hover tooltip. Null falls back to the
+     * raw [id], which reads like a missing translation - set this to something a player understands.
+     */
+    val label: String? = null,
     accepts: (PortType) -> Boolean = { it.id == id },
     private val colorOf: () -> Color,
 ) {
@@ -64,6 +69,8 @@ class Port(
     val dynamic: Boolean = false,
     val endLabel: String? = null,
     val showLabel: Boolean = true,
+    /** A short line for the port's hover tooltip, explaining what this socket carries or does. */
+    val description: String? = null,
 ) {
     init {
         require(size in 0.5f..2f) { "port size must be between 0.5 and 2" }
@@ -91,6 +98,11 @@ class NodeType(
     val executor: NodeExecutor? = null,
     /** Optional complete visual replacement for this node type. */
     val renderer: NodeRenderer? = null,
+    /**
+     * A short one-line explanation of what the node does, shown as the body of its hover tooltip in
+     * both the editor and the add-node palette. Null falls back to a terse port-count summary.
+     */
+    val description: String? = null,
 )
 
 /**
@@ -256,6 +268,19 @@ class NodeGraph(val registry: NodeRegistry) {
     }
 
     /**
+     * Remove every node, wire, group, note and bookmark - the true "new graph" state. An editor treats
+     * it like any structural edit, so hosts call it inside a [BrassNodeEditor.edit] block and the whole
+     * wipe is a single undoable step.
+     */
+    fun clear() {
+        nodes.clear()
+        links.clear()
+        frames.clear()
+        comments.clear()
+        bookmarks.clear()
+    }
+
+    /**
      * Check the complete connection contract without mutating the graph. This is the single source of
      * truth used by the model, hover feedback, plugins and tests.
      */
@@ -333,7 +358,28 @@ class NodeGraph(val registry: NodeRegistry) {
 
     // Persistence
 
-    /** Serialize to the native JSON format. */
+    /** Serialize to the native **BSON** format - the fast save path (wire, editor snapshots). */
+    fun toBson(): ByteArray = NodeIO.toBson(this)
+
+    /**
+     * Replace this graph's contents from [bytes] (BSON). Unknown node types are skipped. Invalid
+     * documents return false without destroying the graph that is already open.
+     */
+    fun loadBson(bytes: ByteArray): Boolean {
+        if (NodeIO.compatibility(bytes) == NodeIO.Compatibility.INVALID) return false
+        val backup = toBson()
+        nodes.clear(); links.clear(); frames.clear(); comments.clear(); bookmarks.clear()
+        return runCatching {
+            NodeIO.intoBson(this, bytes)
+            true
+        }.getOrElse {
+            nodes.clear(); links.clear(); frames.clear(); comments.clear(); bookmarks.clear()
+            NodeIO.intoBson(this, backup)
+            false
+        }
+    }
+
+    /** Serialize to the portable JSON format - export, import, clipboard and hand-editing. */
     fun toJson(): String = NodeIO.toJson(this)
 
     /**
@@ -355,6 +401,9 @@ class NodeGraph(val registry: NodeRegistry) {
     }
 
     companion object {
+        fun fromBson(registry: NodeRegistry, bytes: ByteArray): NodeGraph =
+            NodeGraph(registry).also { it.loadBson(bytes) }
+
         fun fromJson(registry: NodeRegistry, json: String): NodeGraph =
             NodeGraph(registry).also { it.load(json) }
     }

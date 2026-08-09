@@ -35,7 +35,7 @@ class LocalBrassNetTransport : BrassNetTransport {
         Thread(runnable, "brassui-net-${threadIds.incrementAndGet()}").apply { isDaemon = true }
     }
 
-    private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<(String?) -> Unit>>()
+    private val subscribers = ConcurrentHashMap<String, CopyOnWriteArrayList<(ByteArray?) -> Unit>>()
 
     override val name = "local"
     override val local = true
@@ -49,18 +49,18 @@ class LocalBrassNetTransport : BrassNetTransport {
     override fun sendAction(
         requestId: Long,
         actionId: String,
-        json: String?,
+        data: ByteArray?,
         reply: (BrassActionResult) -> Unit,
     ) {
         pool.execute {
             // Dispatch itself is synchronous until the handler; async handlers complete on their own
             // threads, so marshal back to the render thread wherever the future completes.
-            BrassNet.dispatch(actionId, json, AuthContext(user, opLevel))
+            BrassNet.dispatch(actionId, data, AuthContext(user, opLevel))
                 .thenAccept { result -> onUiThread { reply(result) } }
         }
     }
 
-    override fun subscribe(stateId: String, onUpdate: (String?) -> Unit): () -> Unit {
+    override fun subscribe(stateId: String, onUpdate: (ByteArray?) -> Unit): () -> Unit {
         val list = subscribers.computeIfAbsent(stateId) { CopyOnWriteArrayList() }
         list.add(onUpdate)
         // Deliver the current value (or null when the id is unknown) right away - the in-process
@@ -69,9 +69,9 @@ class LocalBrassNetTransport : BrassNetTransport {
         return { list.remove(onUpdate) }
     }
 
-    override fun publish(stateId: String, json: String?, toPlayer: String?) {
+    override fun publish(stateId: String, data: ByteArray?, toPlayer: String?) {
         val list = subscribers[stateId] ?: return
-        onUiThread { for (onUpdate in list) onUpdate(json) }
+        onUiThread { for (onUpdate in list) onUpdate(data) }
     }
 
     override fun onUiThread(runnable: Runnable) {

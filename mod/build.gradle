@@ -112,6 +112,11 @@ dependencies {
     // is what lets UniversalCraft read the minecraft module). The base game ships neither.
     jarJar("gg.essential:elementa:${project.elementa_version}") { transitive = false }
     jarJar("gg.essential:universalcraft-1.21-neoforge:${project.universalcraft_version}") { transitive = false }
+
+    // Bundle MongoDB's BSON so a consumer's runtime needs nothing extra: the toolkit's folded classes
+    // serialise brassnet values and node graphs through it. Purely a runtime library (no game types,
+    // no mod metadata), so it rides as an ordinary jar-in-jar next to Elementa/UniversalCraft.
+    jarJar("org.mongodb:bson:${project.bson_version}") { transitive = false }
 }
 
 // The mod's version lives once in root gradle.properties — feed it into the mods.toml so the toml

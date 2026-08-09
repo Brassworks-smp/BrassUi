@@ -38,6 +38,9 @@ class DesktopPlatform(private val windowHandle: Long) : BrassPlatform {
             BrassCursor.Kind.ARROW -> GLFW.GLFW_ARROW_CURSOR
             BrassCursor.Kind.TEXT -> GLFW.GLFW_IBEAM_CURSOR
             BrassCursor.Kind.HAND -> GLFW.GLFW_POINTING_HAND_CURSOR
+            // GLFW has no dedicated move cursor; the four-arrow resize-all is the standard move icon.
+            BrassCursor.Kind.MOVE -> GLFW.GLFW_RESIZE_ALL_CURSOR
+            BrassCursor.Kind.CROSSHAIR -> GLFW.GLFW_CROSSHAIR_CURSOR
             BrassCursor.Kind.RESIZE_H -> GLFW.GLFW_RESIZE_EW_CURSOR
             BrassCursor.Kind.RESIZE_V -> GLFW.GLFW_RESIZE_NS_CURSOR
             BrassCursor.Kind.RESIZE_NWSE -> GLFW.GLFW_RESIZE_NWSE_CURSOR

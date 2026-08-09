@@ -45,7 +45,7 @@ export function Networking() {
         <P>
           The networking module is the server half of the toolkit. An action is a single declaration
           written inline next to the screen that uses it - the same single jar discovers it on the
-          client and on a dedicated server, serializes it as JSON, authorizes it before the handler
+          client and on a dedicated server, serializes it as BSON, authorizes it before the handler
           runs, and pushes state changes back to every subscribed screen. The desktop app runs the
           exact same handlers in-process, so the whole pipeline is demoable without launching a game.
         </P>
@@ -83,7 +83,7 @@ export function Networking() {
             <P className="mt-2">
               The action object lives next to the screen - in the same file. The client keeps it so
               widgets can send it and mirror its permission; the server runs its own copy of the
-              handler. Only the id and the JSON input cross the wire.
+              handler. Only the id and the BSON input cross the wire.
             </P>
           </div>
           <div className="min-w-0">

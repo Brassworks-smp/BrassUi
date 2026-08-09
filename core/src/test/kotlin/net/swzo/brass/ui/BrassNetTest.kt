@@ -9,6 +9,7 @@ import net.swzo.brass.ui.kit.net.BrassActions
 import net.swzo.brass.ui.kit.net.BrassActionSet
 import net.swzo.brass.ui.kit.net.BrassActionSets
 import net.swzo.brass.ui.kit.net.BrassAuthorizer
+import net.swzo.brass.ui.kit.net.BrassBson
 import net.swzo.brass.ui.kit.net.BrassJson
 import net.swzo.brass.ui.kit.net.BrassMessages
 import net.swzo.brass.ui.kit.net.BrassNet
@@ -88,7 +89,7 @@ class BrassNetTest {
 
     @Test
     fun `dispatch runs the handler and returns its result`() {
-        val result = dispatchSync("test.echo", BrassJson.toJson(Echo("hello")), AuthContext("player-1", 0))
+        val result = dispatchSync("test.echo", BrassBson.toBytes(Echo("hello")), AuthContext("player-1", 0))
         assertTrue(result.ok)
         assertEquals("hello", result.payloadAs(String::class.java))
     }
@@ -128,7 +129,7 @@ class BrassNetTest {
         )
         assertEquals(
             "action.malformed",
-            (dispatchSync("test.echo", "{not json", AuthContext(null, 0)) as BrassActionResult.Failure).code,
+            (dispatchSync("test.echo", byteArrayOf(0x05, 0, 0, 0), AuthContext(null, 0)) as BrassActionResult.Failure).code,
         )
     }
 
@@ -166,11 +167,11 @@ class BrassNetTest {
     @Test
     fun `disabled actions are rejected before authorization or the handler`() {
         BrassNet.disable("test.echo")
-        val result = dispatchSync("test.echo", BrassJson.toJson(Echo("hi")), AuthContext("p", 0))
+        val result = dispatchSync("test.echo", BrassBson.toBytes(Echo("hi")), AuthContext("p", 0))
         assertEquals("action.disabled", (result as BrassActionResult.Failure).code)
 
         BrassNet.enable("test.echo")
-        assertTrue(dispatchSync("test.echo", BrassJson.toJson(Echo("hi")), AuthContext("p", 0)).ok)
+        assertTrue(dispatchSync("test.echo", BrassBson.toBytes(Echo("hi")), AuthContext("p", 0)).ok)
     }
 
     @Test
@@ -286,13 +287,13 @@ class BrassNetTest {
         val seen = ArrayList<String?>()
         val handle = state.onChange { seen += it }
 
-        state.onRemote("\"server\"")
+        state.onRemote(BrassBson.toBytes("server"))
         state.optimistic("client")
         assertEquals("client", state.current)
         assertEquals(listOf(null, "server", "client"), seen)
 
         // The next authoritative update replaces the optimistic value.
-        state.onRemote("\"server2\"")
+        state.onRemote(BrassBson.toBytes("server2"))
         assertEquals("server2", state.current)
         assertEquals(listOf(null, "server", "client", "server2"), seen)
 
@@ -309,44 +310,47 @@ class BrassNetTest {
         repeat(5) { value.value = it + 1 }
 
         Thread.sleep(250)
-        assertEquals(listOf("test.coalesce" to "5"), FakeTransport.published.toList())
+        assertEquals(listOf("test.coalesce" to 5), FakeTransport.published.toList())
 
         value.value = 6
         Thread.sleep(250)
-        assertEquals(listOf("test.coalesce" to "5", "test.coalesce" to "6"), FakeTransport.published.toList())
+        assertEquals(listOf("test.coalesce" to 5, "test.coalesce" to 6), FakeTransport.published.toList())
     }
 
     // ---- serialization -------------------------------------------------------------------------
 
     @Test
-    fun `json round-trips actions and wire results`() {
+    fun `bson round-trips actions and wire results`() {
         val input = Echo("round trip")
-        assertEquals(input, BrassJson.fromJson(BrassJson.toJson(input), Echo::class.java))
+        assertEquals(input, BrassBson.fromBytes(BrassBson.toBytes(input), Echo::class.java))
 
         val failure = err("team.missing", "42")
-        assertEquals(failure, BrassJson.fromWire(BrassJson.toWire(failure)))
+        assertEquals(failure, BrassBson.fromWire(BrassBson.toWire(failure)))
         assertEquals(
             BrassActionResult.Success("\"payload\""),
-            BrassJson.fromWire(BrassJson.toWire(ok("payload"))),
+            BrassBson.fromWire(BrassBson.toWire(ok("payload"))),
         )
     }
 
     @Test
     fun `compression round-trips small and large payloads`() {
-        assertEquals("small payload", BrassJson.decompress(BrassJson.compress("small payload")))
-        val large = "x".repeat(50_000)
-        assertEquals(large, BrassJson.decompress(BrassJson.compress(large)))
+        assertEquals(
+            "small payload",
+            String(BrassJson.decompress(BrassJson.compress("small payload".toByteArray()))),
+        )
+        val large = "x".repeat(50_000).toByteArray()
+        assertTrue(large.contentEquals(BrassJson.decompress(BrassJson.compress(large))))
         // Large payloads actually compress.
-        assertTrue(BrassJson.compress(large).size < large.toByteArray().size)
+        assertTrue(BrassJson.compress(large).size < large.size)
     }
 
     @Test
     fun `server values snapshot their current state for late subscribers`() {
         val value = brassValue("test.snapshot", "first")
-        assertEquals("\"first\"", BrassNet.snapshot("test.snapshot"))
+        assertEquals("first", BrassBson.fromBytes(BrassNet.snapshot("test.snapshot")!!, String::class.java))
 
         value.value = "second"
-        assertEquals("\"second\"", BrassNet.snapshot("test.snapshot"))
+        assertEquals("second", BrassBson.fromBytes(BrassNet.snapshot("test.snapshot")!!, String::class.java))
         assertNull(BrassNet.snapshot("test.unknown"))
     }
 
@@ -358,8 +362,8 @@ class BrassNetTest {
         assertFalse(BrassActionSets.load("net.swzo.brass.ui.BrassNetTest"))
     }
 
-    private fun dispatchSync(actionId: String, json: String?, ctx: AuthContext): BrassActionResult =
-        BrassNet.dispatch(actionId, json, ctx).get(2, TimeUnit.SECONDS)
+    private fun dispatchSync(actionId: String, data: ByteArray?, ctx: AuthContext): BrassActionResult =
+        BrassNet.dispatch(actionId, data, ctx).get(2, TimeUnit.SECONDS)
 
     private fun action(
         id: String,
@@ -398,13 +402,13 @@ object BrassNetTestActions : BrassActions {
 private object FakeTransport : BrassNetTransport {
     override val name = "fake"
     override val identity = "fake"
-    val published = CopyOnWriteArrayList<Pair<String, String?>>()
+    val published = CopyOnWriteArrayList<Pair<String, Int>>()
 
     override fun can(action: BrassAction<*>): AuthDecision = AuthDecision.Grant
-    override fun sendAction(requestId: Long, actionId: String, json: String?, reply: (BrassActionResult) -> Unit) = Unit
-    override fun subscribe(stateId: String, onUpdate: (String?) -> Unit): () -> Unit = { }
-    override fun publish(stateId: String, json: String?, toPlayer: String?) {
-        published += stateId to json
+    override fun sendAction(requestId: Long, actionId: String, data: ByteArray?, reply: (BrassActionResult) -> Unit) = Unit
+    override fun subscribe(stateId: String, onUpdate: (ByteArray?) -> Unit): () -> Unit = { }
+    override fun publish(stateId: String, data: ByteArray?, toPlayer: String?) {
+        published += stateId to (BrassBson.fromBytes(data!!, Int::class.java) ?: 0)
     }
     override fun onUiThread(runnable: Runnable) = runnable.run()
 }

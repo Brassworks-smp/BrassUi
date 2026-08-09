@@ -165,6 +165,13 @@ open class BrassScreen(
                 topmost.dismiss()
                 return
             }
+            // Nothing is layered over the screen: close it here rather than letting the key fall through
+            // to the superclass, which dispatches it to the focused component first - a focused canvas or
+            // node editor consumes the key and Escape would otherwise never close the screen.
+            if (shouldCloseOnEsc()) {
+                onClose()
+                return
+            }
         }
         super.onKeyPressed(keyCode, typedChar, modifiers)
     }

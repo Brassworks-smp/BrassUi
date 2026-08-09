@@ -16,7 +16,7 @@ import net.swzo.brass.ui.kit.surface.BrassTooltip.attachLazy
 import net.swzo.brass.ui.kit.surface.BrassTooltip.placeCard
 import net.swzo.brass.ui.kit.text.BrassFont
 import java.awt.Color
-import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Hover tooltips, drawn as a card above everything else.
@@ -61,6 +61,26 @@ object BrassTooltip {
         val follow: Boolean,
         /** Delay before this tooltip appears, overriding [delayMs]. */
         val delayMs: Long?,
+        /**
+         * Rich multi-line content as (text, colour) pairs. When non-empty it replaces the title/body
+         * card entirely - the way a Minecraft item tooltip (name + coloured lore lines) can ride in a
+         * brassui card without the toolkit knowing anything about Minecraft.
+         */
+        val lines: () -> List<Pair<String, Color>> = { emptyList() },
+        /**
+         * A fully **custom-painted** tooltip: when present it replaces the text/lines card body, so a
+         * host can draw item icons, keycaps, swatches - anything - inside the standard tooltip card.
+         */
+        val custom: Custom? = null,
+    )
+
+    /**
+     * A custom tooltip body: [size] returns `[w, h]` (the content area, before the card's padding), and
+     * [draw] paints it at `(x, y)` faded by `alpha`. Both are resolved at draw time.
+     */
+    class Custom(
+        val size: () -> FloatArray,
+        val draw: (UMatrixStack, Float, Float, Float) -> Unit,
     )
 
     private val entries = java.util.WeakHashMap<UIComponent, Entry>()
@@ -102,6 +122,14 @@ object BrassTooltip {
     var fadeSpeed = 30f
 
     /**
+     * Maximum card width in pixels (including padding) before a tooltip line wraps at the nearest
+     * word. Applied to the title/body and rich-line cards; also clamped to the screen so a tooltip
+     * never spills off the edge on a small window. Custom-painted tooltips size themselves and are
+     * unaffected.
+     */
+    var maxTextWidth = 260f
+
+    /**
      * Show [title] (and optional [body]) when [component] is hovered.
      *
      * Re-attaching replaces the previous text, so this is safe to call when a label changes. The
@@ -132,13 +160,56 @@ object BrassTooltip {
         follow: Boolean = true,
         delayMs: Long? = null,
     ): () -> Unit {
+        entries[component] = Entry(title, body, accent, follow, delayMs)
+        wire(component)
+        return { detach(component) }
+    }
+
+    /**
+     * Attach a **rich** tooltip: one or more independently coloured lines (the name, then lore), drawn
+     * in the same delayed, fading brassui card as a text tooltip.
+     *
+     * The [lines] supplier is resolved when the tooltip is shown, so a host can convert Minecraft
+     * `Component`s to `(string, colour)` pairs lazily at hover time. Re-attaching (e.g. when the
+     * hovered row of a virtual list changes) replaces the content without re-registering listeners.
+     */
+    fun attachRich(
+        component: UIComponent,
+        lines: () -> List<Pair<String, Color>>,
+        accent: BrassAccent = BrassAccent.DEFAULT,
+        follow: Boolean = true,
+        delayMs: Long? = null,
+    ): () -> Unit {
+        entries[component] = Entry({ "" }, { null }, accent, follow, delayMs, lines)
+        wire(component)
+        return { detach(component) }
+    }
+
+    /**
+     * Attach a **custom-painted** tooltip: the standard delayed, fading card, but with a body the host
+     * draws itself via [custom]. For content no string can express - a redstone link's two coloured
+     * item slots, a colour swatch grid, a mini chart - shown in the same chrome as any other tooltip.
+     */
+    fun attachCustom(
+        component: UIComponent,
+        custom: Custom,
+        accent: BrassAccent = BrassAccent.DEFAULT,
+        follow: Boolean = true,
+        delayMs: Long? = null,
+    ): () -> Unit {
+        entries[component] = Entry({ "" }, { null }, accent, follow, delayMs, custom = custom)
+        wire(component)
+        return { detach(component) }
+    }
+
+    /** Install the enter/leave listeners that drive this tooltip, once per component. */
+    private fun wire(component: UIComponent) {
         // Listeners are registered ONCE per component; a re-attach only swaps the entry.
         //
         // Elementa has no way to remove a listener, so the previous version - which registered a
         // fresh enter/leave pair on every call - grew an unbounded chain of closures on any widget
         // whose tooltip text was refreshed, and ran all of them on every hover. The doc above
         // explicitly invites re-attaching, so this had to be idempotent rather than merely rare.
-        entries[component] = Entry(title, body, accent, follow, delayMs)
         // Tracked separately from `entries` so a detach-then-reattach cycle does not re-register
         // either: Elementa listeners cannot be removed, so "wired once" has to outlive the entry.
         if (wired.put(component, true) == null) {
@@ -153,7 +224,6 @@ object BrassTooltip {
                 }
             }
         }
-        return { detach(component) }
     }
 
     /** Forget [component]'s tooltip. */
@@ -283,17 +353,27 @@ object BrassTooltip {
 
     private fun paint(m: UMatrixStack, root: UIComponent, entry: Entry, screenW: Float, screenH: Float) {
         val pad = 5f
+        entry.custom?.let { paintCustom(m, entry, screenW, screenH, pad, it); return }
+        val rich = entry.lines().takeIf { it.isNotEmpty() }
+        if (rich != null) {
+            paintRich(m, root, entry, screenW, screenH, pad, rich)
+            return
+        }
         val title = entry.title()
         val body = entry.body()
         // A supplier that has nothing to say draws nothing, rather than an empty card. Suppliers are
         // asked every frame and legitimately have no answer sometimes - a grid whose cursor is over an
         // empty slot, a widget disabled with no reason given.
         if (title.isBlank() && body.isNullOrBlank()) return
-        val titleW = BrassFont.width(root, title)
-        val bodyW = body?.let { BrassFont.width(root, it) } ?: 0f
-        val w = max(titleW, bodyW) + pad * 2
-        val lines = if (body != null) 2 else 1
-        val h = pad * 2 + BrassFont.LINE * lines + (if (lines > 1) 2f else 0f)
+        val textMaxW = (min(maxTextWidth, screenW - EDGE * 2) - pad * 2).coerceAtLeast(20f)
+        val rows = buildList {
+            BrassFont.wrap(root, title, textMaxW).forEach { add(it to Colors.UI_TEXT_HOVER) }
+            if (body != null) {
+                BrassFont.wrap(root, body, textMaxW).forEach { add(it to Colors.UI_TEXT_DARK) }
+            }
+        }
+        val w = (rows.maxOfOrNull { BrassFont.width(root, it.first) } ?: 0f) + pad * 2
+        val h = pad * 2 + BrassFont.LINE * rows.size + (rows.size - 1) * 1f
 
         val anchor = hovered
         var x: Float
@@ -330,11 +410,93 @@ object BrassTooltip {
         val accentColor = if (entry.accent.isDefault) Colors.UI_ACCENT else entry.accent.accent
         BrassPaint.rect(m, x, y, x + 1f, y + h, alpha(accentColor, fade))
 
-        BrassFont.draw(m, root, title, x + pad, y + pad, alpha(Colors.UI_TEXT_HOVER, fade))
-        if (body != null) {
+        rows.forEachIndexed { i, (text, color) ->
             BrassFont.draw(
-                m, root, body,
-                x + pad, y + pad + BrassFont.LINE + 2f, alpha(Colors.UI_TEXT_DARK, fade),
+                m, root, text,
+                x + pad, y + pad + i * (BrassFont.LINE + 1f), alpha(color, fade),
+            )
+        }
+    }
+
+    /** The custom-painted card: same placement and chrome, body drawn by the host's [Custom.draw]. */
+    private fun paintCustom(
+        m: UMatrixStack,
+        entry: Entry,
+        screenW: Float,
+        screenH: Float,
+        pad: Float,
+        custom: Custom,
+    ) {
+        val size = custom.size()
+        val w = size[0] + pad * 2
+        val h = size[1] + pad * 2
+
+        val anchor = hovered
+        var x: Float
+        var y: Float
+        if (entry.follow || anchor == null) {
+            val at = placeCard(w, h, mouseX, mouseY, screenW, screenH)
+            x = at[0]; y = at[1]
+        } else {
+            x = anchor.getLeft().coerceIn(EDGE, (screenW - w - EDGE).coerceAtLeast(EDGE))
+            y = (anchor.getBottom() + 4f).coerceIn(EDGE, (screenH - h - EDGE).coerceAtLeast(EDGE))
+        }
+
+        val rise = (1f - fade) * 3f
+        y += rise
+
+        lastBounds = floatArrayOf(x, y, x + w, y + h)
+        BrassPlatform.current?.flushText()
+
+        BrassCard.draw(m, x, y, x + w, y + h, shadow = true, alpha = fade)
+        val accentColor = if (entry.accent.isDefault) Colors.UI_ACCENT else entry.accent.accent
+        BrassPaint.rect(m, x, y, x + 1f, y + h, alpha(accentColor, fade))
+
+        custom.draw(m, x + pad, y + pad, fade)
+    }
+
+    /** The coloured-lines card: same placement and chrome, one line per (text, colour) pair. */
+    private fun paintRich(
+        m: UMatrixStack,
+        root: UIComponent,
+        entry: Entry,
+        screenW: Float,
+        screenH: Float,
+        pad: Float,
+        lines: List<Pair<String, Color>>,
+    ) {
+        val textMaxW = (min(maxTextWidth, screenW - EDGE * 2) - pad * 2).coerceAtLeast(20f)
+        val rows = lines.flatMap { (text, color) ->
+            BrassFont.wrap(root, text, textMaxW).map { it to color }
+        }
+        val w = (rows.maxOfOrNull { BrassFont.width(root, it.first) } ?: 0f) + pad * 2
+        val h = pad * 2 + BrassFont.LINE * rows.size + (rows.size - 1) * 1f
+
+        val anchor = hovered
+        var x: Float
+        var y: Float
+        if (entry.follow || anchor == null) {
+            val at = placeCard(w, h, mouseX, mouseY, screenW, screenH)
+            x = at[0]; y = at[1]
+        } else {
+            x = anchor.getLeft().coerceIn(EDGE, (screenW - w - EDGE).coerceAtLeast(EDGE))
+            y = (anchor.getBottom() + 4f).coerceIn(EDGE, (screenH - h - EDGE).coerceAtLeast(EDGE))
+        }
+
+        val rise = (1f - fade) * 3f
+        y += rise
+
+        lastBounds = floatArrayOf(x, y, x + w, y + h)
+        BrassPlatform.current?.flushText()
+
+        BrassCard.draw(m, x, y, x + w, y + h, shadow = true, alpha = fade)
+        val accentColor = if (entry.accent.isDefault) Colors.UI_ACCENT else entry.accent.accent
+        BrassPaint.rect(m, x, y, x + 1f, y + h, alpha(accentColor, fade))
+
+        rows.forEachIndexed { i, (text, color) ->
+            BrassFont.draw(
+                m, root, text,
+                x + pad, y + pad + i * (BrassFont.LINE + 1f), alpha(color, fade),
             )
         }
     }

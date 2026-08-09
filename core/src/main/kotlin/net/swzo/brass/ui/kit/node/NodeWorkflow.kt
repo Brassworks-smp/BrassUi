@@ -99,7 +99,8 @@ class NodeWorkflowService(
 data class GraphChange(
     val revision: Long,
     val label: String,
-    val graphJson: String,
+    /** The graph serialized in its native BSON format - ready for the wire with no extra encoding. */
+    val graphBson: ByteArray,
 )
 
 data class NodeAccessibilityEntry(

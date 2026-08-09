@@ -325,7 +325,7 @@ class BrassNodeAdvancedTest {
     fun `collaboration sessions replicate edits once without echo`() {
         class Document : NodeCollaborativeDocument {
             private val listeners = mutableListOf<(net.swzo.brass.ui.kit.node.GraphChange) -> Unit>()
-            var json = """{"version":3,"nodes":[],"links":[]}"""
+            var bytes = ByteArray(0)
             var revision = 0L
             override fun onGraphChange(
                 listener: (net.swzo.brass.ui.kit.node.GraphChange) -> Unit,
@@ -333,13 +333,13 @@ class BrassNodeAdvancedTest {
                 listeners += listener
                 return { listeners -= listener }
             }
-            override fun applyRemoteSnapshot(json: String, label: String) {
-                this.json = json
-                listeners.toList().forEach { it(net.swzo.brass.ui.kit.node.GraphChange(++revision, label, json)) }
+            override fun applyRemoteSnapshot(bytes: ByteArray, label: String) {
+                this.bytes = bytes
+                listeners.toList().forEach { it(net.swzo.brass.ui.kit.node.GraphChange(++revision, label, bytes)) }
             }
-            fun edit(next: String) {
-                json = next
-                listeners.toList().forEach { it(net.swzo.brass.ui.kit.node.GraphChange(++revision, "Edit", json)) }
+            fun edit(next: ByteArray) {
+                bytes = next
+                listeners.toList().forEach { it(net.swzo.brass.ui.kit.node.GraphChange(++revision, "Edit", bytes)) }
             }
         }
         val left = Document()
@@ -350,9 +350,9 @@ class BrassNodeAdvancedTest {
         var rightChanges = 0
         val stop = right.onGraphChange { rightChanges++ }
 
-        left.edit("""{"version":3,"nodes":[{"id":1,"type":"time"}],"links":[]}""")
+        left.edit(byteArrayOf(1, 2, 3, 4))
 
-        assertEquals(left.json, right.json)
+        assertTrue(left.bytes.contentEquals(right.bytes))
         assertEquals(1, rightChanges)
         stop()
         leftSession.close()

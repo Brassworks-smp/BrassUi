@@ -6,9 +6,12 @@ import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.kit.base.*
 import net.swzo.brass.ui.kit.layout.BrassCull
 import net.swzo.brass.ui.kit.paint.BrassCard
+import net.swzo.brass.ui.kit.paint.BrassKeycap
 import net.swzo.brass.ui.kit.paint.BrassPaint
 import net.swzo.brass.ui.kit.platform.BrassPlatform
+import net.swzo.brass.ui.kit.surface.BrassTooltip
 import kotlin.math.floor
+import java.awt.Color
 import net.swzo.brass.ui.kit.demo.BrassDemo
 import net.swzo.brass.ui.kit.demo.BrassDemoSource
 import gg.essential.elementa.components.UIContainer
@@ -18,6 +21,9 @@ import gg.essential.elementa.dsl.basicWidthConstraint
 import gg.essential.elementa.dsl.childOf
 import gg.essential.elementa.dsl.constrain
 import gg.essential.elementa.dsl.pixels
+
+/** The soft pastel tint [BrassInventoryGrid.highlight] slots wear - the accent heavily lightened. */
+private val HIGHLIGHT_TINT: Color get() = Colors.mix(Colors.UI_ACCENT, Color.WHITE, 0.62f)
 
 /**
  * A grid of item slots with drag-and-drop between them - a chest, a hotbar, a creative palette, a
@@ -65,7 +71,7 @@ import gg.essential.elementa.dsl.pixels
  * and [onChange] fires after every mutation so a caller can send the packet its container needs. Left
  * alone they all do the obvious local thing, which is what a palette or a loadout editor wants.
  */
-class BrassInventoryGrid(
+open class BrassInventoryGrid(
     /** Slots per row. */
     var columns: Int = 9,
     /** Number of rows. */
@@ -128,6 +134,70 @@ class BrassInventoryGrid(
     /** Whether slots may be picked up at all. A read-only view of a container sets this false. */
     var interactive: Boolean = true
 
+    /**
+     * Draw stack counts on items. Off for single-item selectors (a filter slot, a frequency picker)
+     * where the number is meaningless noise.
+     */
+    var showCounts: Boolean = true
+
+    /**
+     * Force every stored stack to a count of 1. For a selector that only cares about *which* item is
+     * in the slot: shift-clicking a stack of 64 still lands a single item, and merges never build up.
+     */
+    var singleStack: Boolean = false
+
+    /**
+     * Per-slot accent tints (index -> colour), mixed into the well fill. Lets a selector mark its
+     * slots - a redstone link's red first slot and blue second, a fuel slot's flame - without giving
+     * up the shared drag-and-drop machinery.
+     */
+    var slotTints: Map<Int, Color> = emptyMap()
+
+    /**
+     * Paint the wells as raised keycaps instead of flat recessed slots - the same chrome a node's
+     * inline controls wear. Tinted slots keep their accent (fill, lightened border, darkened lip);
+     * untinted ones fall back to the neutral element keycap.
+     */
+    var keycapSlots: Boolean = false
+
+    /**
+     * Optional per-slot tooltip: given the slot under the cursor and its index, return coloured lines
+     * (or null to suppress). Lets a host show an item's Minecraft tooltip in a brassui card without the
+     * toolkit knowing anything about Minecraft. When null, [showItemTooltips] decides whether to fall
+     * back to the platform's own tooltip for the hovered item.
+     */
+    var itemTooltip: ((Slot, Int) -> List<Pair<String, Color>>?)? = null
+
+    /**
+     * Show each hovered slot's item tooltip through [BrassPlatform.itemTooltip] - the game's real
+     * tooltip, for free, on any grid. On by default, because an item slot that hides its tooltip
+     * reads as broken; turn it off for a grid whose slots mean something other than "this item"
+     * (a filter well, a frequency slot).
+     */
+    var showItemTooltips: Boolean = true
+
+    /**
+     * Optional predicate marking slots that should stand out - the well is tinted with a soft pastel
+     * version of the accent and the border picks the tint up too, so a matching slot reads as one
+     * gentle highlight rather than a loud fill with a neutral rim. Lets a picker point at the linkers
+     * (or items) that satisfy what it is looking for without the caller having to restyle the slots.
+     */
+    var highlight: ((Slot, Int) -> Boolean)? = null
+
+    /**
+     * Stretch the block of slots to the component's full width, deriving [slotSize] from it each frame
+     * instead of using the fixed value. For a grid that should fill the card it sits in - a picker's
+     * inventory that must span the whole modal - rather than sitting at a fixed size with slack around
+     * it. [slotSize] is then the maximum (fallback) used before the layout has given the grid a width.
+     */
+    var fillWidth: Boolean = false
+
+    /** Effective slot edge this frame: derived from the component's width when [fillWidth]. */
+    protected open fun sz(): Float =
+        if (fillWidth && getWidth() > 0f)
+            ((getWidth() - pad() * 2f - (columns - 1) * gap) / columns).coerceAtLeast(1f)
+        else slotSize
+
     init {
         // The grid paints its own card around the slot block (see drawContent), so the base class must
         // paint nothing. Left on the default keycap it drew a second, *full-width* card behind
@@ -135,6 +205,21 @@ class BrassInventoryGrid(
         // and the real card then looked like a small panel floating in the middle of a big empty one.
         chrome = BrassChrome.NONE
         link.members.add(this)
+
+        // Wire the item tooltip ONCE, here, with a supplier that reads the slot under the cursor each
+        // frame ([hoverIndex], published by drawContent). BrassTooltip installs its enter/leave
+        // listeners on the first attach; doing that lazily from the draw loop only ran on a frame the
+        // cursor was already inside a slot, so the listeners missed the very entry that should have
+        // shown the first tooltip. An empty result (no supplier, empty slot) simply draws nothing.
+        BrassTooltip.attachRich(this, {
+            val tip = itemTooltip
+            val i = hoverIndex
+            val slot = if (tip != null && i in 0 until slotCount) contents[i] else null
+            if (slot == null) return@attachRich emptyList()
+            val lines = tip?.invoke(slot, i)
+                ?: if (showItemTooltips) BrassPlatform.current?.itemTooltip(slot.itemId) else null
+            lines ?: emptyList()
+        })
 
         onMouseClick { e ->
             if (!interactive) return@onMouseClick
@@ -201,13 +286,63 @@ class BrassInventoryGrid(
             if (link.drag != BrassInventoryLink.Drag.NONE) {
                 link.endDrag()
                 onChange?.invoke()
+                // A drag that ended with a remainder over dead space (or a drag that never reached a
+                // second slot) leaves the stack on the cursor; release over nothing discards it, so a
+                // carried stack is never stuck to the pointer.
+                if (link.held != null && !link.cursorOverSlot()) link.hold(null)
+            } else if (externalCarry) {
+                // A carry started outside a grid (an item dragged from a catalogue): drop it into
+                // whichever linked member's slot the cursor is over on release, so it behaves like a
+                // real drag-and-drop even into a virtualized sibling list.
+                val held = link.held
+                val target = if (interactive && held != null) {
+                    link.members.firstOrNull { it.cursorSlot() >= 0 }
+                } else {
+                    null
+                }
+                val index = target?.cursorSlot() ?: -1
+                if (held != null && target != null && index >= 0 && target.canPlace(index, held)) {
+                    val previous = target.slot(index)
+                    target.putDirect(index, held)
+                    link.hold(previous)
+                    onChange?.invoke()
+                } else if (held != null && !link.cursorOverSlot()) {
+                    // Released over empty UI rather than a slot: discard the carried stack instead of
+                    // leaving it stuck to the cursor.
+                    link.hold(null)
+                }
+                externalCarry = false
+            } else if (interactive && link.held != null && !link.cursorOverSlot()) {
+                // A stack picked up from a slot and released over dead space: discard it. Releasing
+                // over any linked grid's slot keeps it (a press there resolves it normally).
+                link.hold(null)
             }
         }
+    }
+
+    /**
+     * True while a stack picked up by [carry] (rather than by a press on a real slot) is on the cursor,
+     * so [onMouseRelease] knows to drop it into the slot under the pointer.
+     */
+    private var externalCarry = false
+
+    /**
+     * Put [slot] on the shared cursor as if it had been picked up, so it follows the pointer and can be
+     * dropped into this grid (or any linked one). Lets a non-grid source - an item catalogue the player
+     * drags from - start a carry that the grids finish: releasing over a slot drops it, and a plain
+     * click on a slot places it, exactly like a stack picked up from a real slot.
+     */
+    fun carry(slot: Slot?) {
+        link.hold(slot)
+        externalCarry = slot != null
     }
 
     /** When and where the last click landed, for double-click detection. */
     private var lastClickAt = 0L
     private var lastClickSlot = -1
+
+    /** Slot under the cursor this frame (-1 for none), published by [drawContent] for the tooltip. */
+    protected var hoverIndex = -1
 
     /**
      * Send every stack matching the one in [index] to the linked grid.
@@ -373,17 +508,20 @@ class BrassInventoryGrid(
      */
     internal fun putDirect(index: Int, slot: Slot?) {
         if (index !in 0 until slotCount) return
-        if (slot == null || slot.count <= 0) {
+        val normalized = if (slot == null || slot.count <= 0) null
+        else if (singleStack) Slot(slot.itemId, 1)
+        else slot
+        if (normalized == null) {
             contents.remove(index)
             landings.remove(index)
         } else {
-            contents[index] = slot
+            contents[index] = normalized
             beginLanding(index)
         }
     }
 
     /** Total slots in the grid. */
-    val slotCount: Int get() = columns * rows
+    open val slotCount: Int get() = columns * rows
 
     /** Where the block of slots sits when the component is wider than it needs to be. */
     enum class Align { LEFT, CENTER, RIGHT }
@@ -405,10 +543,10 @@ class BrassInventoryGrid(
     var card: Boolean = true
 
     /** Space the card takes on each side of the slot block, or zero when there is no card. */
-    private fun pad(): Float = if (card) CARD_PAD else 0f
+    protected open fun pad(): Float = if (card) CARD_PAD else 0f
 
     /** Left edge of the slot **block** - inside the card, which starts [pad] further out. */
-    private fun originX(): Float {
+    protected open fun originX(): Float {
         val slack = (getWidth() - contentWidth()).coerceAtLeast(0f)
         val cardLeft = getLeft() + when (align) {
             Align.LEFT -> 0f
@@ -418,7 +556,7 @@ class BrassInventoryGrid(
         return cardLeft + pad()
     }
 
-    private fun originY(): Float = getTop() + pad()
+    protected open fun originY(): Float = getTop() + pad()
 
     // ---- contents --------------------------------------------------------------------------------
 
@@ -441,10 +579,10 @@ class BrassInventoryGrid(
     // ---- geometry --------------------------------------------------------------------------------
 
     /** Width of the slot block alone, without the card around it. */
-    private fun slotsWidth(): Float = columns * slotSize + (columns - 1) * gap
+    private fun slotsWidth(): Float = columns * sz() + (columns - 1) * gap
 
     /** Height of the slot block alone, without the card around it. */
-    private fun slotsHeight(): Float = rows * slotSize + (rows - 1) * gap
+    private fun slotsHeight(): Float = rows * sz() + (rows - 1) * gap
 
     /**
      * Total width the grid wants, for a constraint - the **card**, not just the slots.
@@ -458,24 +596,31 @@ class BrassInventoryGrid(
     fun contentHeight(): Float = slotsHeight() + pad() * 2 + if (card) CARD_FOOT else 0f
 
     /** Slot index at a point measured from the component's top-left, or -1. */
-    private fun slotAt(localX: Float, localY: Float): Int {
-        val pitch = slotSize + gap
+    protected open fun slotAt(localX: Float, localY: Float): Int {
+        val slot = sz()
+        val pitch = slot + gap
         val col = floor(localX / pitch).toInt()
         val row = floor(localY / pitch).toInt()
         if (col !in 0 until columns || row !in 0 until rows) return -1
         // Reject the gap between slots, so dropping on a seam is a miss rather than a neighbour.
-        if (localX - col * pitch > slotSize || localY - row * pitch > slotSize) return -1
+        if (localX - col * pitch > slot || localY - row * pitch > slot) return -1
         return row * columns + col
     }
 
-    private fun slotUnderCursor(): Int {
+    protected open fun slotUnderCursor(): Int {
         val (mx, my) = getMousePosition()
         if (!BrassCull.visible(this)) return -1
         return slotAt(mx - originX(), my - originY())
     }
 
-    private fun slotX(index: Int): Float = originX() + (index % columns) * (slotSize + gap)
-    private fun slotY(index: Int): Float = originY() + (index / columns) * (slotSize + gap)
+    protected open fun slotX(index: Int): Float = originX() + (index % columns) * (sz() + gap)
+    protected open fun slotY(index: Int): Float = originY() + (index / columns) * (sz() + gap)
+
+    /** The slot under the cursor, or -1 - the index any linked member can ask about. */
+    internal fun cursorSlot(): Int = slotUnderCursor()
+
+    /** Whether the cursor is over one of this grid's slots. */
+    internal fun cursorOverSlot(): Boolean = cursorSlot() >= 0
 
     // ---- animation ---------------------------------------------------------------------------------
 
@@ -548,7 +693,7 @@ class BrassInventoryGrid(
     }
 
     /** Advance every in-flight stack, dropping the ones that have arrived. */
-    private fun advanceLandings() {
+    protected fun advanceLandings() {
         if (landings.isEmpty()) return
         val step = BrassClock.dt / LANDING_SECONDS
         val done = ArrayList<Int>(landings.size)
@@ -565,7 +710,7 @@ class BrassInventoryGrid(
      * The slot's own position once it has arrived; somewhere between the cursor and the slot while it
      * is still in flight, eased out so it decelerates into place rather than arriving at full speed.
      */
-    private fun itemPos(index: Int, x: Float, y: Float): Pair<Float, Float> {
+    protected fun itemPos(index: Int, x: Float, y: Float): Pair<Float, Float> {
         val landing = landings[index] ?: return x to y
         // Cubic ease-out: fast away from the cursor, settling into the slot. An item that moved at a
         // constant rate and stopped dead read as a teleport with extra steps.
@@ -603,6 +748,12 @@ class BrassInventoryGrid(
         advanceWashes(hovered)
         advanceLandings()
 
+        // Which slot the item tooltip should describe. Published for the supplier wired once in init:
+        // re-attaching from here every frame registers the tooltip's enter/leave listeners only on the
+        // frame the cursor is already inside a slot, so the very first hover never fired them and no
+        // tooltip showed until you left and came back. Wiring once and reading this closes that gap.
+        hoverIndex = hovered
+
         if (card) {
             // Hugs the slot block rather than the component. Left to the component's own width it
             // stretched to whatever the form handed it and trailed off into empty space beside the
@@ -621,7 +772,7 @@ class BrassInventoryGrid(
         for (index in 0 until slotCount) {
             val x = slotX(index)
             val y = slotY(index)
-            paintWell(matrixStack, x, y, hoverAmount[index], paintAmount[index])
+            paintWell(matrixStack, index, x, y, hoverAmount[index], paintAmount[index])
             contents[index]?.let {
                 // Wells are painted at the slot; the item may still be on its way to one.
                 val (ix, iy) = itemPos(index, x, y)
@@ -635,6 +786,17 @@ class BrassInventoryGrid(
         // whichever grid the cursor happens to be over, and Elementa's draw order is the child order -
         // so a single owner would be painted under its neighbour half the time. An item is one quad;
         // drawing it twice in the same place is invisible and cheaper than the alternatives.
+        paintHeld(matrixStack, platform)
+    }
+
+    /**
+     * Paint the stack on the shared cursor, trailing the pointer, with its landing animation state.
+     *
+     * Every linked grid paints it, so it stays above whichever grid the cursor is over; a
+     * virtualized sibling (a long one-column list, say) calls this from its own draw to get the
+     * same carry rendering without reimplementing the easing.
+     */
+    protected open fun paintHeld(matrixStack: UMatrixStack, platform: BrassPlatform?) {
         val held = link.held
         if (held == null) {
             // Forgotten on release, so the next pick-up starts at the cursor instead of sliding in
@@ -643,8 +805,8 @@ class BrassInventoryGrid(
             heldY = null
         } else {
             val (mx, my) = getMousePosition()
-            val tx = mx - slotSize / 2f
-            val ty = my - slotSize / 2f
+            val tx = mx - sz() / 2f
+            val ty = my - sz() / 2f
             // Trails the cursor slightly rather than being pinned to it. A stack welded to the pointer
             // reads as part of the cursor; a stack that lags a few pixels and catches up reads as an
             // object being carried, which is the whole illusion the drag is selling.
@@ -653,7 +815,6 @@ class BrassInventoryGrid(
             heldY = heldY?.let { it + (ty - it) * k } ?: ty
             paintItem(matrixStack, platform, held, heldX!!, heldY!!)
         }
-
     }
 
     /**
@@ -668,8 +829,47 @@ class BrassInventoryGrid(
      * it: a slot the drag has claimed is also the slot under the cursor, and cross-fading between two
      * washes of different colours dips through a muddy midpoint on the way.
      */
-    private fun paintWell(m: UMatrixStack, x: Float, y: Float, hover: Float, paint: Float) {
-        BrassCard.flat(m, x, y, x + slotSize, y + slotSize, fill = Colors.UI_INNER_BG)
+    protected open fun paintWell(m: UMatrixStack, index: Int, x: Float, y: Float, hover: Float, paint: Float) {
+        val slotSize = sz()
+        val highlighted = contents[index]?.let { highlight?.invoke(it, index) == true } == true
+        val tint = slotTints[index] ?: if (highlighted) HIGHLIGHT_TINT else null
+        if (keycapSlots) {
+            // A highlighted slot wears the accent itself (its tinted fill + border + lip) rather
+            // than a ring around the well - so the matching linkers read as accent-coloured slots.
+            val bg: Color
+            val border: Color
+            val lip: Color
+            if (tint != null) {
+                bg = tint
+                border = Colors.mix(tint, Color.WHITE, 0.28f)
+                lip = Colors.mix(tint, Color.BLACK, 0.42f)
+            } else {
+                bg = Colors.UI_ELEMENT_BG
+                border = Colors.UI_ELEMENT_BORDER
+                lip = Colors.KEYCAP_BOTTOM
+            }
+            BrassKeycap.draw(
+                m, x, y, slotSize, slotSize,
+                bg = if (hover > 0.01f) Colors.mix(bg, Color.WHITE, 0.14f) else bg,
+                border = border,
+                outer = Colors.UI_OUTER_BORDER,
+                bottom = lip,
+                defaultAccent = tint == null,
+                lip = 0f,
+            )
+            if (paint > WASH_EPSILON) {
+                BrassPaint.rect(m, x, y, x + slotSize, y + slotSize, BrassPaint.fade(Colors.UI_SELECTION, paint))
+            }
+            return
+        }
+        val base = if (tint != null) Colors.mix(Colors.UI_INNER_BG, tint, 0.55f) else Colors.UI_INNER_BG
+        BrassCard.flat(m, x, y, x + slotSize, y + slotSize, fill = base)
+        if (tint != null) {
+            // The flat well normally keeps its neutral inner border; a tinted slot wears the tint on
+            // the border too, so the highlight reads as one coloured slot instead of a coloured well
+            // sitting behind a grey rim.
+            BrassPaint.border(m, x, y, x + slotSize, y + slotSize, Colors.mix(tint, Color.WHITE, 0.22f))
+        }
         if (hover > WASH_EPSILON) {
             BrassPaint.rect(m, x, y, x + slotSize, y + slotSize, BrassPaint.fade(Colors.ROW_HOVER, hover))
         }
@@ -680,14 +880,18 @@ class BrassInventoryGrid(
         }
     }
 
-    private fun paintItem(m: UMatrixStack, platform: BrassPlatform?, slot: Slot, x: Float, y: Float) {
+    protected fun paintItem(m: UMatrixStack, platform: BrassPlatform?, slot: Slot, x: Float, y: Float) {
+        val slotSize = sz()
         val inset = (slotSize * 0.12f).coerceIn(1f, 3f)
         // Vanilla content fades by darkening and is dropped halfway through a closing frame - the
         // same earlyOut every BrassPlatformVisual uses.
         val fade = BrassAmbientFade.earlyOut(BrassAmbientFade.current)
         if (fade <= 0f) return
         runCatching {
-            platform?.drawItem(m, slot.itemId, x + inset, y + inset, slotSize - inset * 2f, slot.count, fade)
+            platform?.drawItem(
+                m, slot.itemId, x + inset, y + inset, slotSize - inset * 2f,
+                if (showCounts) slot.count else 1, fade,
+            )
         }
     }
 

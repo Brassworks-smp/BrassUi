@@ -9,43 +9,48 @@ import net.swzo.brass.ui.kit.net.BrassJson
 
 /**
  * The whole action bus rides on a handful of payloads: requests up, replies and state down, and the
- * permission sync. JSON travels compressed via [CompressedJsonCodec] (gzip only kicks in past
- * [BrassJson.COMPRESS_THRESHOLD]), because the core registry already defines every action's shape - a
- * payload per action would duplicate that knowledge in the transport and tie the toolkit to one
- * loader's codec system.
+ * permission sync. Bodies travel as **BSON bytes** (see [net.swzo.brass.ui.kit.net.BrassBson]),
+ * length-prefixed and gzip-compressed past [BrassJson.COMPRESS_THRESHOLD] by [BsonBytesCodec] -
+ * the core registry already defines every action's shape, so a payload per action would duplicate
+ * that knowledge in the transport and tie the toolkit to one loader's codec system.
  *
- * A null JSON value is encoded as an empty string (see the payload constructors), so `Unit` actions
- * with no input travel as an empty body rather than a sentinel byte.
+ * A null BSON value is encoded as an empty byte array, so `Unit` actions with no input travel as an
+ * empty body rather than a sentinel byte.
  */
-private const val MAX_JSON_LENGTH = 1_048_576
+private const val MAX_DATA_LENGTH = 1_048_576
 
 /**
- * A JSON string on the wire: length-prefixed bytes produced by [BrassJson.compress]. Decoding caps the
- * **decompressed** size so a hostile peer cannot run the server out of memory with a gzip bomb.
+ * A BSON byte array on the wire: length-prefixed bytes produced by [BrassJson.compress]. Decoding
+ * caps the **decompressed** size so a hostile peer cannot run the server out of memory with a gzip
+ * bomb.
  */
-private object CompressedJsonCodec : StreamCodec<ByteBuf, String> {
+private object BsonBytesCodec : StreamCodec<ByteBuf, ByteArray> {
 
-    override fun encode(buffer: ByteBuf, value: String) {
+    override fun encode(buffer: ByteBuf, value: ByteArray) {
         val bytes = BrassJson.compress(value)
         buffer.writeInt(bytes.size)
         buffer.writeBytes(bytes)
     }
 
-    override fun decode(buffer: ByteBuf): String {
+    override fun decode(buffer: ByteBuf): ByteArray {
         val bytes = ByteArray(buffer.readInt())
         buffer.readBytes(bytes)
-        val json = BrassJson.decompress(bytes)
-        check(json.length <= MAX_JSON_LENGTH) { "Decoded payload exceeds $MAX_JSON_LENGTH chars" }
-        return json
+        val data = BrassJson.decompress(bytes)
+        check(data.size <= MAX_DATA_LENGTH) { "Decoded payload exceeds $MAX_DATA_LENGTH bytes" }
+        return data
     }
 }
 
-/** Client -> server: "run the action with this JSON input". Carries the protocol [version]. */
+/** Client -> server: "run the action with this BSON input". Carries the protocol [version]. */
 data class BrassActionPayload(
     val requestId: Long,
     val version: Int,
     val actionId: String,
-    val json: String,
+    val data: ByteArray,
+    /** Index of this piece when [chunks] > 1 (large actions travel chunked). */
+    val chunk: Int = 0,
+    /** Total piece count; 1 means the action travelled whole. */
+    val chunks: Int = 1,
 ) : CustomPacketPayload {
 
     companion object {
@@ -56,7 +61,9 @@ data class BrassActionPayload(
             ByteBufCodecs.VAR_LONG, BrassActionPayload::requestId,
             ByteBufCodecs.VAR_INT, BrassActionPayload::version,
             ByteBufCodecs.STRING_UTF8, BrassActionPayload::actionId,
-            CompressedJsonCodec, BrassActionPayload::json,
+            BsonBytesCodec, BrassActionPayload::data,
+            ByteBufCodecs.VAR_INT, BrassActionPayload::chunk,
+            ByteBufCodecs.VAR_INT, BrassActionPayload::chunks,
             ::BrassActionPayload,
         )
     }
@@ -67,7 +74,7 @@ data class BrassActionPayload(
 /** Server -> client: the result of one action request, addressed by [requestId]. */
 data class BrassReplyPayload(
     val requestId: Long,
-    val json: String,
+    val data: ByteArray,
 ) : CustomPacketPayload {
 
     companion object {
@@ -76,7 +83,7 @@ data class BrassReplyPayload(
         )
         val CODEC: StreamCodec<ByteBuf, BrassReplyPayload> = StreamCodec.composite(
             ByteBufCodecs.VAR_LONG, BrassReplyPayload::requestId,
-            CompressedJsonCodec, BrassReplyPayload::json,
+            BsonBytesCodec, BrassReplyPayload::data,
             ::BrassReplyPayload,
         )
     }
@@ -87,7 +94,13 @@ data class BrassReplyPayload(
 /** Server -> client: a state value changed; subscribers for [stateId] update. */
 data class BrassStatePayload(
     val stateId: String,
-    val json: String,
+    val data: ByteArray,
+    /** Index of this piece when [chunks] > 1 (large states travel chunked). */
+    val chunk: Int = 0,
+    /** Total piece count; 1 means the state travelled whole. */
+    val chunks: Int = 1,
+    /** Identity shared by every piece of one logical state update. */
+    val transferId: Long = 0L,
 ) : CustomPacketPayload {
 
     companion object {
@@ -96,7 +109,10 @@ data class BrassStatePayload(
         )
         val CODEC: StreamCodec<ByteBuf, BrassStatePayload> = StreamCodec.composite(
             ByteBufCodecs.STRING_UTF8, BrassStatePayload::stateId,
-            CompressedJsonCodec, BrassStatePayload::json,
+            BsonBytesCodec, BrassStatePayload::data,
+            ByteBufCodecs.VAR_INT, BrassStatePayload::chunk,
+            ByteBufCodecs.VAR_INT, BrassStatePayload::chunks,
+            ByteBufCodecs.VAR_LONG, BrassStatePayload::transferId,
             ::BrassStatePayload,
         )
     }
@@ -139,9 +155,9 @@ object BrassPermsRequestPayload : CustomPacketPayload {
     override fun type(): CustomPacketPayload.Type<out CustomPacketPayload> = TYPE
 }
 
-/** Server -> client: `actionId -> encoded decision` as a JSON map (see AuthDecision.encode). */
+/** Server -> client: `actionId -> encoded decision` as a BSON map (see AuthDecision.encode). */
 data class BrassPermsPayload(
-    val json: String,
+    val data: ByteArray,
 ) : CustomPacketPayload {
 
     companion object {
@@ -149,7 +165,7 @@ data class BrassPermsPayload(
             ResourceLocation.fromNamespaceAndPath("brassui", "perms"),
         )
         val CODEC: StreamCodec<ByteBuf, BrassPermsPayload> = StreamCodec.composite(
-            CompressedJsonCodec, BrassPermsPayload::json,
+            BsonBytesCodec, BrassPermsPayload::data,
             ::BrassPermsPayload,
         )
     }

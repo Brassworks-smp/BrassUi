@@ -1,17 +1,24 @@
 package net.swzo.brass.ui.kit.node
 
 import gg.essential.elementa.UIComponent
+import gg.essential.elementa.components.UIContainer
+import gg.essential.elementa.dsl.childOf
+import gg.essential.elementa.dsl.constrain
+import gg.essential.elementa.dsl.percent
+import gg.essential.elementa.dsl.pixels
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
 import net.swzo.brass.ui.kit.base.BrassAmbientFade
+import net.swzo.brass.ui.kit.base.BrassFocus
 import net.swzo.brass.ui.kit.base.BrassEased
 import net.swzo.brass.ui.kit.input.BrassColorPicker
 import net.swzo.brass.ui.kit.paint.BrassCard
-import net.swzo.brass.ui.kit.paint.BrassKeycap
 import net.swzo.brass.ui.kit.paint.BrassPaint
+import net.swzo.brass.ui.kit.paint.BrassKeycap
 import net.swzo.brass.ui.kit.paint.BrassSwatch
 import net.swzo.brass.ui.kit.surface.BrassContextMenu
 import net.swzo.brass.ui.kit.text.BrassFont
+import net.swzo.brass.ui.kit.text.BrassTextInput
 import java.awt.Color
 import kotlin.math.roundToInt
 
@@ -36,9 +43,52 @@ class NodeDrawCtx(
     val originY: Float = 0f,
     val panX: Float = 0f,
     val panY: Float = 0f,
+    /**
+     * The visible viewport in **world** coordinates (already expanded by a small margin). Geometry
+     * whose box does not overlap this can be skipped - when the canvas is zoomed in, most nodes and
+     * wires fall outside it, and drawing them anyway is where the quad count runs away. Defaults to an
+     * infinite rectangle so a renderer that is handed no bounds culls nothing.
+     */
+    val visMinX: Float = Float.NEGATIVE_INFINITY,
+    val visMinY: Float = Float.NEGATIVE_INFINITY,
+    val visMaxX: Float = Float.POSITIVE_INFINITY,
+    val visMaxY: Float = Float.POSITIVE_INFINITY,
+    /**
+     * Continuous level of detail, 0..1, derived from the canvas zoom: 0 is a flat overview (nodes
+     * become simple rects, wires straight lines), 1 is full chrome. Rendering fades detail in and
+     * out with this, so zooming never pops.
+     */
+    val detail: Float = 1f,
 ) {
+
+    /**
+     * Shared quad batches for the current frame's **overview LOD** pass, if the host uses one: the
+     * editor creates them once per frame so every flat node rect and straight wire line joins a
+     * single GPU draw call instead of one call each. Null when a direct host draws unbatched.
+     */
+    var lodRects: BrassPaint.QuadBatch? = null
+
+    /**
+     * Per-frame occlusion predicate: returns true when the given **world rect** of [node]'s interior
+     * (a title, a port nub, a field row) is fully covered by a node drawn above it. Set by the
+     * editor's occlusion sweep; null when no culling applies (overview zoom).
+     */
+    var coveredBy: ((GraphNode, Float, Float, Float, Float) -> Boolean)? = null
+
     fun screenX(wx: Float): Float = originX + panX + wx * zoom
     fun screenY(wy: Float): Float = originY + panY + wy * zoom
+
+    /** Whether the world-space box `[x1,y1]..[x2,y2]` overlaps the visible viewport. */
+    fun visible(x1: Float, y1: Float, x2: Float, y2: Float): Boolean =
+        x2 >= visMinX && x1 <= visMaxX && y2 >= visMinY && y1 <= visMaxY
+
+    companion object {
+        /** Smooth 0→1 transition between [a] and [b], for LOD fades. */
+        fun smoothstep(a: Float, b: Float, x: Float): Float {
+            val t = ((x - a) / (b - a)).coerceIn(0f, 1f)
+            return t * t * (3f - 2f * t)
+        }
+    }
 }
 
 /**
@@ -59,6 +109,12 @@ class NodeDrawCtx(
 abstract class NodeField(val key: String, val label: String) {
 
     var visibleWhen: () -> Boolean = { true }
+
+    /**
+     * A short one-line explanation of what this option does, shown as the body of the field's hover
+     * tooltip (beneath [tip], which shows the label and current value). Null shows no explanation.
+     */
+    var description: String? = null
 
     /** Eased hover / press, driven by the editor and read by [drawControl] - the same feel as a keycap. */
     val hover = BrassEased(0f, speed = 14f)
@@ -91,8 +147,26 @@ abstract class NodeField(val key: String, val label: String) {
     /** Open that editor, floating at screen ([sx],[sy]) under [root]. Reuses the real toolkit widgets. */
     open fun showEditor(root: UIComponent, host: UIComponent, sx: Float, sy: Float) {}
 
+    /**
+     * A right-press (quick-entry menu) landed on the control. [sx]/[sy] are screen coordinates for
+     * the floating menu; return true to consume the press so the editor skips its node context menu.
+     * [EnumField] opens a dropdown of its options, [StepperField] and [SliderField] open a focused
+     * text entry - see [openQuickTextEntry].
+     */
+    open fun onRightPress(root: UIComponent, host: UIComponent, sx: Float, sy: Float): Boolean = false
+
     /** A short line for the field's tooltip. */
     open fun tip(): String = label
+
+    /**
+     * Size `[w, h]` of a **custom-painted** tooltip for this field, or null (the default) to use the
+     * plain text tooltip built from [tip] and [description]. When non-null the editor shows a custom
+     * tooltip card and calls [drawTooltip] to fill it - a frequency field paints its item slots there.
+     */
+    open fun tooltipSize(host: UIComponent): FloatArray? = null
+
+    /** Paint the custom tooltip body at ([x],[y]), faded by [alpha]. Only called when [tooltipSize] is non-null. */
+    open fun drawTooltip(m: UMatrixStack, host: UIComponent, x: Float, y: Float, alpha: Float) {}
 
     /** The field's value as a JSON primitive (Boolean / Number / String) for [NodeGraph.toJson]. */
     abstract fun encode(): Any
@@ -105,6 +179,27 @@ abstract class NodeField(val key: String, val label: String) {
         val cy1 = y1 + (y2 - y1 - height) / 2f
         return cy1 to cy1 + height
     }
+}
+
+/**
+ * Open a small floating dropdown holding a focused text input that commits on Enter.
+ *
+ * The text input is given **sole** focus - [BrassFocus.focus] - so keystrokes go to the typed value
+ * and nowhere else (a common pattern for quick-entry controls). Click-away or Escape dismisses
+ * without applying; Enter applies via [commit].
+ */
+fun openQuickTextEntry(root: UIComponent, sx: Float, sy: Float, initial: String, commit: (String) -> Boolean) {
+    lateinit var menu: BrassContextMenu
+    val input = BrassTextInput(initial)
+    val content = UIContainer()
+    input.constrain {
+        x = 0.pixels(); y = 0.pixels()
+        width = 100.percent(); height = 100.percent()
+    } childOf content
+    input.onSubmit = { text -> if (commit(text)) menu.dismiss() }
+    menu = BrassContextMenu.custom(content, 170, 40)
+    menu.show(root, sx, sy)
+    BrassFocus.focus(input)
 }
 
 /**
@@ -206,13 +301,34 @@ class SliderField(
         return set
     }
     override fun onRelease() { scrubbing = false }
+    override fun onRightPress(root: UIComponent, host: UIComponent, sx: Float, sy: Float): Boolean {
+        openQuickTextEntry(root, sx, sy, ((value * 100f).roundToInt()).toString()) { text ->
+            val pct = text.trim().toDoubleOrNull() ?: return@openQuickTextEntry false
+            value = (pct / 100.0).toFloat().coerceIn(0f, 1f)
+            displayed.snapTo(value)
+            true
+        }
+        return true
+    }
     override fun tip() = "$label: ${(value * 100).toInt()}%"
     override fun encode(): Any = value
     override fun decode(v: Any?) { value = (v as? Number)?.toFloat() ?: value }
 }
 
-/** A cycler over [options], drawn as a mini keycap with prev/next arrows. */
-class EnumField(key: String, label: String, val options: List<String>, var index: Int = 0) : NodeField(key, label) {
+/**
+ * A cycler over [options], drawn as a mini keycap with prev/next arrows.
+ *
+ * [options] are the **stored** values (saved to JSON, read by executors), so they stay stable. [displayOf]
+ * maps a stored value to the text actually shown - the hook a host uses to localise the labels without
+ * changing what is persisted or compared.
+ */
+class EnumField(
+    key: String,
+    label: String,
+    val options: List<String>,
+    var index: Int = 0,
+    private val displayOf: (String) -> String = { it },
+) : NodeField(key, label) {
     private val change = BrassEased(1f, speed = 22f)
     private var previous = current
 
@@ -235,14 +351,24 @@ class EnumField(key: String, label: String, val options: List<String>, var index
         NodeGlyph.arrow(ctx.m, x2 - 4f, (b.y1 + b.y2) / 2f, left = false)
         val amount = change.advance()
         animatedValueText(
-            ctx, previous, current, amount,
+            ctx, displayOf(previous), displayOf(current), amount,
             x1 + 8f, x2 - 8f, (b.y1 + b.y2) / 2f,
         )
     }
     override fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit)? {
         if (wx < (x1 + x2) / 2f) prev() else next(); return null
     }
-    override fun tip() = "$label: $current"
+    override fun onRightPress(root: UIComponent, host: UIComponent, sx: Float, sy: Float): Boolean {
+        // A dropdown of every option - jump straight to one instead of cycling.
+        val items = options.map { opt ->
+            BrassContextMenu.Item(displayOf(opt)) {
+                changeTo(options.indexOf(opt))
+            }
+        }
+        BrassContextMenu(items).show(root, sx, sy)
+        return true
+    }
+    override fun tip() = "$label: ${displayOf(current)}"
     override fun encode(): Any = current
     override fun decode(v: Any?) {
         val i = options.indexOf(v as? String)
@@ -281,6 +407,14 @@ class StepperField(
     }
     override fun onPress(wx: Float, x1: Float, x2: Float): ((Float) -> Unit)? {
         if (wx < (x1 + x2) / 2f) dec() else inc(); return null
+    }
+    override fun onRightPress(root: UIComponent, host: UIComponent, sx: Float, sy: Float): Boolean {
+        openQuickTextEntry(root, sx, sy, value.toString()) { text ->
+            val next = text.trim().toIntOrNull() ?: return@openQuickTextEntry false
+            changeTo(next.coerceIn(min, max))
+            true
+        }
+        return true
     }
     override fun tip() = "$label: $value"
     override fun encode(): Any = value

@@ -1,5 +1,6 @@
 package net.swzo.brass.ui.kit.text
 
+import gg.essential.elementa.effects.ScissorEffect
 import gg.essential.universal.UKeyboard
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.Colors
@@ -36,6 +37,12 @@ import kotlin.math.floor
 class BrassTextArea(
     initial: String = "",
     private val placeholder: String = "",
+    /**
+     * A [BrassSyntax] language id (e.g. `"json"`, `"kotlin"`) for syntax-highlighted content, painted
+     * with the same roles as markdown's fenced code blocks. Null keeps the field plain. The highlight is
+     * rebuilt only when [text] changes, never per frame.
+     */
+    val language: String? = null,
     private val onChange: (String) -> Unit = {},
 ) : BrassWidget(BrassAccent.DEFAULT), BrassValue<String>, BrassFocusable, BrassTextField {
 
@@ -124,6 +131,11 @@ class BrassTextArea(
     private var wrappedFor = -1f
     private var wrappedText: String? = null
 
+    /** Highlighted source lines and each line's absolute start offset, keyed to the exact [text]. */
+    private var highlighted: List<List<BrassSyntax.Span>> = emptyList()
+    private var sourceLineStarts: IntArray = IntArray(0)
+    private var highlightedFor: String? = null
+
     init {
         holder.onChange(onChange)
 
@@ -205,6 +217,26 @@ class BrassTextArea(
 
     private fun invalidateWrap() { wrappedFor = -1f; wrappedText = null }
 
+    /**
+     * The current text tokenized as [language]. Rebuilt only when [text] actually changes (an identity
+     * check, like [wrapped] — every edit produces a fresh String), never per frame. [sourceLineStarts]
+     * is built in the same pass so a wrapped visual line can find its own colour runs; a visual line
+     * never crosses a paragraph break, so it maps to exactly one source line.
+     */
+    private fun highlightedLines(): List<List<BrassSyntax.Span>> {
+        if (highlightedFor !== text) {
+            highlightedFor = text
+            highlighted = BrassSyntax.highlight(language, text)
+            sourceLineStarts = IntArray(highlighted.size)
+            var offset = 0
+            for (i in highlighted.indices) {
+                sourceLineStarts[i] = offset
+                offset += highlighted[i].sumOf { it.text.length } + 1   // +1 for the newline that ended it
+            }
+        }
+        return highlighted
+    }
+
     // No ScissorEffect here, deliberately. It is the obvious way to guarantee nothing escapes the box,
     // and it would clip the widget's *own* chrome: a keycap bleeds BLEED_X to the sides and
     // BLEED_BOTTOM below its bounds for the outer ring and lip, and a scissor set to those same bounds
@@ -239,6 +271,10 @@ class BrassTextArea(
             var line = StringBuilder()
             var lineStart = index
             var cursor = index
+            // Whether any non-space content has landed on the current paragraph yet. Until it has, the
+            // spaces at the front are the line's *indentation* and are kept; once wrapping has begun, a
+            // space left at the start of a fresh visual line is a soft-wrap seam and is dropped instead.
+            var contentSeen = false
 
             fun flush() {
                 lines.add(line.toString())
@@ -248,10 +284,16 @@ class BrassTextArea(
 
             for ((w, word) in paragraph.split(' ').withIndex()) {
                 if (w > 0) {
-                    // The space that joins this word to the previous one.
-                    if (line.isEmpty()) { lineStart = cursor + 1 } else line.append(' ')
+                    // The space that joins this word to the previous one. On an empty line it is either
+                    // indentation (keep it) or the seam of a soft wrap (drop it) - see [contentSeen].
+                    when {
+                        line.isNotEmpty() -> line.append(' ')
+                        contentSeen -> lineStart = cursor + 1
+                        else -> line.append(' ')
+                    }
                     cursor++
                 }
+                if (word.isNotEmpty()) contentSeen = true
                 var remaining = word
                 while (remaining.isNotEmpty()) {
                     val candidate = line.toString() + remaining
@@ -394,6 +436,13 @@ class BrassTextArea(
         val body = if (showPlaceholder) listOf(placeholder) else lines
         val tint = if (showPlaceholder) Colors.UI_TEXT_DARK else textColor
 
+        // Clip the text (and the caret) to the padded viewport, so a line only half inside the box is
+        // cut cleanly at the edge instead of spilling over the border. Scoped to the text draw only -
+        // the chrome and scrollbar are drawn outside it - so unlike a component-wide ScissorEffect it
+        // does not eat the keycap's own bleeding border (see the note above [layout]).
+        val clip = ScissorEffect(x.toFloat(), y + pad, (x + w).toFloat(), y + h - pad, true)
+        clip.beforeDraw(m)
+
         var ly = y + pad - scrollY
         for ((row, line) in body.withIndex()) {
             // Only the lines actually in the viewport are drawn — the field may hold far more.
@@ -401,7 +450,7 @@ class BrassTextArea(
                 if (!showPlaceholder && edit.hasSelection) {
                     paintSelection(m, row, line, s, x, ly)
                 }
-                BrassFont.draw(m, this, line, x + pad, ly, tint, true, scale = contentScale)
+                drawLine(m, line, s[row], x + pad, ly, tint, showPlaceholder)
             }
             ly += lineHeight
         }
@@ -436,12 +485,61 @@ class BrassTextArea(
             }
         }
 
+        clip.afterDraw(m)
+
         if (bar.scrollable) {
             val gx = x + w - GRIP_W - 2f
             val gy = y + pad + bar.gripTop(scrollY)
             BrassPaint.rect(m, gx, y + pad, gx + GRIP_W, y + h - pad, TRACK)
             net.swzo.brass.ui.kit.paint.BrassCard.grip(m, gx, gy, gx + GRIP_W, gy + bar.gripHeight())
         }
+    }
+
+    /**
+     * One visual line of the field, honouring [contentScale]. With a [language] set, the line is painted
+     * as its syntax-coloured runs clipped to this visual line's slice of the source — a soft wrap inside
+     * a token keeps that token's colour across the seam (a long string stays amber over the break).
+     * Placeholder prompts drop the shadow so they read as a ghost behind real text.
+     */
+    private fun drawLine(
+        m: UMatrixStack,
+        line: String,
+        start: Int,
+        x: Float,
+        y: Float,
+        tint: Color,
+        placeholder: Boolean,
+    ) {
+        if (placeholder || line.isEmpty() || language.isNullOrEmpty()) {
+            BrassFont.draw(m, this, line, x, y, tint, shadow = !placeholder, scale = contentScale)
+            return
+        }
+        val sourceIndex = sourceIndexFor(start)
+        val spans = highlightedLines().getOrNull(sourceIndex) ?: run {
+            BrassFont.draw(m, this, line, x, y, tint, shadow = true, scale = contentScale)
+            return
+        }
+        val lineStart = sourceLineStarts[sourceIndex]
+        val end = start + line.length
+        var sx = x
+        var offset = 0
+        for (span in spans) {
+            val clipFrom = maxOf(start - lineStart, offset)
+            val clipTo = minOf(end - lineStart, offset + span.text.length)
+            if (clipTo > clipFrom) {
+                val piece = span.text.substring(clipFrom - offset, clipTo - offset)
+                BrassFont.draw(m, this, piece, sx, y, span.color, shadow = true, scale = contentScale)
+                sx += textWidth(piece)
+            }
+            offset += span.text.length
+            if (offset >= end - lineStart) break
+        }
+    }
+
+    /** The source line containing absolute offset [start] — binary search over [sourceLineStarts]. */
+    private fun sourceIndexFor(start: Int): Int {
+        val probe = sourceLineStarts.binarySearch(start)
+        return if (probe >= 0) probe else -probe - 2
     }
 
     /**

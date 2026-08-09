@@ -1,6 +1,7 @@
 package net.swzo.brass.ui.kit.paint
 
 import gg.essential.elementa.components.UIBlock
+import gg.essential.universal.UGraphics
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.kit.base.BrassAmbientFade
 import net.swzo.brass.ui.kit.base.BrassStats
@@ -116,4 +117,62 @@ object BrassPaint {
     fun fade(c: Color, a: Float): Color =
         if (a >= 1f) c
         else Color(c.red, c.green, c.blue, (c.alpha * a.coerceIn(0f, 1f)).roundToInt().coerceIn(0, 255))
+
+    /**
+     * Batches many filled quads into a **single GPU draw**. [rect] is called once per [UIBlock.drawBlock]
+     * and each call is its own buffer submission - fine for a handful, ruinous for the thousands of tiny
+     * cells a node wire lays down, where the draw-call overhead, not the pixels, is the cost. A batch
+     * collects every quad into one tessellator buffer and submits it with one [flush].
+     *
+     * Colours still pass through the ambient fade and are still counted for the dev overlay, so a batched
+     * wire fades and reports exactly like an unbatched one - it just costs one draw instead of hundreds.
+     */
+    class QuadBatch(private val m: UMatrixStack) {
+        private val g = UGraphics.getFromTessellator()
+        private var open = false
+
+        fun rect(x1: Float, y1: Float, x2: Float, y2: Float, c: Color) {
+            if (x2 <= x1 || y2 <= y1) return
+            if (!open) {
+                UGraphics.enableBlend()
+                @Suppress("DEPRECATION")
+                g.beginWithDefaultShader(UGraphics.DrawMode.QUADS, UGraphics.CommonVertexFormats.POSITION_COLOR)
+                open = true
+            }
+            BrassStats.quad()
+            val col = BrassAmbientFade.apply(c)
+            g.pos(m, x1.toDouble(), y2.toDouble(), 0.0).color(col).endVertex()
+            g.pos(m, x2.toDouble(), y2.toDouble(), 0.0).color(col).endVertex()
+            g.pos(m, x2.toDouble(), y1.toDouble(), 0.0).color(col).endVertex()
+            g.pos(m, x1.toDouble(), y1.toDouble(), 0.0).color(col).endVertex()
+        }
+
+        /** A quad with arbitrary corners - a thick line segment, a rotated bar, a polygon cell. */
+        fun quad(
+            x1: Float, y1: Float, x2: Float, y2: Float,
+            x3: Float, y3: Float, x4: Float, y4: Float,
+            c: Color,
+        ) {
+            if (!open) {
+                UGraphics.enableBlend()
+                @Suppress("DEPRECATION")
+                g.beginWithDefaultShader(UGraphics.DrawMode.QUADS, UGraphics.CommonVertexFormats.POSITION_COLOR)
+                open = true
+            }
+            BrassStats.quad()
+            val col = BrassAmbientFade.apply(c)
+            g.pos(m, x1.toDouble(), y1.toDouble(), 0.0).color(col).endVertex()
+            g.pos(m, x2.toDouble(), y2.toDouble(), 0.0).color(col).endVertex()
+            g.pos(m, x3.toDouble(), y3.toDouble(), 0.0).color(col).endVertex()
+            g.pos(m, x4.toDouble(), y4.toDouble(), 0.0).color(col).endVertex()
+        }
+
+        /** Submit everything collected so far. Safe to call when nothing was added. */
+        fun flush() {
+            if (!open) return
+            g.drawDirect()
+            UGraphics.disableBlend()
+            open = false
+        }
+    }
 }

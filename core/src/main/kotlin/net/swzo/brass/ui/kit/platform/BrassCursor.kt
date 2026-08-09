@@ -29,6 +29,8 @@ object BrassCursor {
         ARROW,
         TEXT,
         HAND,
+        MOVE,
+        CROSSHAIR,
         RESIZE_H,
         RESIZE_V,
         RESIZE_NWSE,

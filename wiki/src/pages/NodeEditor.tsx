@@ -305,7 +305,7 @@ editor.reframeOnResize = true`}</Code>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {[
                 ["GraphScheduler", "Async execution, FLOW gating, breakpoints, stepping and watches"],
-                ["NodeIO / Export", "Versioned JSON import and save, SVG and host-backed PNG capture"],
+                ["NodeIO / Export", "Versioned BSON native save + JSON export, SVG and host-backed PNG capture"],
                 ["Plugin / Collaboration", "Extension registration and transport-independent shared editing"],
               ].map(([name, text]) => (
                 <div key={name} className="rounded-lg border border-edge bg-ink-900/60 p-3">
@@ -425,7 +425,7 @@ editor.reframeOnResize = true`}</Code>
             </Card>
             <Card title="Presentation and transport">
               <ul className="space-y-2 text-sm leading-relaxed text-ink-600">
-                <li>Versioned, tolerant JSON save format</li>
+                <li>Versioned, tolerant BSON save format (plus JSON export/import)</li>
                 <li>Portable SVG graph export and capture-host PNG export</li>
                 <li>Read-only presentation mode</li>
                 <li>Ordered graph-change snapshots</li>
@@ -738,7 +738,7 @@ val copies = editor.instantiateTemplate(
           id="persistence"
           icon={FileJson}
           title="Persistence and export"
-          lead="The native format is small, versioned JSON. It records graph content and organization while leaving viewport and transient runtime state out."
+          lead="The native format is compact, versioned BSON — the JSON export below is the human-readable twin. Both record graph content and organization while leaving viewport and transient runtime state out."
         >
           <Code title="graph.json">{`{
   "version": 5,
@@ -772,7 +772,8 @@ val copies = editor.instantiateTemplate(
               </P>
             </Card>
           </div>
-          <Code title="Persistence.kt">{`val json = editor.save()
+          <Code title="Persistence.kt">{`val bytes = editor.saveBson()   // native binary, fast wire round-trip
+val json = editor.save()       // portable JSON export/import
 
 when (NodeIO.compatibility(json)) {
     NodeIO.Compatibility.CURRENT -> editor.load(json)

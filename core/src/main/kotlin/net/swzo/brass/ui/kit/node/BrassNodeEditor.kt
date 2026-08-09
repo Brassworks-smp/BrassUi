@@ -20,12 +20,14 @@ import net.swzo.brass.ui.kit.input.BrassColorPicker
 import net.swzo.brass.ui.kit.paint.BrassCard
 import net.swzo.brass.ui.kit.paint.BrassKeycap
 import net.swzo.brass.ui.kit.paint.BrassPaint
+import net.swzo.brass.ui.kit.platform.BrassCursor
 import net.swzo.brass.ui.kit.surface.BrassCommandPalette
 import net.swzo.brass.ui.kit.surface.BrassContextMenu
 import net.swzo.brass.ui.kit.surface.BrassTooltip
 import net.swzo.brass.ui.kit.text.BrassFont
 import net.swzo.brass.ui.kit.text.BrassTextArea
 import net.swzo.brass.ui.kit.text.BrassTextInput
+import net.swzo.brass.ui.kit.text.BrassTextField
 import org.lwjgl.glfw.GLFW
 import java.awt.Color
 import java.nio.file.Files
@@ -35,6 +37,18 @@ import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.roundToInt
+
+/**
+ * A snapshot of the editor camera: the world → widget-pixel pan and the zoom (1f = 100%). Hosts use
+ * [BrassNodeEditor.view] to capture the camera when a screen closes and [BrassNodeEditor.setView] to
+ * restore it when the same graph reopens, so the user's pan and zoom survive UI round-trips.
+ */
+data class EditorView(val panX: Float, val panY: Float, val zoom: Float) {
+    companion object {
+        /** The default camera: 100% zoom with the world origin at the widget's top-left. */
+        val DEFAULT = EditorView(0f, 0f, 1f)
+    }
+}
 
 /**
  * A **node graph editor** in the spirit of Blender's shader nodes, Unreal Blueprints or n8n: a pannable,
@@ -63,7 +77,7 @@ import kotlin.math.roundToInt
  * toward the cursor; click controls to edit; the header chevron rolls the node up; right-click for the
  * add menu / node menu / wire menu (real [BrassContextMenu]s), and hover for [BrassTooltip]s. Keyboard:
  * Delete, Ctrl+D duplicate, Ctrl+C/V, Ctrl+Z / Ctrl+Shift+Z undo/redo, Home frame-all, "." frame-selected,
- * +/- zoom, Shift+A add node, F5 run, F6 step, Shift+F5 stop, F9 breakpoint, and Tab node navigation.
+ * +/- eased zoom, Shift+A add node, F5 run, F6 step, Shift+F5 stop, F9 breakpoint, and Tab node navigation.
  */
 class BrassNodeEditor(
     val registry: NodeRegistry = defaultRegistry(),
@@ -79,6 +93,12 @@ class BrassNodeEditor(
     private var panX = 0f
     private var panY = 0f
     private var zoom = 1f
+    /** Eased zoom for host chrome (the +/- buttons): animates toward its target every frame. */
+    private val zoomEase = BrassEased(1f, speed = 10f)
+    private var zoomAnchorLX = 0f
+    private var zoomAnchorLY = 0f
+    private var zoomAnchorWX = 0f
+    private var zoomAnchorWY = 0f
     private var framed = false
     private var viewportW = 0f
     private var viewportH = 0f
@@ -103,6 +123,14 @@ class BrassNodeEditor(
             val grabY: Float,
             val starts: Map<Int, Pair<Float, Float>>,
         ) : Mode
+        /** Dragging empty canvas *inside* the selection box moves the whole group. */
+        class DragGroup(
+            val startX: Float,
+            val startY: Float,
+            val starts: Map<Int, Pair<Float, Float>>,
+            /** The persistent marquee box at drag start, so it follows the group; null when none. */
+            val boxStart: FloatArray?,
+        ) : Mode
         class Wire(val node: GraphNode, val port: Int) : Mode
         class DragReroute(val link: Link, val point: Int) : Mode
         class DragComment(val comment: GraphComment, val grabX: Float, val grabY: Float) : Mode
@@ -116,7 +144,7 @@ class BrassNodeEditor(
             val frameStarts: Map<Int, Pair<Float, Float>>,
         ) : Mode
         class Scrub(val onDrag: (Float) -> Unit) : Mode
-        class Box(val startX: Float, val startY: Float) : Mode
+        class Box(val startX: Float, val startY: Float, val additive: Boolean = false) : Mode
     }
 
     private var mode: Mode = Mode.Idle
@@ -133,7 +161,7 @@ class BrassNodeEditor(
     private var lastFrameClickAt = 0L
     private var noteEditor: BrassTextArea? = null
     private var editingCommentId: Int? = null
-    private var noteEditBefore: String? = null
+    private var noteEditBefore: ByteArray? = null
 
     // hover (for animation + tooltips), recomputed each frame
     private var hoverNode: GraphNode? = null
@@ -143,6 +171,9 @@ class BrassNodeEditor(
     private var tipTitle: String? = null
     private var tipBody: String? = null
 
+    /** The field whose custom tooltip is currently attached, so the entry is only swapped on change. */
+    private var customTipField: NodeField? = null
+
     // history / clipboard / palette memory
     private val changeListeners = CopyOnWriteArrayList<(GraphChange) -> Unit>()
     private var revision = 0L
@@ -150,11 +181,57 @@ class BrassNodeEditor(
     private var diagnosticCache = emptyList<NodeDiagnostic>()
     private val history = CommandStack(graph, onChange = ::emitGraphChange)
     /** The graph snapshot taken when a live edit (a scrub, a wire drag) began, pushed on release. */
-    private var editBefore: String? = null
+    private var editBefore: ByteArray? = null
     private var clipboard: String? = null
     val favoriteTypeIds: MutableSet<String> get() = workflow.favoriteTypeIds
     val templates: MutableMap<String, NodeTemplate> get() = workflow.templates
     val previewedOutputs = LinkedHashSet<PortRef>()
+
+    /** Node ids fully covered by a node drawn above them - invisible, so their render is skipped. */
+    private val occludedNodes = HashSet<Int>()
+
+    /** Per-node lists of above-drawn node rects that overlap it, for per-widget occlusion. */
+    private val coverers = HashMap<Int, ArrayList<FloatArray>>()
+
+    /** Dirty-check state for the occlusion sweep: skip the whole pass when nothing moved. */
+    private var occlusionStamp = Long.MIN_VALUE
+    private var occlusionValid = false
+
+    /**
+     * The rectangle of the last **right-drag** marquee, kept visible after release exactly as it was
+     * dragged (never re-fitted to the nodes). Normal click/shift selection shows no box at all.
+     */
+    private var marqueeBox: FloatArray? = null
+
+    // ---- auto-layout animation ------------------------------------------------------------------
+
+    /** In-flight auto-layout glides: node id -> move for nodes, frame id -> move for frames. */
+    private var layoutAnim: HashMap<Int, EasedMove>? = null
+    private var frameAnim: HashMap<Int, EasedMove>? = null
+    private var layoutAnimRevision = -1L
+
+    /** One eased flight of a node (x,y) or a frame (x,y,w,h) from its current to its target box. */
+    private class EasedMove(val from: FloatArray, val to: FloatArray, val start: Float, val duration: Float)
+
+    /** A smooth camera glide: pan and zoom ease together so a frame/auto-layout centres itself. */
+    private var cameraAnim: CameraFlight? = null
+
+    private class CameraFlight(
+        val fromPanX: Float, val fromPanY: Float, val fromZoom: Float,
+        val toPanX: Float, val toPanY: Float, val toZoom: Float,
+        val start: Float, val duration: Float,
+    )
+
+    // ---- right-drag box selection ---------------------------------------------------------------
+
+    /** True between a right press and its release; a right *drag* on empty canvas becomes a box. */
+    private var rightDown = false
+    private var rightMoved = false
+    private var rightPressLX = 0f
+    private var rightPressLY = 0f
+    private var rightPressWX = 0f
+    private var rightPressWY = 0f
+    private var rightPressOnControl = false
 
     /** When enabled, moved nodes settle onto [NodeLayout.GRID]. */
     var snapToGrid: Boolean = false
@@ -168,6 +245,38 @@ class BrassNodeEditor(
     /** A presentation-safe mode: navigation and selection remain available, mutations do not. */
     var readOnly: Boolean = false
 
+    /**
+     * Live signal strength 0..1 for a wire, driving its brightness and the speed of its travelling
+     * motes. Defaults to full strength so a host that does not care keeps the classic bright, animated
+     * wire.
+     */
+    var wireStrength: (Link) -> Float = { 1f }
+
+    /**
+     * Live output value for a node, drawn as a small badge in its header. Null (the default) hides the
+     * badge entirely. The badge is tinted by the node's first output port type, so a number node glows
+     * the number colour, a signal node red, and a host can hide string outputs by returning null.
+     */
+    var nodeValue: (GraphNode) -> Any? = { null }
+
+    /**
+     * When set, hovering a wire shows its signal strength in the editor's tooltip (the value is also
+     * drawn as the tooltip body). Return null to leave the default tooltip for the wire.
+     */
+    var wireStrengthTooltip: ((Link) -> String?)? = null
+
+    /** Draw the port type's symbol at the midpoint of each wire. Signal wires usually turn this off. */
+    var showWireSymbols: Boolean = true
+
+    /** Include the node-type list in the blank-canvas right-click menu. */
+    var canvasMenuAddNodes: Boolean = true
+
+    /** Include the Run graph / Run one node / Continue / Stop entries in the canvas menu. */
+    var canvasMenuRun: Boolean = true
+
+    /** Include breakpoint / watch-outputs / preview-outputs entries in the node menu. */
+    var nodeMenuDebug: Boolean = true
+
     init {
         chrome = BrassChrome.NONE
         enableEffect(ScissorEffect())
@@ -179,15 +288,31 @@ class BrassNodeEditor(
             lastLX = lx; lastLY = ly
             val wx = worldX(lx); val wy = worldY(ly)
 
-            if (e.mouseButton == 2) { mode = Mode.Pan; return@onMouseClick }
-            if (e.mouseButton == 1) { rightClick(lx, ly, wx, wy); return@onMouseClick }
+            if (e.mouseButton == 2) {
+                cameraAnim = null
+                zoomEase.snapTo(zoom)
+                mode = Mode.Pan
+                return@onMouseClick
+            }
+            if (e.mouseButton == 1) {
+                // Defer the context menu to release: a right *drag* on empty canvas becomes a box
+                // selection (bulk select, then drag/delete/copy the group).
+                rightDown = true
+                rightMoved = false
+                rightPressLX = lx; rightPressLY = ly
+                rightPressWX = wx; rightPressWY = wy
+                rightPressOnControl = controlAt(wx, wy) != null || rerouteAt(wx, wy) != null ||
+                    nodeAt(wx, wy) != null || wireAt(wx, wy) != null ||
+                    commentAt(wx, wy) != null || frameHeaderAt(wx, wy) != null
+                return@onMouseClick
+            }
             if (e.mouseButton != 0) return@onMouseClick
             val shift = UKeyboard.isShiftKeyDown()
             val ctrl = UKeyboard.isCtrlKeyDown()
 
             rerouteAt(wx, wy)?.let { (link, point) ->
                 if (readOnly) return@onMouseClick
-                editBefore = graph.toJson()
+                editBefore = graph.toBson()
                 mode = Mode.DragReroute(link, point)
                 return@onMouseClick
             }
@@ -196,7 +321,7 @@ class BrassNodeEditor(
                 if (readOnly) { select(node, additive = ctrl || shift, toggle = ctrl); return@onMouseClick }
                 select(node, additive = false)
                 // Capture now; a completed wire or a wire dragged off an input is pushed on release.
-                editBefore = graph.toJson()
+                editBefore = graph.toBson()
                 if (isOut) { mode = Mode.Wire(node, port); wireEndWx = wx; wireEndWy = wy }
                 else graph.links.firstOrNull { it.to === node && it.toPort == port }?.let { ex ->
                     graph.links.remove(ex); mode = Mode.Wire(ex.from, ex.fromPort); wireEndWx = wx; wireEndWy = wy
@@ -211,7 +336,7 @@ class BrassNodeEditor(
                 if (hit.field.opensEditor) {
                     hit.field.showEditor(Window.of(this), this, originX + lx, originY + ly)
                 } else {
-                    editBefore = graph.toJson()
+                    editBefore = graph.toBson()
                     val drag = hit.field.onPress(wx, hit.x1, hit.x2)
                     if (drag != null) mode = Mode.Scrub(drag) else pushEditSnapshot("Edit")
                 }
@@ -223,7 +348,9 @@ class BrassNodeEditor(
                     history.record("Collapse") { node.collapsed = !node.collapsed }; select(node, additive = false); return@onMouseClick
                 }
                 bringToFront(node)
-                select(node, additive = shift || ctrl, toggle = ctrl)
+                // A node that is already part of the selection keeps the whole group when dragged
+                // (no shift needed); clicking an unselected node narrows to it as usual.
+                select(node, additive = shift || ctrl || node.selected, toggle = ctrl)
                 if (!readOnly && node.selected) {
                     val starts = graph.nodes.filter { it.selected }.associate { it.id to (it.x to it.y) }
                     mode = Mode.DragNode(node, wx - node.x, wy - node.y, starts)
@@ -233,10 +360,11 @@ class BrassNodeEditor(
 
             commentAt(wx, wy)?.let { comment ->
                 if (readOnly) return@onMouseClick
+                if (!shift && !ctrl) clearSelection()
                 if (noteMenuHit(comment, wx, wy)) {
                     openCommentMenu(comment, originX + lx, originY + ly)
                 } else if (wy <= comment.y + NOTE_HEADER) {
-                    editBefore = graph.toJson()
+                    editBefore = graph.toBson()
                     mode = Mode.DragComment(comment, wx - comment.x, wy - comment.y)
                 } else {
                     beginNoteEditing(comment)
@@ -246,6 +374,7 @@ class BrassNodeEditor(
 
             frameHeaderAt(wx, wy)?.let { frame ->
                 if (readOnly) return@onMouseClick
+                if (!shift && !ctrl) clearSelection()
                 if (frameMenuHit(frame, wx, wy)) {
                     openFrameMenu(frame, originX + lx, originY + ly)
                     return@onMouseClick
@@ -258,7 +387,7 @@ class BrassNodeEditor(
                 }
                 lastFrameClickId = frame.id
                 lastFrameClickAt = now
-                editBefore = graph.toJson()
+                editBefore = graph.toBson()
                 val starts = frameNodeIds(frame).mapNotNull { id ->
                     graph.byId(id)?.let { id to (it.x to it.y) }
                 }.toMap()
@@ -275,12 +404,42 @@ class BrassNodeEditor(
                 return@onMouseClick
             }
 
-            if (!shift && !ctrl) clearSelection()
-            mode = if (shift || ctrl) Mode.Box(wx, wy) else Mode.Pan
+            cameraAnim = null
+            zoomEase.snapTo(zoom)
+            val insideSelection = selectionBox()?.let { (minX, minY, maxX, maxY) ->
+                wx in minX..maxX && wy in minY..maxY
+            } == true
+            mode = when {
+                shift || ctrl -> {
+                    marqueeBox = null
+                    Mode.Box(wx, wy, additive = true)
+                }
+                insideSelection -> {
+                    // Dragging anywhere inside the selection box moves the whole group.
+                    val starts = graph.nodes.filter { it.selected }.associate { it.id to (it.x to it.y) }
+                    Mode.DragGroup(wx, wy, starts, marqueeBox?.copyOf())
+                }
+                else -> {
+                    clearSelection()
+                    Mode.Pan
+                }
+            }
             boxCurX = wx; boxCurY = wy
         }
 
         onMouseDrag { mx, my, btn ->
+            // A right-drag that leaves the press point on empty canvas becomes a box selection.
+            if (btn == 1 && rightDown && !rightMoved && !rightPressOnControl) {
+                val dx = mx - rightPressLX
+                val dy = my - rightPressLY
+                if (dx * dx + dy * dy > BOX_DRAG_THRESHOLD * BOX_DRAG_THRESHOLD) {
+                    rightMoved = true
+                    cameraAnim = null
+                    zoomEase.snapTo(zoom)
+                    marqueeBox = null
+                    mode = Mode.Box(rightPressWX, rightPressWY, additive = UKeyboard.isShiftKeyDown())
+                }
+            }
             when (val m = mode) {
                 is Mode.Pan -> { panX += mx - lastLX; panY += my - lastLY }
                 is Mode.DragNode -> {
@@ -291,6 +450,17 @@ class BrassNodeEditor(
                     for ((id, start) in m.starts) graph.byId(id)?.let {
                         it.x = start.first + adjusted.first
                         it.y = start.second + adjusted.second
+                    }
+                }
+                is Mode.DragGroup -> {
+                    val dx = worldX(mx) - m.startX
+                    val dy = worldY(my) - m.startY
+                    for ((id, start) in m.starts) graph.byId(id)?.let {
+                        it.x = start.first + dx
+                        it.y = start.second + dy
+                    }
+                    m.boxStart?.let { b ->
+                        marqueeBox = floatArrayOf(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy)
                     }
                 }
                 is Mode.Wire -> { wireEndWx = worldX(mx); wireEndWy = worldY(my) }
@@ -321,13 +491,34 @@ class BrassNodeEditor(
                     }
                 }
                 is Mode.Scrub -> m.onDrag(worldX(mx))
-                is Mode.Box -> { boxCurX = worldX(mx); boxCurY = worldY(my) }
+                is Mode.Box -> {
+                    boxCurX = worldX(mx); boxCurY = worldY(my)
+                    liveBoxSelect(m.additive)
+                }
                 else -> {}
             }
             lastLX = mx; lastLY = my
         }
 
         onMouseRelease {
+            if (rightDown) {
+                rightDown = false
+                val boxMode = mode as? Mode.Box
+                if (boxMode != null && rightMoved) {
+                    // Right-drag box replaces the selection; holding shift adds to it.
+                    if (!UKeyboard.isShiftKeyDown()) selection.clear()
+                    selectInBox()
+                    mode = Mode.Idle
+                    // Keep the box exactly as it was dragged (not re-fitted to the nodes).
+                    marqueeBox = floatArrayOf(
+                        minOf(boxMode.startX, boxCurX), minOf(boxMode.startY, boxCurY),
+                        maxOf(boxMode.startX, boxCurX), maxOf(boxMode.startY, boxCurY),
+                    )
+                } else if (!rightMoved) {
+                    rightClick(rightPressLX, rightPressLY, rightPressWX, rightPressWY)
+                }
+                return@onMouseRelease
+            }
             when (val m = mode) {
                 is Mode.Wire -> {
                     val (lx, ly) = mouseLocal()
@@ -341,6 +532,19 @@ class BrassNodeEditor(
                     pushEditSnapshot("Wire")
                 }
                 is Mode.DragNode -> {
+                    if (snapToGrid) {
+                        for (id in m.starts.keys) graph.byId(id)?.let {
+                            it.x = (it.x / NodeLayout.GRID).roundToInt() * NodeLayout.GRID
+                            it.y = (it.y / NodeLayout.GRID).roundToInt() * NodeLayout.GRID
+                        }
+                    }
+                    val moves = m.starts.mapNotNull { (id, start) ->
+                        graph.byId(id)?.let { MoveNodesCommand.Move(id, start.first, start.second, it.x, it.y) }
+                    }
+                    val cmd = MoveNodesCommand(moves)
+                    if (cmd.moved) history.push(cmd)
+                }
+                is Mode.DragGroup -> {
                     if (snapToGrid) {
                         for (id in m.starts.keys) graph.byId(id)?.let {
                             it.x = (it.x / NodeLayout.GRID).roundToInt() * NodeLayout.GRID
@@ -386,7 +590,7 @@ class BrassNodeEditor(
     fun link(from: GraphNode, fromPort: Int, to: GraphNode, toPort: Int): Link? =
         graph.link(from, fromPort, to, toPort)?.also { emitGraphChange("Wire") }
 
-    /** Serialize the whole graph to the native JSON format. */
+    /** Serialize the whole graph to the portable JSON format - export/import, clipboard, hand-editing. */
     fun save(): String = graph.toJson()
 
     /** Replace the graph from [json] and frame it; the undo history starts fresh with the new graph. */
@@ -397,9 +601,102 @@ class BrassNodeEditor(
         return true
     }
 
+    /** Serialize the whole graph to its native BSON format - the fast save path for the wire. */
+    fun saveBson(): ByteArray = graph.toBson()
+
+    /** Replace the graph from [bytes] (BSON) and frame it; the undo history starts fresh. */
+    fun loadBson(bytes: ByteArray): Boolean {
+        finishNoteEditing()
+        if (!graph.loadBson(bytes)) return false
+        framed = false; history.clear(); emitGraphChange("Load")
+        return true
+    }
+
     /** Apply a plugin-owned mutation as one undoable structural edit. */
     fun edit(label: String, mutation: (NodeGraph) -> Unit) {
         if (!readOnly) history.record(label) { mutation(graph) }
+    }
+
+    /**
+     * Algorithmically re-arrange every node: connected components become layered, crossing-minimized
+     * flows (feedback cycles collapse into one band), isolated nodes park in a tidy grid to the
+     * side, and groups follow their members. The camera stays anchored on the same content, and the
+     * move glides into place with a staggered ease - one undoable "Auto layout" step. Returns false
+     * when there is nothing to arrange (or the editor is read-only).
+     */
+    fun autoLayout(animate: Boolean = true): Boolean {
+        if (readOnly) return false
+        val nodes = graph.nodes.filter { !it.closing }
+        if (nodes.isEmpty()) return false
+
+        val model = nodes.map { NodeAutoLayout.LayoutNode(it.id, it.width, NodeLayout.height(it)) }
+        val edges = graph.links.map { NodeAutoLayout.LayoutEdge(it.from.id, it.to.id) }
+        val result = NodeAutoLayout.layout(model, edges)
+        if (result.positions.size != nodes.size) return false
+
+        // Keep the layout anchored to the graph's top-left, so repeated runs stay put relative to
+        // the origin (centroid anchoring drifts when the layout is more compact than the scatter).
+        val oldMinX = nodes.minOf { it.x }
+        val oldMinY = nodes.minOf { it.y }
+        val b = result.bounds
+        val dx = oldMinX - b[0]
+        val dy = oldMinY - b[1]
+
+        val nodeTargets = HashMap<Int, FloatArray>()
+        result.positions.forEach { (id, p) -> nodeTargets[id] = floatArrayOf(p.first + dx, p.second + dy) }
+
+        // Frames follow their members: each frame's target bounds enclose its nodes' final spots.
+        val frameTargets = HashMap<Int, FloatArray>()
+        for (frame in graph.frames) {
+            val members = frameNodeIds(frame).mapNotNull(graph::byId)
+            if (members.isEmpty()) continue
+            val xs = members.flatMap { listOf(nodeTargets.getValue(it.id)[0], nodeTargets.getValue(it.id)[0] + it.width) }
+            val ys = members.flatMap { listOf(nodeTargets.getValue(it.id)[1], nodeTargets.getValue(it.id)[1] + NodeLayout.height(it)) }
+            val pad = 18f
+            val fx = xs.min() - pad
+            val fy = ys.min() - pad - 12f
+            frameTargets[frame.id] = floatArrayOf(fx, fy, xs.max() - fx + pad, ys.max() - fy + pad)
+        }
+
+        // Capture the start positions BEFORE the undo step applies the final ones - the glide's
+        // "from" must be the pre-layout spots, or every flight would be final→final and snap.
+        val nodeStarts = HashMap<Int, FloatArray>()
+        nodes.forEach { nodeStarts[it.id] = floatArrayOf(it.x, it.y) }
+        val frameStarts = HashMap<Int, FloatArray>()
+        graph.frames.forEach { frameStarts[it.id] = floatArrayOf(it.x, it.y, it.width, it.height) }
+
+        // One undoable step that lands at the final positions; the glide mutates live x/y after.
+        edit("Auto layout") { g ->
+            nodeTargets.forEach { (id, t) -> g.byId(id)?.let { it.x = t[0]; it.y = t[1] } }
+            frameTargets.forEach { (id, t) ->
+                g.frames.firstOrNull { it.id == id }?.let {
+                    it.x = t[0]; it.y = t[1]; it.width = t[2]; it.height = t[3]
+                }
+            }
+        }
+
+        // Glide the camera to centre the freshly arranged graph (always, even without node glide).
+        smoothCameraTo(b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy)
+
+        if (animate) {
+            // A gentle left-to-right, top-to-bottom wave: far-away nodes start a beat later.
+            val ordered = nodeTargets.entries.sortedBy { it.value[1] * 10000f + it.value[0] }
+            val nodeAnim = HashMap<Int, EasedMove>()
+            ordered.forEachIndexed { i, (id, t) ->
+                val from = nodeStarts[id] ?: return@forEachIndexed
+                val delay = minOf(i, 26) * 0.016f
+                nodeAnim[id] = EasedMove(from, t, time + delay, 0.5f)
+            }
+            val frames = HashMap<Int, EasedMove>()
+            frameTargets.forEach { (id, t) ->
+                val from = frameStarts[id] ?: return@forEach
+                frames[id] = EasedMove(from, t, time, 0.5f)
+            }
+            layoutAnim = nodeAnim
+            frameAnim = frames
+            layoutAnimRevision = revision
+        }
+        return true
     }
 
     fun groupSelection(title: String = "Group"): GraphFrame? {
@@ -424,6 +721,8 @@ class BrassNodeEditor(
     fun goToBookmark(name: String): Boolean {
         val bookmark = graph.bookmarks.firstOrNull { it.name == name } ?: return false
         panX = bookmark.panX; panY = bookmark.panY; zoom = bookmark.zoom.coerceIn(MIN_ZOOM, MAX_ZOOM)
+        cameraAnim = null
+        zoomEase.snapTo(zoom)
         return true
     }
 
@@ -501,9 +800,9 @@ class BrassNodeEditor(
     }
 
     /** Apply a collaborator's authoritative snapshot without adding it to local undo history. */
-    override fun applyRemoteSnapshot(json: String, label: String) {
+    override fun applyRemoteSnapshot(bytes: ByteArray, label: String) {
         finishNoteEditing()
-        if (!graph.load(json)) return
+        if (!graph.loadBson(bytes)) return
         history.clear()
         framed = false
         emitGraphChange(label)
@@ -570,12 +869,95 @@ class BrassNodeEditor(
         selection.select(node)
         panX = getWidth() / 2f - (node.x + node.width / 2f) * zoom
         panY = getHeight() / 2f - (node.y + NodeLayout.height(node) / 2f) * zoom
+        cameraAnim = null
+        zoomEase.snapTo(zoom)
         return true
     }
 
     fun centerAt(wx: Float, wy: Float) {
         panX = getWidth() / 2f - wx * zoom
         panY = getHeight() / 2f - wy * zoom
+        cameraAnim = null
+        zoomEase.snapTo(zoom)
+    }
+
+    /** The current camera, for persistence. Read on close, restore with [setView] on open. */
+    val view: EditorView get() = EditorView(panX, panY, zoom)
+
+    /**
+     * Restore a camera previously captured with [view]; zoom is clamped to the canvas limits. The
+     * editor is marked as already framed, so the restored camera wins over the open-time auto-frame
+     * (call [frameAll] explicitly if framing is wanted).
+     */
+    fun setView(view: EditorView) {
+        zoom = view.zoom.coerceIn(MIN_ZOOM, MAX_ZOOM)
+        panX = view.panX
+        panY = view.panY
+        cameraAnim = null
+        zoomEase.snapTo(zoom)
+        framed = true
+    }
+
+    /** The current canvas zoom, where 1f is 100%. Read for host chrome such as a zoom readout. */
+    val zoomLevel: Float get() = zoom
+
+    /**
+     * Smoothly zoom by [factor] around a widget-local anchor point. Hosts use this for header zoom
+     * controls (the default anchor is the canvas centre, so a bare call behaves like the +/− keys);
+     * the zoom eases to the new level over a few frames instead of snapping, keeping the world point
+     * under the anchor fixed throughout. Wheel zooming stays instant so it tracks the cursor.
+     */
+    fun zoomAt(factor: Float, localX: Float = getWidth() / 2f, localY: Float = getHeight() / 2f) {
+        cameraAnim = null
+        zoomAnchorLX = localX
+        zoomAnchorLY = localY
+        zoomAnchorWX = worldX(localX)
+        zoomAnchorWY = worldY(localY)
+        zoomEase.target = (zoom * factor).coerceIn(MIN_ZOOM, MAX_ZOOM)
+    }
+
+    /** Frame every node, comment and group in the graph. */
+    fun frameAll() {
+        framed = false
+    }
+
+    /** Frame the current selection. */
+    fun frameSelection() = frameSelected()
+
+    /**
+     * Smoothly glide the camera so every node in [list] is centred and fully visible (zoom clamped
+     * to the canvas limits and [maxZoom]). The first open of a graph and the auto-layout both route
+     * through this, so the camera never jumps.
+     */
+    fun smoothFrame(list: List<GraphNode>, maxZoom: Float = 1f): Boolean {
+        if (list.isEmpty()) return false
+        return smoothCameraTo(
+            list.minOf { it.x },
+            list.minOf { it.y },
+            list.maxOf { it.x + it.width },
+            list.maxOf { it.y + NodeLayout.height(it) },
+            maxZoom,
+        )
+    }
+
+    /** Glide the camera to centre and fit the world rect `[minX, minY]..[maxX, maxY]`. */
+    private fun smoothCameraTo(
+        minX: Float, minY: Float, maxX: Float, maxY: Float,
+        maxZoom: Float = 1f,
+    ): Boolean {
+        val w = getWidth(); val h = getHeight()
+        if (w <= 0f || h <= 0f) return false
+        val gw = (maxX - minX).coerceAtLeast(1f)
+        val gh = (maxY - minY).coerceAtLeast(1f)
+        val targetZoom = minOf((w - 48f) / gw, (h - 64f) / gh, maxZoom).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        val cx = (minX + maxX) / 2f
+        val cy = (minY + maxY) / 2f
+        cameraAnim = CameraFlight(
+            panX, panY, zoom,
+            w / 2f - cx * targetZoom, h / 2f - cy * targetZoom, targetZoom,
+            time, 0.5f,
+        )
+        return true
     }
 
     fun viewportWorldBounds(): FloatArray =
@@ -637,6 +1019,9 @@ class BrassNodeEditor(
     // Keyboard
 
     private fun onKey(keyCode: Int) {
+        // A floating text input (quick-entry menu, frame rename) owns the keyboard - none of the
+        // editor shortcuts (delete, arrows, …) should fire while someone is typing.
+        if (BrassFocus.focused is BrassTextField) return
         val ctrl = UKeyboard.isCtrlKeyDown()
         val shift = UKeyboard.isShiftKeyDown()
         when {
@@ -655,6 +1040,7 @@ class BrassNodeEditor(
                 if (!readOnly && shift) saveBookmark(name) else goToBookmark(name)
             }
             !readOnly && (keyCode == GLFW.GLFW_KEY_DELETE || keyCode == GLFW.GLFW_KEY_BACKSPACE) -> deleteSelection()
+            keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER -> selection.clear()
             ctrl && keyCode == GLFW.GLFW_KEY_A -> selectAll()
             ctrl && shift && keyCode == GLFW.GLFW_KEY_I -> invertSelection()
             !readOnly && ctrl && keyCode == GLFW.GLFW_KEY_D -> duplicateSelection()
@@ -670,8 +1056,8 @@ class BrassNodeEditor(
             keyCode == GLFW.GLFW_KEY_HOME -> { framed = false }
             keyCode == GLFW.GLFW_KEY_PERIOD -> frameSelected()
             keyCode == GLFW.GLFW_KEY_G -> snapToGrid = !snapToGrid
-            keyCode == GLFW.GLFW_KEY_EQUAL -> zoomBy(1.15f, getWidth() / 2f, getHeight() / 2f)
-            keyCode == GLFW.GLFW_KEY_MINUS -> zoomBy(1f / 1.15f, getWidth() / 2f, getHeight() / 2f)
+            keyCode == GLFW.GLFW_KEY_EQUAL -> zoomAt(1.15f)
+            keyCode == GLFW.GLFW_KEY_MINUS -> zoomAt(1f / 1.15f)
             !readOnly && shift && keyCode == GLFW.GLFW_KEY_A -> {
                 val (lx, ly) = mouseLocal(); openAddMenu(lx, ly, worldX(lx), worldY(ly))
             }
@@ -681,10 +1067,13 @@ class BrassNodeEditor(
     // Selection + mutation
 
     private fun clearSelection() {
+        marqueeBox = null
         selection.clear()
     }
 
     private fun select(node: GraphNode, additive: Boolean, toggle: Boolean = false) {
+        // Any direct click-based selection is a "normal" selection - no persistent box.
+        marqueeBox = null
         selection.select(node, additive, toggle)
     }
 
@@ -731,6 +1120,23 @@ class BrassNodeEditor(
     private fun selectInBox() {
         val box = mode as? Mode.Box ?: return
         selection.inBox(box.startX, box.startY, boxCurX, boxCurY)
+    }
+
+    /** Select the nodes inside the live drag box; a non-additive box replaces each frame. */
+    private fun liveBoxSelect(additive: Boolean) {
+        val box = mode as? Mode.Box ?: return
+        if (!additive) graph.nodes.forEach { it.selected = false }
+        selection.inBox(box.startX, box.startY, boxCurX, boxCurY)
+    }
+
+    /** Bounds of the current node selection `[minX, minY, maxX, maxY]`, or null when empty. */
+    private fun selectionBox(): FloatArray? {
+        val sel = graph.nodes.filter { it.selected && !it.closing }
+        if (sel.isEmpty()) return null
+        return floatArrayOf(
+            sel.minOf { it.x }, sel.minOf { it.y },
+            sel.maxOf { it.x + it.width }, sel.maxOf { it.y + NodeLayout.height(it) },
+        )
     }
 
     private fun deleteSelection() {
@@ -844,12 +1250,12 @@ class BrassNodeEditor(
     private fun pushEditSnapshot(label: String) {
         val before = editBefore ?: return
         editBefore = null
-        val after = graph.toJson()
-        if (before != after) history.push(SnapshotCommand(before, after, label))
+        val after = graph.toBson()
+        if (!before.contentEquals(after)) history.push(SnapshotCommand(before, after, label))
     }
 
     private fun emitGraphChange(label: String) {
-        val change = GraphChange(++revision, label, graph.toJson())
+        val change = GraphChange(++revision, label, graph.toBson())
         changeListeners.forEach { listener -> runCatching { listener(change) } }
     }
 
@@ -919,7 +1325,7 @@ class BrassNodeEditor(
         if (editingCommentId == comment.id) return
         finishNoteEditing()
         val root = Window.of(this)
-        noteEditBefore = graph.toJson()
+        noteEditBefore = graph.toBson()
         editingCommentId = comment.id
         val input = BrassTextArea(comment.text, "Add note…") { comment.text = it }.apply {
             chrome = BrassChrome.NONE
@@ -947,8 +1353,8 @@ class BrassNodeEditor(
         val before = noteEditBefore
         noteEditBefore = null
         input.parent.children.takeIf { input in it }?.let { input.parent.removeChild(input) }
-        val after = graph.toJson()
-        if (before != null && before != after) history.push(SnapshotCommand(before, after, "Edit note"))
+        val after = graph.toBson()
+        if (before != null && !before.contentEquals(after)) history.push(SnapshotCommand(before, after, "Edit note"))
     }
 
     private fun openFrameEditor(frame: GraphFrame, sx: Float, sy: Float) {
@@ -1039,12 +1445,12 @@ class BrassNodeEditor(
                 BrassContextMenu.closeOpen()
             },
             onCustom = { pickerX, pickerY, pickerTop ->
-                val before = graph.toJson()
+                val before = graph.toBson()
                 val picker = BrassColorPicker(current, onCustom)
                 BrassContextMenu.custom(picker, width = 150, height = 150).also { menu ->
                     menu.onDismiss = {
-                        val after = graph.toJson()
-                        if (before != after) history.push(SnapshotCommand(before, after, label))
+                        val after = graph.toBson()
+                        if (!before.contentEquals(after)) history.push(SnapshotCommand(before, after, label))
                     }
                     menu.show(root, pickerX, pickerY, anchorTop = pickerTop)
                 }
@@ -1053,9 +1459,32 @@ class BrassNodeEditor(
         BrassContextMenu.custom(palette, width = 104, height = 43).show(root, sx, sy)
     }
 
+    /** Bulk actions for a box-selected group: duplicate, frame it, disconnect, delete. */
+    private fun openBulkMenu(sx: Float, sy: Float) {
+        val root = Window.of(this) ?: return
+        BrassContextMenu(
+            listOf(
+                BrassContextMenu.Item("Duplicate") { duplicateSelection() },
+                BrassContextMenu.Item("Group") { groupSelection() },
+                BrassContextMenu.Item("Disconnect") {
+                    history.record("Disconnect") {
+                        graph.links.filter { it.from.selected || it.to.selected }.forEach { disconnect(it) }
+                    }
+                },
+                BrassContextMenu.Item("Delete") { deleteSelection() },
+            ),
+            rowWidth = 150,
+        ).show(root, sx, sy)
+    }
+
     private fun rightClick(lx: Float, ly: Float, wx: Float, wy: Float) {
         val root = Window.of(this)
         val sx = originX + lx; val sy = originY + ly
+        // A right-press on a field control opens its quick-entry menu (dropdown for enums, a
+        // focused text entry for values) instead of the node's context menu.
+        controlAt(wx, wy)?.let { hit ->
+            if (!readOnly && hit.field.onRightPress(root, this, sx, sy)) return
+        }
         rerouteAt(wx, wy)?.let { (link, point) ->
             if (readOnly) return
             BrassContextMenu(listOf(
@@ -1073,14 +1502,16 @@ class BrassNodeEditor(
                 BrassContextMenu.Item("Duplicate") { select(node, false); duplicateSelection() },
                 BrassContextMenu.Item("Disconnect") { history.record("Disconnect") { graph.links.filter { it.from === node || it.to === node }.forEach { disconnect(it) } } },
                 BrassContextMenu.Item("Delete") { select(node, false); deleteSelection() },
-                BrassContextMenu.Item(
-                    if (node.id in scheduler.breakpoints) "Remove breakpoint" else "Add breakpoint",
-                ) { toggleBreakpoint(node) },
-                BrassContextMenu.Item(
-                    if (node.type.id in favoriteTypeIds) "Remove favorite" else "Add favorite",
-                ) { setFavorite(node.type.id, node.type.id !in favoriteTypeIds) },
             )
-            if (node.type.outputs.isNotEmpty()) {
+            if (nodeMenuDebug) {
+                items += BrassContextMenu.Item(
+                    if (node.id in scheduler.breakpoints) "Remove breakpoint" else "Add breakpoint",
+                ) { toggleBreakpoint(node) }
+            }
+            items += BrassContextMenu.Item(
+                if (node.type.id in favoriteTypeIds) "Remove favorite" else "Add favorite",
+            ) { setFavorite(node.type.id, node.type.id !in favoriteTypeIds) }
+            if (nodeMenuDebug && node.type.outputs.isNotEmpty()) {
                 val watching = node.type.outputs.indices.any { PortRef(node.id, it) in scheduler.watches }
                 items += BrassContextMenu.Item(if (watching) "Unwatch outputs" else "Watch outputs") {
                     node.type.outputs.indices.forEach { watch(node, it, !watching) }
@@ -1116,31 +1547,40 @@ class BrassNodeEditor(
             )).show(root, sx, sy)
             return
         }
-        if (!readOnly) openAddMenu(lx, ly, wx, wy)
+        // A right-click on empty canvas with nodes selected offers the bulk actions for the group;
+        // otherwise it is the plain add-node menu.
+        if (graph.nodes.any { it.selected && !it.closing }) {
+            openBulkMenu(sx, sy)
+        } else if (!readOnly) {
+            openAddMenu(lx, ly, wx, wy)
+        }
     }
 
     private fun openAddMenu(lx: Float, ly: Float, wx: Float, wy: Float) {
-        val recent = workflow.recentIds().withIndex().associate { it.value to it.index }
-        val types = registry.all().sortedWith(
-            compareBy<NodeType> {
-                when {
-                    it.id in favoriteTypeIds -> -100
-                    it.id in recent -> recent.getValue(it.id)
-                    else -> 100
+        val items = mutableListOf<BrassContextMenu.Item>()
+        if (canvasMenuAddNodes) {
+            val recent = workflow.recentIds().withIndex().associate { it.value to it.index }
+            val types = registry.all().sortedWith(
+                compareBy<NodeType> {
+                    when {
+                        it.id in favoriteTypeIds -> -100
+                        it.id in recent -> recent.getValue(it.id)
+                        else -> 100
+                    }
+                }.thenBy { it.title },
+            )
+            types.forEach { type ->
+                val marker = when {
+                    type.id in favoriteTypeIds -> "★ "
+                    type.id in recent -> "↺ "
+                    else -> ""
                 }
-            }.thenBy { it.title },
-        )
-        val items = types.mapTo(mutableListOf()) { type ->
-            val marker = when {
-                type.id in favoriteTypeIds -> "★ "
-                type.id in recent -> "↺ "
-                else -> ""
-            }
-            BrassContextMenu.Item(marker + type.title) {
-                history.record("Add ${type.title}") {
-                    graph.spawn(type.id, wx, wy)?.let {
-                        rememberType(type.id)
-                        select(it, false)
+                items += BrassContextMenu.Item(marker + type.title) {
+                    history.record("Add ${type.title}") {
+                        graph.spawn(type.id, wx, wy)?.let {
+                            rememberType(type.id)
+                            select(it, false)
+                        }
                     }
                 }
             }
@@ -1161,16 +1601,18 @@ class BrassNodeEditor(
             items += BrassContextMenu.Item("Group selected nodes") {
                 groupSelection()?.let { openFrameEditor(it, originX + lx, originY + ly) }
             }
-        when (scheduler.state) {
-            ExecutionState.PAUSED -> {
-                items += BrassContextMenu.Item("Continue") { runGraph() }
-                items += BrassContextMenu.Item("Run next node") { stepGraph() }
-                items += BrassContextMenu.Item("Stop") { cancelRun() }
-            }
-            ExecutionState.RUNNING -> items += BrassContextMenu.Item("Stop") { cancelRun() }
-            else -> {
-                items += BrassContextMenu.Item("Run graph") { runGraph() }
-                items += BrassContextMenu.Item("Run one node") { stepGraph() }
+        if (canvasMenuRun) {
+            when (scheduler.state) {
+                ExecutionState.PAUSED -> {
+                    items += BrassContextMenu.Item("Continue") { runGraph() }
+                    items += BrassContextMenu.Item("Run next node") { stepGraph() }
+                    items += BrassContextMenu.Item("Stop") { cancelRun() }
+                }
+                ExecutionState.RUNNING -> items += BrassContextMenu.Item("Stop") { cancelRun() }
+                else -> {
+                    items += BrassContextMenu.Item("Run graph") { runGraph() }
+                    items += BrassContextMenu.Item("Run one node") { stepGraph() }
+                }
             }
         }
         if (BrassDemoCapture.current != null)
@@ -1184,9 +1626,11 @@ class BrassNodeEditor(
     // View helpers
 
     private fun zoomBy(factor: Float, lx: Float, ly: Float) {
+        cameraAnim = null
         val wx = worldX(lx); val wy = worldY(ly)
         zoom = (zoom * factor).coerceIn(MIN_ZOOM, MAX_ZOOM)
         panX = lx - wx * zoom; panY = ly - wy * zoom
+        zoomEase.snapTo(zoom)
     }
 
     private fun frameSelected() {
@@ -1203,6 +1647,8 @@ class BrassNodeEditor(
         val maxY = selected.maxOf { it.y + NodeLayout.height(it) }
         panX = getWidth() / 2f - (minX + maxX) / 2f * zoom
         panY = getHeight() / 2f - (minY + maxY) / 2f * zoom
+        cameraAnim = null
+        zoomEase.snapTo(zoom)
     }
 
     private fun frameNodes(list: List<GraphNode>, maxZoom: Float = 1f) {
@@ -1220,6 +1666,7 @@ class BrassNodeEditor(
         zoom = minOf((viewportW - 48f) / gw, (h - 64f) / gh, maxZoom).coerceIn(MIN_ZOOM, MAX_ZOOM)
         panX = (viewportW - gw * zoom) / 2f - minX * zoom
         panY = (h - gh * zoom) / 2f - minY * zoom
+        zoomEase.snapTo(zoom)
     }
 
     // Hit testing
@@ -1280,6 +1727,69 @@ class BrassNodeEditor(
     // Per-frame animation
 
     private fun advance(mouseWx: Float, mouseWy: Float) {
+        // Drive the smooth camera glide (first-open frame, Home, auto-layout centring). A user press
+        // that starts panning cancels it; the ease runs before the zoom ease so they stay in sync.
+        cameraAnim?.let { f ->
+            if (mode !is Mode.Idle) {
+                cameraAnim = null
+            } else {
+                val t = ((time - f.start) / f.duration).coerceIn(0f, 1f)
+                val e = 1f - (1f - t) * (1f - t) * (1f - t)
+                panX = f.fromPanX + (f.toPanX - f.fromPanX) * e
+                panY = f.fromPanY + (f.toPanY - f.fromPanY) * e
+                zoom = f.fromZoom + (f.toZoom - f.fromZoom) * e
+                zoomEase.snapTo(zoom)
+                if (t >= 1f) cameraAnim = null
+            }
+        }
+        // Drive the auto-layout glide: nodes ease to their target spots; frames follow their
+        // members. Any graph change (undo/redo/load/edit) or a user press that starts a drag drops
+        // the animation without touching positions, so history's snapshot or the drag stays
+        // authoritative and the glide can never fight back.
+        layoutAnim?.let { anim ->
+            if (revision != layoutAnimRevision || mode !is Mode.Idle) {
+                layoutAnim = null
+                frameAnim = null
+            } else {
+                var done = true
+                for ((id, f) in anim) {
+                    val node = graph.byId(id) ?: continue
+                    val t = ((time - f.start) / f.duration).coerceIn(0f, 1f)
+                    val e = 1f - (1f - t) * (1f - t) * (1f - t)
+                    node.x = f.from[0] + (f.to[0] - f.from[0]) * e
+                    node.y = f.from[1] + (f.to[1] - f.from[1]) * e
+                    if (t < 1f) done = false
+                }
+                if (done) layoutAnim = null
+            }
+        }
+        frameAnim?.let { anim ->
+            if (revision != layoutAnimRevision || mode !is Mode.Idle) {
+                layoutAnim = null
+                frameAnim = null
+            } else {
+                var done = true
+                for ((id, f) in anim) {
+                    val frame = graph.frames.firstOrNull { it.id == id } ?: continue
+                    val t = ((time - f.start) / f.duration).coerceIn(0f, 1f)
+                    val e = 1f - (1f - t) * (1f - t) * (1f - t)
+                    frame.x = f.from[0] + (f.to[0] - f.from[0]) * e
+                    frame.y = f.from[1] + (f.to[1] - f.from[1]) * e
+                    frame.width = f.from[2] + (f.to[2] - f.from[2]) * e
+                    frame.height = f.from[3] + (f.to[3] - f.from[3]) * e
+                    if (t < 1f) done = false
+                }
+                if (done) frameAnim = null
+            }
+        }
+        // Drive the eased zoom from the toolbar +/- buttons. The world point under the captured
+        // anchor stays fixed while the zoom eases, so the canvas grows/shrinks around that point.
+        val easedZoom = zoomEase.advance()
+        if (easedZoom != zoom) {
+            zoom = easedZoom
+            panX = zoomAnchorLX - zoomAnchorWX * zoom
+            panY = zoomAnchorLY - zoomAnchorWY * zoom
+        }
         noteEditor?.contentScale = zoom
         val idle = mode is Mode.Idle
         hoverPort = if (idle || mode is Mode.Wire) portAt(mouseWx, mouseWy) else null
@@ -1287,6 +1797,7 @@ class BrassNodeEditor(
         hoverNode = if (idle) nodeAt(mouseWx, mouseWy) else (mode as? Mode.DragNode)?.node
         hoverWire = if (idle && hoverPort == null && hoverField == null && hoverNode == null) wireAt(mouseWx, mouseWy) else null
         updateTip()
+        updateCursor()
 
         val draggingNode = (mode as? Mode.DragNode)?.node
         val wiring = mode as? Mode.Wire
@@ -1342,13 +1853,66 @@ class BrassNodeEditor(
     private fun disconnect(link: Link) { link.closing = true; link.selected = false }
 
     private fun updateTip() {
+        // A field can ask for a fully custom tooltip (a frequency field paints its item slots). Swap the
+        // tooltip entry to a custom one only when the field changes, then let its own draw run per frame.
+        hoverField?.let { f ->
+            if (f.tooltipSize(this) != null) {
+                if (customTipField !== f) {
+                    BrassTooltip.attachCustom(
+                        this,
+                        BrassTooltip.Custom(
+                            size = { f.tooltipSize(this) ?: floatArrayOf(0f, 0f) },
+                            draw = { m, x, y, a -> f.drawTooltip(m, this, x, y, a) },
+                        ),
+                    )
+                    customTipField = f
+                }
+                return
+            }
+        }
+        // Any other target uses the default text entry - restore it if a custom one was showing.
+        restoreTextTip()
+
+        hoverWire?.let { link ->
+            val text = wireStrengthTooltip?.invoke(link)
+            if (text != null) { tipTitle = "Wire"; tipBody = text; return }
+        }
         hoverPort?.let { (n, i, out) ->
             val p = if (out) n.type.outputs[i] else n.type.inputs[i]
-            tipTitle = p.name; tipBody = "${p.type.id} ${if (out) "output" else "input"}"; return
+            tipTitle = p.name
+            tipBody = p.description ?: "${p.type.label ?: p.type.id} · ${if (out) "output" else "input"}"
+            return
         }
-        hoverField?.let { tipTitle = it.tip(); tipBody = null; return }
-        hoverNode?.let { tipTitle = it.type.title; tipBody = "${it.type.inputs.size} in · ${it.type.outputs.size} out"; return }
+        hoverField?.let { tipTitle = it.tip(); tipBody = it.description; return }
+        hoverNode?.let {
+            tipTitle = it.type.title
+            tipBody = it.type.description ?: "${it.type.inputs.size} in · ${it.type.outputs.size} out"
+            return
+        }
         tipTitle = null; tipBody = null
+    }
+
+    /** Put the default text tooltip entry back after a custom one was shown for a field. */
+    private fun restoreTextTip() {
+        if (customTipField != null) {
+            customTipField = null
+            BrassTooltip.attachLazy(this, { tipTitle ?: "" }, { tipBody })
+        }
+    }
+
+    /** The cursor follows what the mouse is doing: crosshair while marqueeing, move while dragging
+     *  (or hovering a grabbable node), arrow elsewhere. Gated on the cursor being over the canvas. */
+    private fun updateCursor() {
+        val (mx, my) = getMousePosition()
+        if (mx < getLeft() || mx > getRight() || my < getTop() || my > getBottom()) return
+        when {
+            mode is Mode.Box -> BrassCursor.request(BrassCursor.Kind.CROSSHAIR)
+            mode is Mode.DragNode || mode is Mode.DragGroup || mode is Mode.DragFrame ||
+                mode is Mode.DragComment || mode is Mode.DragReroute ->
+                BrassCursor.request(BrassCursor.Kind.MOVE)
+            hoverNode != null -> BrassCursor.request(BrassCursor.Kind.MOVE)
+            else -> BrassCursor.request(BrassCursor.Kind.ARROW)
+        }
     }
 
     // Draw
@@ -1360,7 +1924,9 @@ class BrassNodeEditor(
         val mouseWx = worldX(mlx); val mouseWy = worldY(mly)
 
         if (!framed && w > 0 && h > 0 && graph.nodes.isNotEmpty()) {
-            frameNodes(graph.nodes)
+            // A fresh graph (or Home) glides the camera onto all the nodes instead of jumping, so a
+            // new player is never lost at the start.
+            smoothFrame(graph.nodes)
             framed = true
         } else if (viewportW > 0f && viewportH > 0f && (w.toFloat() != viewportW || h.toFloat() != viewportH)) {
             if (reframeOnResize && graph.nodes.isNotEmpty()) {
@@ -1370,6 +1936,8 @@ class BrassNodeEditor(
                 // remains untouched, so resizing never fights an intentional user view.
                 panX += (w - viewportW) / 2f
                 panY += (h - viewportH) / 2f
+                cameraAnim = null
+                zoomEase.snapTo(zoom)
             }
         }
         viewportW = w.toFloat()
@@ -1385,12 +1953,54 @@ class BrassNodeEditor(
         m.push()
         m.translate(floor(originX + panX), floor(originY + panY), 0f)
         m.scale(zoom, zoom, 1f)
-        val ctx = NodeDrawCtx(m, this, zoom, time, mouseWx, mouseWy, originX, originY, panX, panY)
+        // Visible world rectangle, with a margin so a node's shadow/halo just off the edge is not clipped.
+        // Everything on the canvas is culled against this - the point of the exercise when zoomed in.
+        val margin = CULL_MARGIN / zoom
+        val ctx = NodeDrawCtx(
+            m, this, zoom, time, mouseWx, mouseWy, originX, originY, panX, panY,
+            worldX(0f) - margin, worldY(0f) - margin,
+            worldX(w.toFloat()) + margin, worldY(h.toFloat()) + margin,
+            detail = NodeDrawCtx.smoothstep(0.04f, 0.55f, zoom),
+        )
+        // One shared quad batch for every flat overview rect and straight wire line this frame, so a
+        // massive tree at low zoom costs a handful of draw calls instead of one per node/wire.
+        val lodRects = BrassPaint.QuadBatch(ctx.m)
+        ctx.lodRects = lodRects
 
         drawGrid(m, w.toFloat(), h.toFloat())
+
+        // A 2-px gutter around the editor: everything except the grid is clipped just inside the
+        // widget's edges, so a node or wire can never sit flush against the border. The scissor is
+        // screen-space, so it holds no matter how the canvas is zoomed or panned.
+        val gutter = ScissorEffect(
+            x + GUTTER_PX, y + GUTTER_PX,
+            x + w - GUTTER_PX, y + h - GUTTER_PX,
+            true,
+        )
+        gutter.beforeDraw(m)
         drawOrganization(ctx)
         drawGuides(m, w.toFloat(), h.toFloat())
-        for (link in graph.links) drawLink(ctx, link)
+        for (link in graph.links) if (linkVisible(ctx, link)) drawLink(ctx, link)
+
+        // LOD pass first: every visible node's flat rect joins one batched draw call, so the chrome
+        // cards drawn next can cross-fade over a cheap, crisp silhouette instead of hundreds of
+        // per-node tessellator starts.
+        // Occlusion only matters when node contents are actually drawn (zoomed in); the LOD
+        // overview is all batched rects, so the sweep would cost more than it saves.
+        if (ctx.detail >= OCCLUSION_MIN_DETAIL) {
+            computeOcclusion()
+            ctx.coveredBy = { node, rx1, ry1, rx2, ry2 ->
+                coverers[node.id]?.any { it[0] <= rx1 && it[1] <= ry1 && it[2] >= rx2 && it[3] >= ry2 } == true
+            }
+        } else {
+            occludedNodes.clear()
+            coverers.clear()
+            occlusionValid = false
+            ctx.coveredBy = null
+        }
+        for (node in graph.nodes) if (node.id !in occludedNodes && nodeVisible(ctx, node)) NodeView.drawLod(ctx, node)
+        lodRects.flush()
+
         (mode as? Mode.Wire)?.let { wm ->
             val base = wm.node.type.outputs[wm.port].type.color()
             val over = hoverPort
@@ -1403,27 +2013,167 @@ class BrassNodeEditor(
             NodeWire.draw(ctx, NodeLayout.outputX(wm.node), NodeLayout.outputY(wm.node, wm.port), wireEndWx, wireEndWy,
                 col, 0f, 0f, dashed = true)
         }
-        for (node in graph.nodes) NodeView.draw(ctx, graph, node)
+        for (node in graph.nodes) if (node.id !in occludedNodes && nodeVisible(ctx, node)) {
+            NodeView.draw(ctx, graph, node, nodeValue(node))
+        }
+        drawSelectionOutline(m)
         drawDebugger(ctx)
+        gutter.afterDraw(m)
         (mode as? Mode.Box)?.let { drawBox(m, it) }
         m.pop()
 
+    }
+
+    /**
+     * Occlusion: a node fully covered by another node drawn above it (later in the draw list) is
+     * invisible, so its card and widgets are skipped. Purely a rendering optimisation - the visuals
+     * are identical, but a pile of stacked nodes no longer pays for hidden glyphs and cards.
+     * Near-linear: nodes are bucketed into a coarse spatial hash (each node joins every cell its box
+     * overlaps), so each node only tests candidates that could actually cover it, with a
+     * size pre-reject before the containment test. Skipped entirely when zoomed out (the LOD pass
+     * is batched rects there) and above a node-count cap.
+     */
+    private fun computeOcclusion() {
+        val nodes = graph.nodes
+        if (nodes.size < 2 || nodes.size > OCCLUSION_MAX_NODES) {
+            occludedNodes.clear()
+            coverers.clear()
+            occlusionValid = false
+            return
+        }
+        // Cheap dirty check: a static graph's occlusion never changes, so hash revision + positions
+        // and skip the whole sweep when nothing moved since the last frame.
+        var hash = revision.toLong()
+        for (n in nodes) if (!n.closing) {
+            hash = hash * 31 + java.lang.Double.doubleToRawLongBits((n.x * 7f + n.y * 13f).toDouble())
+        }
+        if (occlusionValid && hash == occlusionStamp) return
+        occlusionStamp = hash
+        occlusionValid = false
+        occludedNodes.clear()
+        coverers.clear()
+        val n = nodes.size
+        // Cache geometry once so the sweep never recomputes eased heights.
+        val x1 = FloatArray(n)
+        val y1 = FloatArray(n)
+        val x2 = FloatArray(n)
+        val y2 = FloatArray(n)
+        for (i in 0 until n) {
+            val node = nodes[i]
+            x1[i] = node.x
+            y1[i] = node.y
+            x2[i] = node.x + node.width
+            y2[i] = node.y + NodeLayout.height(node)
+        }
+        val cell = OCCLUSION_CELL
+        val buckets = HashMap<Long, MutableList<Int>>()
+        fun cellKey(cx: Int, cy: Int): Long = (cx.toLong() shl 32) or (cy.toLong() and 0xffffffffL)
+        // Proximity gate: no pair can overlap (and thus no node can cover another) unless two nodes
+        // share a spatial cell. When nothing is close, the sweep ends here for free.
+        var anyClose = false
+        for (i in 0 until n) {
+            if (nodes[i].closing) continue
+            for (cx in floor(x1[i] / cell).toInt()..floor(x2[i] / cell).toInt())
+                for (cy in floor(y1[i] / cell).toInt()..floor(y2[i] / cell).toInt()) {
+                    val key = cellKey(cx, cy)
+                    val list = buckets.getOrPut(key) { ArrayList() }
+                    if (list.isNotEmpty()) anyClose = true
+                    list.add(i)
+                }
+        }
+        if (!anyClose) {
+            occlusionValid = true
+            return
+        }
+        // Stamp-based dedupe (a large node sits in several of a's cells): O(1) per a, no per-a fill.
+        val tested = IntArray(n)
+        var stamp = 0
+        for (i in 0 until n) {
+            if (nodes[i].closing) continue
+            stamp++
+            val aw = x2[i] - x1[i]
+            val ah = y2[i] - y1[i]
+            outer@ for (cx in floor(x1[i] / cell).toInt()..floor(x2[i] / cell).toInt())
+                for (cy in floor(y1[i] / cell).toInt()..floor(y2[i] / cell).toInt()) {
+                    val candidates = buckets[cellKey(cx, cy)] ?: continue
+                    for (j in candidates) {
+                        if (j <= i || tested[j] == stamp) continue
+                        tested[j] = stamp
+                        if (nodes[j].closing) continue
+                        // Disjoint boxes can never cover anything; reject before the rest.
+                        if (x2[j] < x1[i] || x1[j] > x2[i] || y2[j] < y1[i] || y1[j] > y2[i]) continue
+                        coverers.getOrPut(nodes[i].id) { ArrayList() }
+                            .add(floatArrayOf(x1[j], y1[j], x2[j], y2[j]))
+                        // A covering node must be at least as large in both dimensions.
+                        if (x2[j] - x1[j] < aw || y2[j] - y1[j] < ah) continue
+                        if (x1[j] <= x1[i] && y1[j] <= y1[i] && x2[j] >= x2[i] && y2[j] >= y2[i]) {
+                            occludedNodes.add(nodes[i].id)
+                            break@outer
+                        }
+                    }
+                }
+        }
+        occlusionValid = true
+    }
+
+    /** The right-drag marquee rectangle kept after release - exactly as it was dragged, never
+     *  re-fitted to the nodes. Normal click/shift selections show nothing. Same look as the drag
+     *  marquee, with the border clamped to a minimum of one screen pixel so it never thins to
+     *  sub-pixel and clips in and out when zoomed way out. */
+    private fun drawSelectionOutline(m: UMatrixStack) {
+        val b = marqueeBox ?: return
+        val (minX, minY, maxX, maxY) = b
+        BrassPaint.rect(m, minX, minY, maxX, maxY, Colors.withAlpha(Colors.UI_ACCENT, 40))
+        BrassPaint.border(m, minX, minY, maxX, maxY, Colors.UI_ACCENT, minPx())
+    }
+
+    /** World-unit thickness that renders at least one screen pixel at the current zoom. */
+    private fun minPx(): Float = maxOf(1f, 1f / zoom)
+
+    /** Whether [node]'s card (plus a little slack for its shadow and selection halo) is on screen. */
+    private fun nodeVisible(ctx: NodeDrawCtx, node: GraphNode): Boolean =
+        ctx.visible(node.x - 4f, node.y - 6f, node.x + node.width + 4f, node.y + NodeLayout.height(node) + 6f)
+
+    /**
+     * Whether [link]'s curve could touch the viewport. The bounding box of the routed points is widened
+     * horizontally by the Bézier handle (which bulges the curve sideways past its endpoints, most of all
+     * on a right-to-left wire) so a wire is never culled while a visible part of its bend is still on
+     * screen.
+     */
+    private fun linkVisible(ctx: NodeDrawCtx, link: Link): Boolean {
+        if (link.fade.value <= 0.001f) return false
+        val pts = linkPoints(link)
+        var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE
+        var maxX = -Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+        var bulge = 30f
+        for ((a, b) in pts.zipWithNext()) bulge = maxOf(bulge, abs(b.first - a.first) * 0.5f)
+        for ((px, py) in pts) {
+            if (px < minX) minX = px; if (px > maxX) maxX = px
+            if (py < minY) minY = py; if (py > maxY) maxY = py
+        }
+        return ctx.visible(minX - bulge - 4f, minY - 4f, maxX + bulge + 4f, maxY + 4f)
     }
 
     private fun drawLink(ctx: NodeDrawCtx, link: Link) {
         val fade = link.fade.value
         if (fade <= 0.001f) return
         val saved = BrassAmbientFade.current
-        BrassAmbientFade.current = saved * fade
         val points = linkPoints(link)
         val type = link.portType()
+        val color = type.color()
+        // The full-quality curve is drawn at every zoom - NodeWire scales its cells to at least one
+        // screen pixel, so there is no line/curve switch and nothing sub-pixel to fragment.
+        BrassAmbientFade.current = saved * fade
         for ((index, segment) in points.zipWithNext().withIndex()) {
             NodeWire.draw(
                 ctx, segment.first.first, segment.first.second, segment.second.first, segment.second.second,
-                type.color(), link.sel.value, link.flash,
+                color, link.sel.value, link.flash,
                 dashed = type.wireStyle == WireStyle.DASHED,
                 arrow = type.arrow && index == points.size - 2,
                 symbol = if (index == points.size - 2) type.symbol else null,
+                strength = wireStrength(link),
+                showSymbol = showWireSymbols,
+                moteFade = NodeDrawCtx.smoothstep(0.3f, 0.5f, zoom),
             )
         }
         for (point in link.reroutes) {
@@ -1457,7 +2207,8 @@ class BrassNodeEditor(
         val x1 = minOf(box.startX, boxCurX); val x2 = maxOf(box.startX, boxCurX)
         val y1 = minOf(box.startY, boxCurY); val y2 = maxOf(box.startY, boxCurY)
         BrassPaint.rect(m, x1, y1, x2, y2, Colors.withAlpha(Colors.UI_ACCENT, 40))
-        BrassPaint.border(m, x1, y1, x2, y2, Colors.UI_ACCENT)
+        // The marquee border stays at least one screen pixel thick when zoomed out.
+        BrassPaint.border(m, x1, y1, x2, y2, Colors.UI_ACCENT, minPx())
     }
 
     private fun drawOrganization(ctx: NodeDrawCtx) {
@@ -1602,22 +2353,51 @@ class BrassNodeEditor(
 
     private fun drawGrid(m: UMatrixStack, w: Float, h: Float) {
         val step = NodeLayout.GRID
-        if (step * zoom < 4f) return
-        val minor = Colors.withAlpha(Colors.EDGE, 34)
-        val major = Colors.withAlpha(Colors.EDGE, 70)
+        val spacing = step * zoom
+        if (spacing < 1.5f) return
+        // The grid fades out smoothly as lines crowd together, then thins before it vanishes - it
+        // never pops out of existence the way a hard threshold did.
+        val fade = NodeDrawCtx.smoothstep(2.5f, 8f, spacing)
+        val stride = if (spacing < 4f) 2 else 1
+        val minor = Colors.withAlpha(Colors.EDGE, (34 * fade).toInt())
+        val major = Colors.withAlpha(Colors.EDGE, (70 * fade).toInt())
         val wl = worldX(0f); val wr = worldX(w); val wt = worldY(0f); val wb = worldY(h)
         var k = floor(wl / step).toInt()
-        while (k * step <= wr) { val gx = k * step; BrassPaint.rect(m, gx, wt, gx + 1f, wb, if (k % 4 == 0) major else minor); k++ }
+        while (k * step <= wr) {
+            val gx = k * step
+            if (k % stride == 0) BrassPaint.rect(m, gx, wt, gx + 1f, wb, if (k % 4 == 0) major else minor)
+            k++
+        }
         k = floor(wt / step).toInt()
-        while (k * step <= wb) { val gy = k * step; BrassPaint.rect(m, wl, gy, wr, gy + 1f, if (k % 4 == 0) major else minor); k++ }
+        while (k * step <= wb) {
+            val gy = k * step
+            if (k % stride == 0) BrassPaint.rect(m, wl, gy, wr, gy + 1f, if (k % 4 == 0) major else minor)
+            k++
+        }
     }
 
     // Demo + default registry
 
     companion object : BrassDemoSource {
 
-        private const val MIN_ZOOM = 0.25f
+        /** Screen pixels a right-drag must travel before it becomes a box selection. */
+        private const val BOX_DRAG_THRESHOLD = 4f
+
+        /** The empty gutter around the canvas edges - content clips 2 px inside the widget. */
+        private const val GUTTER_PX = 2f
+
+        /** Above this many nodes the occlusion sweep is skipped (the check would cost more than it saves). */
+        private const val OCCLUSION_MAX_NODES = 3000
+        /** Only run occlusion once node contents are drawn - the LOD overview is all batched rects. */
+        private const val OCCLUSION_MIN_DETAIL = 0.22f
+        /** Spatial-hash cell for the occlusion sweep - coarser than a node, so covers are found fast. */
+        private const val OCCLUSION_CELL = 256f
+
+        /** Deep zoom-out floor - far enough to survey a very large tree as a whole. */
+        private const val MIN_ZOOM = 0.02f
         private const val MAX_ZOOM = 2.2f
+        /** Screen-pixel slack added around the viewport before culling, so nothing pops at the edge. */
+        private const val CULL_MARGIN = 64f
         private const val REROUTE_HIT = 7f
         private const val FRAME_HEADER = 16f
         private const val NOTE_HEADER = 14f

@@ -14,7 +14,9 @@ import java.util.UUID
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.TooltipFlag
 import net.swzo.brass.ui.kit.platform.BrassCursor
 import net.swzo.brass.ui.kit.platform.BrassNativeDraw
 import net.swzo.brass.ui.kit.platform.BrassPlatform
@@ -22,6 +24,7 @@ import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.lwjgl.glfw.GLFW
 import org.lwjgl.opengl.GL11
+import java.awt.Color
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.sqrt
@@ -48,6 +51,9 @@ object NeoForgePlatform : BrassPlatform {
             BrassCursor.Kind.ARROW -> GLFW.GLFW_ARROW_CURSOR
             BrassCursor.Kind.TEXT -> GLFW.GLFW_IBEAM_CURSOR
             BrassCursor.Kind.HAND -> GLFW.GLFW_POINTING_HAND_CURSOR
+            // GLFW has no dedicated move cursor; the four-arrow resize-all is the standard move icon.
+            BrassCursor.Kind.MOVE -> GLFW.GLFW_RESIZE_ALL_CURSOR
+            BrassCursor.Kind.CROSSHAIR -> GLFW.GLFW_CROSSHAIR_CURSOR
             BrassCursor.Kind.RESIZE_H -> GLFW.GLFW_RESIZE_EW_CURSOR
             BrassCursor.Kind.RESIZE_V -> GLFW.GLFW_RESIZE_NS_CURSOR
             BrassCursor.Kind.RESIZE_NWSE -> GLFW.GLFW_RESIZE_NWSE_CURSOR
@@ -77,6 +83,20 @@ object NeoForgePlatform : BrassPlatform {
     override fun itemName(itemId: String): String? {
         val stack = stackFor(itemId)
         return if (stack.isEmpty) null else stack.hoverName.string
+    }
+
+    /** The item's Minecraft tooltip (display name + lore) as coloured lines for a brassui tooltip. */
+    override fun itemTooltip(itemId: String): List<Pair<String, Color>>? {
+        val stack = stackFor(itemId)
+        if (stack.isEmpty) return null
+        val mc = Minecraft.getInstance()
+        val level = mc.level ?: return listOf(stack.hoverName.string to Color(0xAAAAAA))
+        val context = Item.TooltipContext.of(level)
+        val flag = TooltipFlag.Default(mc.options.advancedItemTooltips, mc.player?.isCreative == true)
+        return stack.getTooltipLines(context, mc.player, flag).map { line ->
+            val value = line.style?.color?.value
+            line.getString() to (if (value != null) Color(value, true) else Color(0xAAAAAA))
+        }
     }
 
     /** The item's own limit — 16 for pearls, 1 for a sword — not a blanket 64. */

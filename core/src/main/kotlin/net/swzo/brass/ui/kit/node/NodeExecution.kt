@@ -13,7 +13,7 @@ data class PortRef(val nodeId: Int, val port: Int)
  * Values presented to one node invocation. Multiple values are retained for multi-connect inputs;
  * [first] is the convenient single-input path.
  */
-class NodeInputs internal constructor(private val values: Map<Int, List<Any?>>) {
+class NodeInputs constructor(private val values: Map<Int, List<Any?>>) {
     fun all(port: Int): List<Any?> = values[port].orEmpty()
     fun first(port: Int): Any? = values[port]?.firstOrNull()
     fun contains(port: Int): Boolean = values[port]?.isNotEmpty() == true
@@ -25,7 +25,7 @@ data class NodeResult(
     val eventOutputs: Set<Int> = emptySet(),
 )
 
-class NodeExecutionContext internal constructor(
+class NodeExecutionContext constructor(
     val node: GraphNode,
     val inputs: NodeInputs,
     private val cancelled: () -> Boolean,

@@ -276,7 +276,7 @@ export const WIDGETS: Widget[] = [
     "category": "Inputs",
     "categoryDir": "input",
     "slug": "BrassInventoryGrid",
-    "summary": "A grid of item slots with drag, and, drop between them, a chest, a hotbar, a creative palette, a loadout editor.",
+    "summary": "The soft pastel tint highlight slots wear, the accent heavily lightened.",
     "params": [
       {
         "name": "columns",
@@ -686,6 +686,34 @@ export const WIDGETS: Widget[] = [
     ],
     "signature": "class BrassToggle(\n    initial: Boolean = false,\n    private val onChange: (Boolean), > Unit = {},\n) : BrassWidget(BrassAccent.DEFAULT), BrassValue<Boolean>, BrassFocusable",
     "demoName": "toggle"
+  },
+  {
+    "name": "BrassVirtualSlotList",
+    "kind": "class",
+    "category": "Inputs",
+    "categoryDir": "input",
+    "slug": "BrassVirtualSlotList",
+    "summary": "A virtualized, scrollable one, column list of item slots, a catalogue or search, result list where the rows are **real** BrassInventoryGrid slots.",
+    "params": [
+      {
+        "name": "slotSize",
+        "type": "Float",
+        "default": "18f"
+      },
+      {
+        "name": "gap",
+        "type": "Float",
+        "default": "2f"
+      },
+      {
+        "name": "showNames",
+        "type": "Boolean",
+        "default": "true",
+        "doc": "Whether each row draws the item's display name next to its slot."
+      }
+    ],
+    "examples": [],
+    "signature": "class BrassVirtualSlotList(\n    slotSize: Float = 18f,\n    gap: Float = 2f,\n    var showNames: Boolean = true,\n) : BrassInventoryGrid(columns = 1, rows = 1, slotSize = slotSize, gap = gap)"
   },
   {
     "name": "BrassBounds",
@@ -2162,7 +2190,7 @@ export const WIDGETS: Widget[] = [
     "examples": [
       "BrassTextArea(placeholder = \"Description\")"
     ],
-    "signature": "class BrassTextArea(\n    initial: String = \"\",\n    private val placeholder: String = \"\",\n    private val onChange: (String), > Unit = {},\n) : BrassWidget(BrassAccent.DEFAULT), BrassValue<String>, BrassFocusable, BrassTextField",
+    "signature": "class BrassTextArea(\n    initial: String = \"\",\n    private val placeholder: String = \"\",\n    val language: String? = null,\n    private val onChange: (String), > Unit = {},\n) : BrassWidget(BrassAccent.DEFAULT), BrassValue<String>, BrassFocusable, BrassTextField",
     "demoName": "text-area"
   },
   {

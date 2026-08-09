@@ -18,7 +18,10 @@ import java.util.concurrent.atomic.AtomicLong
 object BrassNet {
 
     /** The wire protocol version. Bump when payload schemas change; mismatched peers get `version.mismatch`. */
-    const val PROTOCOL_VERSION = 1
+    // 2: actions and states can travel chunked (payload schemas gained chunk/transfer fields).
+    // 3: payload bodies are BSON bytes instead of gzip'd JSON strings (BrassBson), and the node
+    //    graph's native save format is BSON - a protocol-2 peer would misparse every value.
+    const val PROTOCOL_VERSION = 3
 
     /** How long [send] waits for a reply before failing with `timeout`. */
     const val DEFAULT_TIMEOUT_MILLIS: Long = 20_000L
@@ -130,28 +133,29 @@ object BrassNet {
      * Send [input] for [action]. [onResult] runs on the UI thread when the server replies (or
      * immediately with `net.unavailable` when no transport is bound, `version.mismatch` after the
      * server has rejected the protocol, or `timeout` when [timeoutMillis] elapses first). While a
-     * request is in flight the [actionButton] helper keeps its button disabled.
+     * request is in flight the [actionButton] helper keeps its button disabled. Returns the request
+     * id, which a host can use to track large chunked transfers (see the transport's progress hook).
      */
     fun <T : Any> send(
         action: BrassAction<T>,
         input: T,
         timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS,
         onResult: (BrassActionResult) -> Unit = {},
-    ) {
+    ): Long {
         if (protocolMismatch) {
             onResult(err("version.mismatch", PROTOCOL_VERSION.toString(), "?"))
-            return
+            return -1L
         }
         val t = transport
         if (t == null) {
             onResult(err("net.unavailable"))
-            return
+            return -1L
         }
         val requestId = requestIds.incrementAndGet()
         pending[requestId] = onResult
-        val json = if (action.inputType == Unit::class.java) null else BrassJson.toJson(input)
+        val data = if (action.inputType == Unit::class.java) null else BrassBson.toBytes(input)
         try {
-            t.sendAction(requestId, action.id, json) { result ->
+            t.sendAction(requestId, action.id, data) { result ->
                 pending.remove(requestId)
                 onResult(result)
             }
@@ -173,6 +177,7 @@ object BrassNet {
             pending.remove(requestId)
             onResult(err("send.failed", throwable.javaClass.simpleName))
         }
+        return requestId
     }
 
     /** Transport-side hook: deliver a server reply to the pending callback (called on the UI thread). */
@@ -206,7 +211,7 @@ object BrassNet {
 
     /** Server-side: push [value] for [stateId] (see [BrassActionContext.publish]). */
     fun publish(stateId: String, value: Any?, toPlayer: String? = null) {
-        transport?.publish(stateId, if (value == null) null else BrassJson.toJson(value), toPlayer)
+        transport?.publish(stateId, if (value == null) null else BrassBson.toBytes(value), toPlayer)
     }
 
     /** Register a server-side [BrassNetValue] (called by [brassValue]). */
@@ -214,12 +219,12 @@ object BrassNet {
         values[value.id] = value
     }
 
-    /** The current JSON for [stateId], or null when no [BrassNetValue] with that id is registered. */
-    fun snapshot(stateId: String): String? =
-        values[stateId]?.let { BrassJson.toJson(it.value) }
+    /** The current BSON for [stateId], or null when no [BrassNetValue] with that id is registered. */
+    fun snapshot(stateId: String): ByteArray? =
+        values[stateId]?.let { BrassBson.toBytes(it.value) }
 
     /** Internal: register a raw state subscriber on the bound transport. */
-    internal fun subscribeState(stateId: String, onUpdate: (String?) -> Unit): () -> Unit =
+    internal fun subscribeState(stateId: String, onUpdate: (ByteArray?) -> Unit): () -> Unit =
         transport?.subscribe(stateId, onUpdate) ?: { }
 
     // ---- actions -------------------------------------------------------------------------------
@@ -253,7 +258,7 @@ object BrassNet {
      * The synchronous checks run on the caller's thread; transports schedule the call onto the server
      * main thread first.
      */
-    fun dispatch(actionId: String, json: String?, ctx: AuthContext): CompletableFuture<BrassActionResult> {
+    fun dispatch(actionId: String, data: ByteArray?, ctx: AuthContext): CompletableFuture<BrassActionResult> {
         val action = registry.get<Any>(actionId) ?: return completed(err("action.unknown", actionId))
         if (actionId in disabled) return completed(err("action.disabled", actionId))
         when (val decision = authorizer.check(action, ctx)) {
@@ -261,7 +266,7 @@ object BrassNet {
             AuthDecision.Grant -> {}
         }
         if (!registry.tryAcquire(action, ctx.playerId)) return completed(err("rate.limited"))
-        val input = parseInput(action, json) ?: return completed(err("action.malformed"))
+        val input = parseInput(action, data) ?: return completed(err("action.malformed"))
         action.validate(input)?.let { return completed(err(it)) }
 
         val started = System.nanoTime()
@@ -282,10 +287,10 @@ object BrassNet {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun <T : Any> parseInput(action: BrassAction<T>, json: String?): T? = when {
+    private fun <T : Any> parseInput(action: BrassAction<T>, data: ByteArray?): T? = when {
         action.inputType == Unit::class.java -> Unit as T
-        json == null -> null
-        else -> BrassJson.fromJson(json, action.inputType)
+        data == null -> null
+        else -> BrassBson.fromBytes(data, action.inputType)
     }
 
     private fun completed(result: BrassActionResult): CompletableFuture<BrassActionResult> =
@@ -357,8 +362,8 @@ class BrassNetState<T : Any>(private val id: String, private val type: Class<T>)
         for (listener in listeners) listener(last)
     }
 
-    internal fun onRemote(json: String?) {
-        val value = if (json == null) null else BrassJson.fromJson(json, type)
+    internal fun onRemote(data: ByteArray?) {
+        val value = if (data == null) null else BrassBson.fromBytes(data, type)
         pendingOptimistic = false
         lastAuthoritative = value
         if (value == last) return

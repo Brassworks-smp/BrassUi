@@ -7,7 +7,7 @@ data class NodeCollaborativeEdit(
     val actorId: String,
     val clock: Long,
     val label: String,
-    val graphJson: String,
+    val graphBson: ByteArray,
 )
 
 /**
@@ -22,7 +22,7 @@ interface NodeCollaborationTransport {
 
 interface NodeCollaborativeDocument {
     fun onGraphChange(listener: (GraphChange) -> Unit): () -> Unit
-    fun applyRemoteSnapshot(json: String, label: String = "Remote edit")
+    fun applyRemoteSnapshot(bytes: ByteArray, label: String = "Remote edit")
 }
 
 /**
@@ -60,7 +60,7 @@ class NodeCollaborationSession(
         synchronized(this) {
             clock++
             latest = Stamp(clock, actorId)
-            edit = NodeCollaborativeEdit(actorId, clock, change.label, change.graphJson)
+            edit = NodeCollaborativeEdit(actorId, clock, change.label, change.graphBson)
         }
         transport.publish(edit)
     }
@@ -85,7 +85,7 @@ class NodeCollaborationSession(
             }
             applyingRemote = true
             try {
-                editor.applyRemoteSnapshot(edit.graphJson, "${edit.label} · ${edit.actorId}")
+                editor.applyRemoteSnapshot(edit.graphBson, "${edit.label} · ${edit.actorId}")
             } finally {
                 applyingRemote = false
             }

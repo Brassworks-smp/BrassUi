@@ -70,10 +70,10 @@ pipeline that produced every image here.
 - **89 widgets**, from buttons and sliders to tables, charts, trees, a chat box, a command palette, and inventory grids.
 - **One brass accent, themed by role.** No widget stores a colour. It stores the name of a role and asks the live theme every frame, so a theme swap retints everything at once and animates while it does.
 - **Layout that wraps by default.** Panels, scroll areas, and a flow container mean a screen reflows instead of overflowing when the window gets tight.
-- **A complete node editor.** Typed ports and reroutable wires, animated fields, notes and nested groups, undo/redo, templates, JSON/SVG export, execution, debugging, plugins, and collaboration.
+- **A complete node editor.** Typed ports and reroutable wires, animated fields, notes and nested groups, undo/redo, templates, BSON native save/load with JSON/SVG export, execution, debugging, plugins, and collaboration.
 - **UI → server logic, no registration.** Actions are declared inline beside a screen and run on the
   server automatically: the same single jar discovers them on the client and on a dedicated server,
-  serializes them as JSON, authorizes them by op level, rate-limits them, and pushes state changes
+  serializes them as BSON (MongoDB's binary format, bundled jar-in-jar), authorizes them by op level, rate-limits them, and pushes state changes
   back to every subscribed screen. No packets, no codecs, no `register` calls.
 - **Runs off-game.** The core links against no Minecraft classes, so the desktop app runs the real widgets with a native window under them.
 - **Built-in dev tools.** A Chrome-style inspector, a demo browser for per-widget captures, and a whole-screen showcase capture that cuts the UI out onto transparency.
@@ -106,7 +106,7 @@ actionButton("Rename", TeamActions.rename) {
 
 The mod discovers `@BrassActionSet` objects on its own — via FML scan data in game, the classpath on
 the desktop — on **both** the client and a dedicated server, so one jar covers the whole round trip:
-the action is serialized as JSON (Gson, no codecs), authorized by the declared op level before the
+the action is serialized as BSON (MongoDB's binary format, no codecs to write), authorized by the declared op level before the
 handler runs, rate-limited when asked, and its failures come back as toasts with the button
 automatically disabled while it is in flight. `brassValue(...)` gives you server-pushed state with
 snapshot-on-subscribe: set `.value` in a handler and every open screen bound to that id updates.
@@ -115,7 +115,7 @@ The module goes further out of the box: **async handlers** (`brassAsyncAction`) 
 server thread, **permission sync** makes button state reflect the server's real decisions (PermissionAPI
 included), **optimistic updates** reconcile against authoritative pushes, **coalesced values** throttle
 high-frequency state, **targeted publishes** reach one player, protocol versioning rejects mixed
-client/server versions with a `version.mismatch` error, payloads compress past 1 KB, disconnects fail
+client/server versions with a `version.mismatch` error, payloads gzip-compress past 256 bytes, disconnects fail
 in-flight requests cleanly, and an audit hook logs every executed action. `/brassui action <id> <json>`
 fires any action from chat for testing. Errors translate through Minecraft's language system in game,
 with a built-in catalog and host-side overrides on every platform.

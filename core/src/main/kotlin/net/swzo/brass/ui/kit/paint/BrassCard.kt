@@ -78,6 +78,32 @@ object BrassCard {
     }
 
     /**
+     * The batched twin of [draw]: every layer joins [batch] instead of its own tessellator call, so
+     * hundreds of cards (the node editor's LOD pass) render in one GPU draw. Same colours, same
+     * layers, same look - the LOD silhouette is pixel-identical to the real card.
+     */
+    fun drawInto(
+        batch: BrassPaint.QuadBatch,
+        x1: Float, y1: Float, x2: Float, y2: Float,
+        shadow: Boolean = true,
+        alpha: Float = 1f,
+        /** Multiplies the ring/border layers' alpha - the LOD fades sub-pixel outlines out early. */
+        outline: Float = 1f,
+    ) {
+        if (x2 <= x1 || y2 <= y1 || alpha <= 0.001f) return
+        if (shadow) {
+            batch.rect(x1 + 3f, y1 + 4f, x2 + 4f, y2 + 5f, fade(SHADOW_FAR, alpha))
+            batch.rect(x1 + 1f, y1 + 2f, x2 + 2f, y2 + 3f, fade(SHADOW_NEAR, alpha))
+        }
+        batch.rect(x1 - 1f, y1 - 1f, x2 + 1f, y2 + 1f, fade(Colors.UI_OUTER_BORDER, alpha * outline))
+        batch.rect(x1, y1, x2, y2, fade(FILL, alpha))
+        batch.rect(x1, y1, x2, y1 + 1f, fade(Colors.UI_INNER_BORDER, alpha * outline))
+        batch.rect(x1, y2 - 1f, x2, y2, fade(Colors.UI_INNER_BORDER, alpha * outline))
+        batch.rect(x1, y1, x1 + 1f, y2, fade(Colors.UI_INNER_BORDER, alpha * outline))
+        batch.rect(x2 - 1f, y1, x2, y2, fade(Colors.UI_INNER_BORDER, alpha * outline))
+    }
+
+    /**
      * The two-slab drop shadow every **floating** card casts down and to the right. Two offset slabs
      * rather than a gradient: cheap, and it keeps the pixel look.
      *
@@ -187,6 +213,33 @@ object BrassCard {
         // the brass tell, on the seam where the two cards meet
         if (accentSeam) {
             fill(m, hx1 + 1f, hy2 - 1f, hx1 + minOf(40f, hx2 - hx1 - 2f), hy2, fade(Colors.UI_ACCENT, alpha))
+        }
+    }
+
+    /** The batched twin of [header]; see [drawInto]. */
+    fun headerInto(
+        batch: BrassPaint.QuadBatch,
+        x1: Float, y1: Float, x2: Float,
+        height: Float,
+        inset: Float = 0f,
+        accentSeam: Boolean = true,
+        alpha: Float = 1f,
+        /** Multiplies the ring/border layers' alpha - see [drawInto]. */
+        outline: Float = 1f,
+    ) {
+        val hx1 = x1 + inset
+        val hx2 = x2 - inset
+        val hy2 = y1 + height
+        if (hx2 <= hx1 || height <= 0f || alpha <= 0.001f) return
+        batch.rect(hx1 - 1f, y1 - 1f, hx2 + 1f, hy2 + 1f, fade(Colors.UI_OUTER_BORDER, alpha * outline))
+        batch.rect(hx1, y1, hx2, hy2, fade(HEADER_FILL, alpha))
+        batch.rect(hx1, y1, hx2, y1 + 1f, fade(Colors.UI_INNER_BORDER, alpha * outline))
+        batch.rect(hx1, hy2 - 1f, hx2, hy2, fade(Colors.UI_INNER_BORDER, alpha * outline))
+        batch.rect(hx1, y1, hx1 + 1f, hy2, fade(Colors.UI_INNER_BORDER, alpha * outline))
+        batch.rect(hx2 - 1f, y1, hx2, hy2, fade(Colors.UI_INNER_BORDER, alpha * outline))
+        batch.rect(hx1, hy2, hx2, hy2 + 1f, fade(SHADOW_NEAR, alpha))
+        if (accentSeam) {
+            batch.rect(hx1 + 1f, hy2 - 1f, hx1 + minOf(40f, hx2 - hx1 - 2f), hy2, fade(Colors.UI_ACCENT, alpha))
         }
     }
 

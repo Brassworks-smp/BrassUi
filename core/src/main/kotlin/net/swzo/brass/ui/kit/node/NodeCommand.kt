@@ -10,7 +10,7 @@ package net.swzo.brass.ui.kit.node
  * Fine-grained commands ([MoveNodesCommand]) exist where they buy something concrete - dragging a node
  * should not clone the whole graph on every mouse-up, and moving via a command keeps the selection and
  * the running animations rather than reloading the graph out from under them. Everything structural
- * (add, delete, wire, paste) rides [SnapshotCommand]: a before/after pair of the native JSON. That is
+ * (add, delete, wire, paste) rides [SnapshotCommand]: a before/after pair of the native BSON. That is
  * far less code than a bespoke command per mutation and cannot drift from the real save format, and the
  * cost - reloading the graph on undo - only lands on edits rare enough not to care.
  *
@@ -33,12 +33,12 @@ interface GraphCommand {
  * so this is for structural edits (add / delete / wire / paste) that are infrequent next to a drag.
  */
 class SnapshotCommand(
-    private val before: String,
-    private val after: String,
+    private val before: ByteArray,
+    private val after: ByteArray,
     override val label: String = "Edit",
 ) : GraphCommand {
-    override fun apply(graph: NodeGraph) { graph.load(after) }
-    override fun revert(graph: NodeGraph) { graph.load(before) }
+    override fun apply(graph: NodeGraph) { graph.loadBson(after) }
+    override fun revert(graph: NodeGraph) { graph.loadBson(before) }
 }
 
 /**
@@ -106,9 +106,9 @@ class CommandStack(
      * call sites that used to open-code a snapshot.
      */
     fun record(label: String, block: () -> Unit) {
-        val before = graph.toJson()
+        val before = graph.toBson()
         block()
-        val after = graph.toJson()
-        if (before != after) push(SnapshotCommand(before, after, label))
+        val after = graph.toBson()
+        if (!before.contentEquals(after)) push(SnapshotCommand(before, after, label))
     }
 }
