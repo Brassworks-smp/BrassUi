@@ -470,19 +470,10 @@ class BrassNodeEditor(
                     if (!UKeyboard.isShiftKeyDown()) selection.clear()
                     selectInBox()
                     mode = Mode.Idle
-                    // Keep the box exactly as it was dragged (not re-fitted to the nodes) - but only
-                    // when it actually selected something; a box that caught nothing should vanish,
-                    // not leave a ghost rectangle on the canvas.
-                    val selectedAnything =
-                        graph.nodes.any { it.selected && !it.closing } || graph.comments.any { it.selected }
-                    marqueeBox = if (selectedAnything) {
-                        floatArrayOf(
-                            minOf(boxMode.startX, boxCurX), minOf(boxMode.startY, boxCurY),
-                            maxOf(boxMode.startX, boxCurX), maxOf(boxMode.startY, boxCurY),
-                        )
-                    } else {
-                        null
-                    }
+                    // The box is a transient drag affordance: it vanishes the moment the drag ends,
+                    // leaving only the selected nodes highlighted. (The live rectangle during the
+                    // drag is drawn from the Mode.Box state, not from marqueeBox.)
+                    marqueeBox = null
                 } else if (!rightMoved) {
                     rightClick(rightPressLX, rightPressLY, rightPressWX, rightPressWY)
                 }
@@ -2113,10 +2104,10 @@ class BrassNodeEditor(
         occlusionValid = true
     }
 
-    /** The right-drag marquee rectangle kept after release - exactly as it was dragged, never
-     *  re-fitted to the nodes. Normal click/shift selections show nothing. Same look as the drag
-     *  marquee, with the border clamped to a minimum of one screen pixel so it never thins to
-     *  sub-pixel and clips in and out when zoomed way out. */
+    /** A persistent selection outline, if one is set. Box selections clear it on release - the
+     *  live rectangle while dragging is drawn from the Mode.Box state instead. The border is
+     *  clamped to a minimum of one screen pixel so it never thins to sub-pixel and clips in and
+     *  out when zoomed way out. */
     private fun drawSelectionOutline(m: UMatrixStack) {
         val b = marqueeBox ?: return
         val (minX, minY, maxX, maxY) = b

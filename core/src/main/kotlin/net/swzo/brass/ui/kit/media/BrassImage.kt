@@ -16,7 +16,8 @@ import net.swzo.brass.ui.kit.demo.BrassDemo
 import net.swzo.brass.ui.kit.demo.BrassDemoSource
 
 /**
- * An image loaded from a URL, with a **skeleton placeholder** while it is in flight.
+ * An image loaded from a URL, a local file or a classpath resource, with a **skeleton placeholder**
+ * while it is in flight.
  * ```kotlin
  * BrassImage("https://example.com/icon.png")
  *     .constrain { width = 24.pixels(); height = 24.pixels() }
@@ -25,11 +26,16 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * - **Loading** - a shimmering skeleton block, the usual "content is coming" affordance.
  * - **Ready** - the decoded image, scaled to fit and centred, never stretched.
  * - **Failed** - a quiet placeholder mark. A dead URL must look deliberately empty, not broken.
- * ### Network
- * Constructing one **makes an HTTPS request**. That is the whole point of the widget, but it is worth
- * being deliberate about: only pass URLs you actually want the client to fetch. Plain `http` is
- * rejected outright, responses are capped at MAX_BYTES, and the request has a short timeout - a
- * hung CDN must not be able to pin a loader thread for the session.
+ * ### Sources
+ * - `https://...` - a remote image; constructing one **makes an HTTPS request**. Plain `http` is
+ *   rejected outright, responses are capped at MAX_BYTES, and the request has a short timeout - a
+ *   hung CDN must not be able to pin a loader thread for the session.
+ * - `file:///…` or a plain filesystem path (`/absolute/path.png`, `relative/icon.png`) - a local
+ *   image file, read off the worker thread with the same size cap.
+ * - `:…` (a bare path that is not a file also falls back to it) - a Java classpath resource, so
+ *   images can ship inside a jar (`:/assets/mod/icon.png`).
+ * The loader resolves a bare path against the filesystem first and falls back to the classpath, so
+ * either spelling works for resources bundled with the app.
  * ### Formats
  * Decoding goes through [ImageIO], so **PNG, JPEG, GIF and BMP work and WebP does not** - the JDK
  * ships no WebP reader, and a `.webp` URL will land in the failed state. Anything that needs WebP has

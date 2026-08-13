@@ -3,6 +3,8 @@ package net.swzo.brass.ui.kit.media
 import net.swzo.brass.ui.kit.media.BrassImageLoader.Entry
 import net.swzo.brass.ui.kit.media.BrassImageLoader.FAILURE_TTL_MS
 import net.swzo.brass.ui.kit.media.BrassImageLoader.load
+import java.nio.file.Files
+import java.nio.file.Path
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.net.URI
@@ -17,8 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import javax.imageio.ImageIO
 
 /**
- * Shared fetch-and-decode for [BrassImage]: one request per URL for the life of the process, on a
- * small pool of daemon threads.
+ * Shared fetch-and-decode for [BrassImage]: one request per source for the life of the process, on
+ * a small pool of daemon threads.
  * Kept separate from the widget because the cache has to outlive it - a list that rebuilds its rows
  * every time a tab is clicked would otherwise re-download every icon.
  */
@@ -88,12 +90,59 @@ object BrassImageLoader {
     @Synchronized
     fun clear() = cache.clear()
 
+    /**
+     * Supported sources:
+     * - `https://...` - remote image (the original behaviour; plain `http` is still rejected).
+     * - `file:///…` or a plain filesystem path (`/absolute/path.png`, `relative/icon.png`) - a
+     *   local image file.
+     * - `:…` (a bare path that is not a file also falls back to it) - a Java classpath resource,
+     *   so a mod or app can ship images inside its own jar (`:/assets/mod/icon.png`).
+     *
+     * All sources share the same size cap and decoded-image cache. A file whose bytes change on
+     * disk after the first load keeps the cached copy, exactly like a URL that changes server-side.
+     */
     private fun fetch(url: String): BufferedImage? = runCatching {
-        val uri = URI.create(url)
+        val bytes = when {
+            url.startsWith(":") -> readResource(url.substring(1))
+            url.startsWith("file:", ignoreCase = true) -> {
+                val uri = URI.create(url)
+                if (uri.scheme?.equals("file", ignoreCase = true) != true) return@runCatching null
+                readPath(Path.of(uri))
+            }
+            url.startsWith("https:", ignoreCase = true) -> fetchRemoteBytes(URI.create(url))
+            else -> readPathOrResource(url)
+        }
+        if (bytes == null || bytes.isEmpty() || bytes.size > MAX_BYTES) return@runCatching null
+
+        // ImageIO returns null rather than throwing for a format it has no reader for - WebP, most
+        // often - so this is the failure path for those, not an exception.
+        ByteArrayInputStream(bytes).use(ImageIO::read)
+    }.getOrNull()
+
+    /** Read a classpath resource (`classpath:assets/...` or `classpath:/assets/...`). */
+    private fun readResource(name: String): ByteArray? {
+        val normalized = name.removePrefix("/")
+        val loader = BrassImageLoader::class.java.classLoader ?: ClassLoader.getSystemClassLoader()
+        return loader.getResourceAsStream(normalized)?.use { it.readBytes() }
+    }
+
+    private fun readPath(path: Path): ByteArray? = runCatching {
+        if (!Files.isRegularFile(path)) null
+        else if (Files.size(path) > MAX_BYTES) null
+        else Files.readAllBytes(path)
+    }.getOrNull()
+
+    /** Bare path without a scheme: try the filesystem first, then fall back to a classpath resource. */
+    private fun readPathOrResource(url: String): ByteArray? {
+        val asFile = runCatching { readPath(Path.of(url)) }.getOrNull()
+        if (asFile != null) return asFile
+        return readResource(url)
+    }
+
+    private fun fetchRemoteBytes(uri: URI): ByteArray? = runCatching {
         // HTTPS only. This widget exists to pull images from the open internet, and doing that over
         // plaintext would let anything on the path swap what the UI displays.
-        if (!uri.scheme.equals("https", ignoreCase = true)) return null
-
+        if (!uri.scheme.equals("https", ignoreCase = true)) return@runCatching null
         val response = client.send(
             HttpRequest.newBuilder(uri)
                 .timeout(TIMEOUT)
@@ -102,14 +151,8 @@ object BrassImageLoader {
                 .build(),
             HttpResponse.BodyHandlers.ofByteArray(),
         )
-        if (response.statusCode() != 200) return null
-
-        val bytes = response.body()
-        if (bytes == null || bytes.isEmpty() || bytes.size > MAX_BYTES) return null
-
-        // ImageIO returns null rather than throwing for a format it has no reader for - WebP, most
-        // often - so this is the failure path for those, not an exception.
-        ByteArrayInputStream(bytes).use(ImageIO::read)
+        if (response.statusCode() != 200) return@runCatching null
+        response.body()
     }.getOrNull()
 
     private const val USER_AGENT = "brassui (BrassSync UI toolkit)"

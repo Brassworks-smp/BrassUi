@@ -3,6 +3,7 @@ package net.swzo.brass.ui.kit.surface
 
 import gg.essential.elementa.UIComponent
 import gg.essential.elementa.components.UIContainer
+import gg.essential.elementa.components.Window
 import gg.essential.elementa.constraints.CenterConstraint
 import gg.essential.elementa.dsl.childOf
 import gg.essential.elementa.dsl.constrain
@@ -185,21 +186,14 @@ class BrassPopup(
         val cx = x.coerceIn(EDGE, (sw - cw - EDGE).coerceAtLeast(EDGE))
         val cy = y.coerceIn(EDGE, (sh - ch - EDGE).coerceAtLeast(EDGE))
         constrain { this.x = cx.pixels(); this.y = cy.pixels(); width = cw.pixels(); height = ch.pixels() }
-        this childOf screenRoot
-        isFloating = true
-        // childOf appended us above *everything*, including layers that outrank a popup - a toast
-        // mid-slide, an open palette. Slot into the right band immediately rather than covering them
-        // until the next reorder.
-        raiseWithin(screenRoot)
-        shownStamp = ++interactionSeq
+        attachTo(screenRoot)
         return this
     }
 
     fun showModal(screenRoot: UIComponent, w: Float, h: Float): BrassPopup {
         val sc = Scrim().constrain {
             x = 0.pixels(); y = 0.pixels(); width = 100.percent(); height = 100.percent()
-        } childOf screenRoot
-        sc.isFloating = true
+        }
         scrim = sc
 
         val sw = screenRoot.getWidth()
@@ -207,6 +201,32 @@ class BrassPopup(
         val cw = w.coerceAtMost((sw - EDGE * 2).coerceAtLeast(MIN_W))
         val ch = h.coerceAtMost((sh - EDGE * 2).coerceAtLeast(MIN_H))
         return show(screenRoot, (sw - cw) / 2f, (sh - ch) / 2f, cw, ch)
+    }
+
+    // Attach on the next render pass, not synchronously. Popups shown from a mouse handler (a
+    // button's onClick, a field click, a linker picker) run inside the Window's locked mouseRelease,
+    // and adding a child during that window throws "Cannot modify children while iterating over
+    // them" (Elementa's throw-on-invalid-usage mode). The render-operation queue drains at the start
+    // of the next frame's draw, when the children are unlocked. The scrim attaches first so
+    // raiseWithin can slot it below the popup.
+    private fun attachTo(screenRoot: UIComponent) {
+        Window.Companion.enqueueRenderOperation {
+            scrim?.let { sc ->
+                if (!screenRoot.children.contains(sc)) {
+                    sc childOf screenRoot
+                    sc.isFloating = true
+                }
+            }
+            if (!screenRoot.children.contains(this@BrassPopup)) {
+                this@BrassPopup childOf screenRoot
+                this@BrassPopup.isFloating = true
+                // childOf appended us above *everything*, including layers that outrank a popup - a
+                // toast mid-slide, an open palette. Slot into the right band immediately rather than
+                // covering them until the next reorder.
+                raiseWithin(screenRoot)
+            }
+            shownStamp = ++interactionSeq
+        }
     }
 
     /**

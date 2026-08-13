@@ -1360,7 +1360,7 @@ export const WIDGETS: Widget[] = [
     "category": "Media",
     "categoryDir": "media",
     "slug": "BrassImage",
-    "summary": "An image loaded from a URL, with a **skeleton placeholder** while it is in flight.",
+    "summary": "An image loaded from a URL, a local file or a classpath resource, with a **skeleton placeholder** while it is in flight.",
     "params": [
       {
         "name": "url",
@@ -1390,7 +1390,7 @@ export const WIDGETS: Widget[] = [
     "category": "Media",
     "categoryDir": "media",
     "slug": "BrassImageLoader",
-    "summary": "Shared fetch, and, decode for BrassImage: one request per URL for the life of the process, on a small pool of daemon threads.",
+    "summary": "Shared fetch, and, decode for BrassImage: one request per source for the life of the process, on a small pool of daemon threads.",
     "params": [],
     "examples": [],
     "signature": "object BrassImageLoader"

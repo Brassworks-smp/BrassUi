@@ -54,6 +54,15 @@ open class BrassInventoryGrid(
 
     var onChange: (() -> Unit)? = null
 
+    /**
+     * Optional full control over a drag that ends with the cursor over one of this grid's slots.
+     * When set and returning true, the drop is taken HERE instead of the generic spread/split
+     * landing - the carried stack is then cleared. The old behavior is untouched when this is left
+     * as the default, so hosts that want click-like single-item drops (a frequency selector, say)
+     * can have them without changing how every other grid distributes stacks.
+     */
+    var onDrop: (index: Int, held: Slot) -> Boolean = { _, _ -> false }
+
     var onQuickMove: (from: BrassInventoryGrid, index: Int) -> Boolean = { from, index ->
         val target = link.members.firstOrNull { it !== from }
         if (target == null) false else from.transferTo(target, index)

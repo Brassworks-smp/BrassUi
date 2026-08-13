@@ -89,7 +89,20 @@ class BrassInventoryLink {
 
         // A sweep has already done its work slot by slot; there is nothing to distribute.
         if (kind == Drag.SWEEP || kind == Drag.NONE) return
-        if (stack == null || slots.size < 2) return
+        if (stack == null) return
+
+        // A member under the cursor may own the drop entirely (a click-like landing without the
+        // spread/split logic). Runs BEFORE the generic distribution, and only for the slot the
+        // cursor is over at release - painted slots elsewhere are still distributed normally.
+        for (member in members) {
+            val index = member.cursorSlot()
+            if (index >= 0 && member.onDrop(index, stack)) {
+                hold(null)
+                return
+            }
+        }
+
+        if (slots.size < 2) return
 
         val limit = maxStack(stack.itemId)
         // EVEN splits the stack between the slots; SINGLE always places one, however many there are.

@@ -3,6 +3,7 @@ package net.swzo.brass.ui.kit.surface
 
 import gg.essential.elementa.UIComponent
 import gg.essential.elementa.components.UIContainer
+import gg.essential.elementa.components.Window
 import gg.essential.elementa.constraints.CenterConstraint
 import gg.essential.elementa.constraints.SiblingConstraint
 import gg.essential.elementa.dsl.*
@@ -180,6 +181,9 @@ class BrassContextMenu private constructor(
 
     private fun maxScroll(): Float = (scrollRowsHeight() - viewportH).coerceAtLeast(0f)
 
+    // True only once show() has computed the final viewport height and the rows overflow it.
+    private fun scrollbarNeeded(): Boolean = viewportH > 0f && maxScroll() > 0f
+
     init {
         val interim = searchBandH +
             minOf(scrollRowsHeight().toFloat(), MAX_SCROLL_H_DEFAULT) +
@@ -216,7 +220,11 @@ class BrassContextMenu private constructor(
 
             rowViewport.constrain {
                 x = 0.pixels(); y = searchBandH.pixels()
-                width = 100.percent() - (BrassScrollbar.WIDTH + 4f).pixels()
+                // Reserve the scrollbar strip only when the rows actually overflow the viewport -
+                // a short menu (≤ the 8-row cap) has no scrollbar, so its rows fill the full width.
+                width = basicWidthConstraint { c ->
+                    c.parent.getWidth() - if (scrollbarNeeded()) (BrassScrollbar.WIDTH + 4f) else 0f
+                }
                 height = basicHeightConstraint { c ->
                     (c.parent.getHeight() - searchBandH - footerRowsHeight()).coerceAtLeast(0f)
                 }
@@ -412,17 +420,27 @@ class BrassContextMenu private constructor(
         val flipLine = anchorTop ?: y
         val py = if (y + h + EDGE > sh) (flipLine - h).coerceAtLeast(EDGE) else y
         constrain { this.x = px.pixels(); this.y = py.pixels(); this.height = h.pixels() }
-        this childOf screenRoot
-        // grabWindowFocus must run after childOf - Elementa walks up to the enclosing Window and a
-        // detached component throws "No window parent?" (the 2.2.7 crash). Custom-content menus must
-        // NOT grab focus, or they steal keys from their own focused control. The search field is
-        // deliberately left unfocused so Escape closes the menu in one press.
-        if (content == null) {
-            grabWindowFocus()
-            setHighlight(allItems.indexOfFirst { !it.isSeparator })
+        // Attach on the next render pass, not synchronously. Menus open from an Elementa mouse
+        // handler (right-click, a button's click) are dispatched inside the Window's own
+        // mouseRelease, which locks its children for the whole dispatch; adding a child during that
+        // window throws "Cannot modify children while iterating over them" (Elementa's
+        // throw-on-invalid-usage mode). The render-operation queue drains at the start of the next
+        // frame's draw, when the children are unlocked. If the menu was dismissed before that (a
+        // same-frame close), the guard below skips the stale attach.
+        Window.Companion.enqueueRenderOperation {
+            if (open !== this@BrassContextMenu) return@enqueueRenderOperation
+            this@BrassContextMenu childOf screenRoot
+            // grabWindowFocus must run after childOf - Elementa walks up to the enclosing Window and
+            // a detached component throws "No window parent?" (the 2.2.7 crash). Custom-content menus
+            // must NOT grab focus, or they steal keys from their own focused control. The search
+            // field is deliberately left unfocused so Escape closes the menu in one press.
+            if (content == null) {
+                grabWindowFocus()
+                setHighlight(allItems.indexOfFirst { !it.isSeparator })
+            }
+            this@BrassContextMenu.isFloating = true
+            BrassLayers.raise(screenRoot, this@BrassContextMenu)
         }
-        isFloating = true
-        BrassLayers.raise(screenRoot, this)
         open = this
     }
 
@@ -431,9 +449,15 @@ class BrassContextMenu private constructor(
     override fun dismiss() {
         if (open === this) open = null
         val r = root ?: return
-        r.removeChild(this)
         root = null
         onDismiss?.invoke()
+        // Detach on the next render pass (same reason as the deferred attach in [show]): a menu
+        // closed from a mouse handler runs while the Window is iterating its children, and removing
+        // a child during that window throws too. A same-frame re-show enqueues its attach AFTER
+        // this remove (FIFO), so the menu is re-added cleanly rather than duplicated.
+        Window.Companion.enqueueRenderOperation {
+            if (r.children.contains(this@BrassContextMenu)) r.removeChild(this@BrassContextMenu)
+        }
     }
 
     private class Panel : BrassWidget(BrassAccent.DEFAULT) {
