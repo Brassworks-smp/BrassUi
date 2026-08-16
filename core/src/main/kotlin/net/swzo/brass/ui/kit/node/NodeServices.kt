@@ -17,14 +17,14 @@ class NodeHitTester(private val graph: NodeGraph) {
     fun portAt(wx: Float, wy: Float): Triple<GraphNode, Int, Boolean>? {
         for (node in graph.nodes.asReversed()) {
             if (node.closing) continue
-            node.type.inputs.forEachIndexed { index, port ->
+            node.effectiveInputs().forEachIndexed { index, port ->
                 if (!port.hidden && hypot(
                         wx - NodeLayout.inputX(node),
                         wy - NodeLayout.inputY(node, index),
                     ) <= NodeLayout.PORT_HIT * port.size
                 ) return Triple(node, index, false)
             }
-            node.type.outputs.forEachIndexed { index, port ->
+            node.effectiveOutputs().forEachIndexed { index, port ->
                 if (!port.hidden && hypot(
                         wx - NodeLayout.outputX(node),
                         wy - NodeLayout.outputY(node, index),
@@ -151,7 +151,7 @@ object NodeGraphDiagnostics {
         val liveLinks = graph.links.filterNot { it.closing }
         val incoming = liveLinks.groupBy { it.to.id }
         for (node in liveNodes) {
-            node.type.inputs.forEachIndexed { index, input ->
+            node.effectiveInputs().forEachIndexed { index, input ->
                 if (!input.optional && input.type != PortType.FLOW &&
                     incoming[node.id].orEmpty().none { it.toPort == index }
                 ) add(NodeDiagnostic(
@@ -164,8 +164,8 @@ object NodeGraphDiagnostics {
             }
         }
         for (link in liveLinks) {
-            val output = link.from.type.outputs.getOrNull(link.fromPort)
-            val input = link.to.type.inputs.getOrNull(link.toPort)
+            val output = link.from.effectiveOutputs().getOrNull(link.fromPort)
+            val input = link.to.effectiveInputs().getOrNull(link.toPort)
             when {
                 output == null || input == null -> add(NodeDiagnostic(
                     NodeDiagnosticSeverity.ERROR, "missing-port", "A wire references a missing port",

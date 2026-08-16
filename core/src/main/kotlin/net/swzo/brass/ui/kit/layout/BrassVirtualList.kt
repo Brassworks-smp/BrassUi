@@ -72,6 +72,15 @@ abstract class BrassVirtualList<T>(
 
     private val bar = BrassScrollbarModel()
 
+    /** The horizontal content width, or 0 for no horizontal scrolling (rows wider than the viewport
+     *  shift left and a thin horizontal bar appears at the bottom - code rows in a markdown view). */
+    protected var hContent = 0f
+        set(value) { field = value; hScroll = hBar.clamp(hScroll) }
+    private val hBar = BrassScrollbarModel()
+    protected var hScroll = 0f
+    private var draggingHBar = false
+    private var hBarGrabOffset = 0f
+
     private fun syncBar(): BrassScrollbarModel {
         bar.viewport = bodyHeight()
         bar.content = contentHeight()
@@ -84,6 +93,16 @@ abstract class BrassVirtualList<T>(
         val x = getLeft(); val y = getTop(); val w = getWidth()
         val gripY = y + headerHeight + m.gripTop(scroll)
         return floatArrayOf(x + w - BrassScrollbar.WIDTH - 2f, gripY, x + w - 2f, gripY + m.gripHeight())
+    }
+
+    /** The horizontal bar's track [x1, y1, x2, y2], or null when nothing overflows the width. */
+    private fun hBarRect(): FloatArray? {
+        val x = getLeft(); val y = getTop(); val w = getWidth(); val h = getHeight()
+        hBar.viewport = (w - BrassScrollbar.WIDTH - 12f).coerceAtLeast(1f)
+        hBar.content = hContent
+        if (!hBar.scrollable) return null
+        val hy = y + h - H_BAR_H
+        return floatArrayOf(x + 4f, hy, x + w - BrassScrollbar.WIDTH - 4f, hy + H_BAR_H)
     }
 
 
@@ -144,8 +163,13 @@ abstract class BrassVirtualList<T>(
         chrome = BrassChrome.NONE
 
         onMouseScroll { e ->
-            scroll = clampScroll(scroll - e.delta.toFloat() * rowHeight * 2f)
-            e.stopPropagation()
+            if (hContent > 0f && gg.essential.universal.UKeyboard.isShiftKeyDown()) {
+                hScroll = hBar.clamp(hScroll - e.delta.toFloat() * 24f)
+                e.stopPropagation()
+            } else {
+                scroll = clampScroll(scroll - e.delta.toFloat() * rowHeight * 2f)
+                e.stopPropagation()
+            }
         }
         // Clip to our own bounds. This is what lets a partial row render at all: it draws its full
         // text and is simply cut off at the edge, instead of being skipped.
@@ -172,6 +196,18 @@ abstract class BrassVirtualList<T>(
                 return@onMouseClick
             }
 
+            // Horizontal bar (code rows wider than the viewport): grab or page, same rules.
+            val hgrip = hBarRect()
+            if (hgrip != null && ay >= hgrip[1] - BAR_GRAB && ay <= hgrip[3] + BAR_GRAB) {
+                if (ax >= hgrip[0] && ax <= hgrip[2]) {
+                    draggingHBar = true
+                    hBarGrabOffset = ax - hgrip[0]
+                } else if (ax >= getLeft() + 4f) {
+                    hScroll = hBar.pageToward(hScroll, ax - (getLeft() + 4f))
+                }
+                return@onMouseClick
+            }
+
             if (headerHeight > 0f && e.relativeY < headerHeight) {
                 onHeaderClick(e.relativeX)
                 return@onMouseClick
@@ -187,11 +223,17 @@ abstract class BrassVirtualList<T>(
 
         // Elementa broadcasts drags to the whole tree, hence the `draggingBar` gate - the same one
         // BrassSlider and the frame drags need.
-        onMouseDrag { _, my, btn ->
-            if (!draggingBar || btn != 0) return@onMouseDrag
-            scroll = syncBar().offsetForGripTop(getTop() + my - barGrabOffset - (getTop() + headerHeight))
+        onMouseDrag { mx, my, btn ->
+            if (btn != 0) return@onMouseDrag
+            when {
+                draggingHBar -> hScroll = hBar.offsetForGripTop(getLeft() + mx - hBarGrabOffset - (getLeft() + 4f))
+                draggingBar -> scroll = syncBar().offsetForGripTop(getTop() + my - barGrabOffset - (getTop() + headerHeight))
+            }
         }
-        onMouseRelease { draggingBar = false }
+        onMouseRelease {
+            draggingBar = false
+            draggingHBar = false
+        }
     }
 
 
@@ -242,7 +284,9 @@ abstract class BrassVirtualList<T>(
         for (i in first until last) {
             val ry = bodyTop + i * rowHeight - scroll
             rowBackground(i)?.let { BrassPaint.rectSnapped(m, x + 1f, ry, x + w - 1f, ry + rowHeight, it) }
-            paintRow(m, items[i], i, x, ry, w)
+            // Rows shift left by the horizontal scroll (code wider than the viewport); the scissor
+            // clips the overflow, and the h-bar reveals it.
+            paintRow(m, items[i], i, x - hScroll, ry, w)
         }
 
         if (headerHeight > 0f) paintHeader(m, x, y, w)
@@ -256,10 +300,19 @@ abstract class BrassVirtualList<T>(
             BrassPaint.rectSnapped(m, g[0], bodyTop, g[2], y + h - 1f, TRACK)
             BrassCard.grip(m, g[0], g[1], g[2], g[3], if (draggingBar) 1f else 0f)
         }
+
+        // Thin horizontal bar at the bottom when a row is wider than the viewport.
+        hBarRect()?.let { hr ->
+            BrassPaint.rectSnapped(m, hr[0], hr[1], hr[2], hr[3], TRACK)
+            val gx = hr[0] + hBar.gripTop(hScroll)
+            val gw = hBar.gripHeight().coerceAtLeast(4f)
+            BrassCard.grip(m, gx, hr[1], gx + gw, hr[3], if (draggingHBar) 1f else 0f)
+        }
     }
 
     protected companion object {
         const val BAR_GRAB = 3f
+        const val H_BAR_H = 3f
 
         val STRIPE: Color get() = Colors.ROW_STRIPE
         val HOVER: Color get() = Colors.ROW_HOVER

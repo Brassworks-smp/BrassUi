@@ -2207,23 +2207,23 @@ export const WIDGETS: Widget[] = [
     "category": "Text",
     "categoryDir": "text",
     "slug": "BrassMarkdown",
-    "summary": "Renders a practical subset of Markdown in the toolkit's palette, for changelogs, help panels, MOTDs and anything else where the text is authored rather than hardcoded into a layout.",
+    "summary": "A read, only **markdown** text view, built on BrassVirtualList so long documents scroll like any other list.",
     "params": [
       {
-        "name": "markdown",
+        "name": "initial",
         "type": "String",
         "default": "\"\""
       },
       {
         "name": "onLink",
-        "type": "((String) -> Unit)?",
-        "default": "null"
+        "type": "(String) -> Unit",
+        "default": "{}"
       }
     ],
     "examples": [
-      "BrassMarkdown(SAMPLE)"
+      "BrassMarkdown(SAMPLE) { }"
     ],
-    "signature": "class BrassMarkdown(\n    markdown: String = \"\",\n    private val onLink: ((String), > Unit)? = null,\n) : UIComponent()",
+    "signature": "class BrassMarkdown(\n    initial: String = \"\",\n    private val onLink: (String), > Unit = {},\n) : BrassVirtualList<Markdown.Row>(BrassFont.LINE + 2f)",
     "demoName": "markdown"
   },
   {
@@ -2326,7 +2326,7 @@ export const WIDGETS: Widget[] = [
     "examples": [
       "BrassTextArea(placeholder = \"Description\")"
     ],
-    "signature": "class BrassTextArea(\n    initial: String = \"\",\n    private val placeholder: String = \"\",\n    val language: String? = null,\n    private val onChange: (String), > Unit = {},\n) : BrassWidget(BrassAccent.DEFAULT), BrassValue<String>, BrassFocusable, BrassTextField",
+    "signature": "class BrassTextArea(\n    initial: String = \"\",\n    private val placeholder: String = \"\",\n    val language: String? = null,\n    var lineNumbers: Boolean = false,\n    var indentOnTab: Boolean = false,\n    var wrap: Boolean = true,\n    private val onChange: (String), > Unit = {},\n) : BrassWidget(BrassAccent.DEFAULT), BrassValue<String>, BrassFocusable, BrassTextField",
     "demoName": "text-area"
   },
   {
@@ -2452,5 +2452,16 @@ export const WIDGETS: Widget[] = [
     ],
     "signature": "class BrassWrappedLabel(\n    text: String,\n    var tint: Color = Colors.UI_TEXT,\n    var shadow: Boolean = true,\n) : BrassWidget(BrassAccent.DEFAULT)",
     "demoName": "wrapped-label"
+  },
+  {
+    "name": "Markdown",
+    "kind": "object",
+    "category": "Text",
+    "categoryDir": "text",
+    "slug": "Markdown",
+    "summary": "The pure, Minecraft/Elementa, free markdown parser behind BrassMarkdown, a small visual subset: `#`/`##`/`###` headings, `, ` bullets, `1.",
+    "params": [],
+    "examples": [],
+    "signature": "object Markdown"
   }
 ];

@@ -25,6 +25,7 @@ import net.swzo.brass.ui.kit.node.Port
 import net.swzo.brass.ui.kit.node.PortRef
 import net.swzo.brass.ui.kit.node.PortShape
 import net.swzo.brass.ui.kit.node.PortType
+import net.swzo.brass.ui.kit.node.StepperField
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -59,6 +60,45 @@ class BrassNodeAdvancedTest {
         assertNull(graph.link(source, 0, second, 0))
         assertTrue(first.type.inputs[0].hidden)
         assertTrue(first.type.inputs[0].dynamic)
+    }
+
+    @Test
+    fun `extra outputs append after base outputs and drive validation and layout`() {
+        val registry = NodeRegistry()
+            .register(NodeType("script", "Script", BrassAccent.DEFAULT,
+                outputs = listOf(Port("base", PortType.NUMBER)),
+                makeFields = { listOf(StepperField("n", "count", value = 0, max = 4)) },
+                extraOutputs = { node ->
+                    val count = (node.fields.firstOrNull { it.key == "n" }?.encode() as? Number)?.toInt() ?: 0
+                    (0 until count).map { Port("out$it", PortType.NUMBER) }
+                }))
+            .register(NodeType("sink", "Sink", BrassAccent.DEFAULT,
+                inputs = listOf(Port("in", PortType.NUMBER, optional = true))))
+        val graph = NodeGraph(registry)
+        val script = graph.spawn("script", 0f, 0f)!!
+        val sinkA = graph.spawn("sink", 200f, 0f)!!
+        val sinkB = graph.spawn("sink", 200f, 40f)!!
+        val sinkC = graph.spawn("sink", 200f, 80f)!!
+
+        assertEquals(1, script.effectiveOutputs().size)
+        assertNull(graph.link(script, 1, sinkB, 0))
+        assertFalse(graph.validateLink(script, 1, sinkB, 0).allowed)
+
+        script.fields.first { it.key == "n" }.decode(3)
+        assertEquals(listOf("base", "out0", "out1", "out2"), script.effectiveOutputs().map { it.name })
+        assertEquals("base", script.effectiveOutputs()[0].name, "base outputs keep their index")
+        assertNotNull(graph.link(script, 0, sinkA, 0))
+        assertNotNull(graph.link(script, 1, sinkB, 0))
+        assertNotNull(graph.link(script, 3, sinkC, 0))
+        assertEquals(3, graph.links.size)
+
+        // A graph saved with an extra-output wire loads with the wire dropped when the hook
+        // cannot reproduce that output (field back to 0), exactly like extra inputs; the base
+        // wire survives.
+        script.fields.first { it.key == "n" }.decode(0)
+        val reloaded = NodeGraph.fromJson(registry, graph.toJson())
+        assertEquals(1, reloaded.links.size)
+        assertEquals(0, reloaded.links.single().fromPort)
     }
 
     @Test

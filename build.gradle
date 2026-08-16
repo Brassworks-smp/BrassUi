@@ -44,121 +44,33 @@ subprojects {
 }
 
 // ---- publishing ---------------------------------------------------------------------------------
-//
-// Only the two artifacts another project would ever depend on are published:
-//
-//   • `brassui-core` — the toolkit library, for a mod that wants the widgets and is doing its own
-//     Elementa/UniversalCraft bundling.
-//   • `brassui`      — the self-contained NeoForge mod, for a mod that just wants working UI and
-//     would rather jar-in-jar one thing than solve the module-layer problem itself (see mod/build.gradle).
-//
-// `:demo` and `:desktop` are development surfaces, not something to depend on, so they stay unpublished.
-//
-// Brassworks Maven is public for consumers and key-protected for publishers. The URL is overridable so
-// the exact same Gradle publishing flow can be verified against a local repository before a release.
-//
-// Publishing credentials come from the gitignored `.env` at the repo root, so a release is one
-// command (`./gradlew publish`) with nothing to source or re-enter. Resolving any value follows the
-// same precedence: `-P` project property > real environment variable > `.env` file > default.
-def dotEnv = { String name ->
-    def f = rootProject.file('.env')
-    if (!f.isFile()) return null
-    for (line in f.readLines('UTF-8')) {
-        def t = line.trim()
-        if (t.startsWith('export ')) t = t.substring('export '.length()).trim()
-        if (t.isEmpty() || t.startsWith('#') || !t.contains('=')) continue
-        def eq = t.indexOf('=')
-        if (t.substring(0, eq).trim() != name) continue
-        def v = t.substring(eq + 1).trim()
-        if (v.length() >= 2 && v.startsWith('"') && v.endsWith('"')) {
-            v = v.substring(1, v.length() - 1)
-        }
-        return v
-    }
-    null
-}
-configure([project(':core'), project(':mod')]) {
-    apply plugin: 'maven-publish'
-
-    java {
-        withSourcesJar()
-    }
-
-    publishing {
-        publications {
-            maven(MavenPublication) {
-                from components.java
-                artifactId = project.name == 'core' ? 'brassui-core' : 'brassui'
-
-                // The mod jar is self-contained at runtime: core + demo classes are folded in and
-                // Elementa/UniversalCraft ride as jar-in-jar. The POM deliberately carries Elementa +
-                // UniversalCraft as compile-scope dependencies (so consumers compile against them
-                // without adding anything). KFF is a required *mod* (neoforge.mods.toml), not a
-                // library: Kotlin consumers already declare it themselves and it lives on a repo we
-                // shouldn't force them to add, so it is kept out of the POM. `brassui-core` keeps its
-                // (honest) deps.
-                if (project.name == 'mod') {
-                    pom.withXml {
-                        def deps = asNode().dependencies?.get(0)
-                        if (deps != null) {
-                            deps.children().removeAll {
-                                it.name().localPart == 'dependency' &&
-                                    it.groupId.text() == 'thedarkcolour'
-                            }
-                        }
-                    }
-                }
-
-                pom {
-                    name = artifactId
-                    description = project.name == 'core'
-                        ? 'Elementa widget toolkit for Minecraft in the Brassworks launcher idiom.'
-                        : 'brassui as a self-contained NeoForge mod, Elementa/UniversalCraft included.'
-                    url = 'https://github.com/Brassworks-smp/BrassUi'
-                    licenses {
-                        license {
-                            // Source-available, not open source: noncommercial use is granted, commercial
-                            // use by anyone else is not. See LICENSE.md and the README's licence note.
-                            name = 'PolyForm Noncommercial License 1.0.0'
-                            url = 'https://polyformproject.org/licenses/noncommercial/1.0.0'
-                        }
-                    }
-                    developers {
-                        developer {
-                            id = 'swzo'
-                            name = 'swzo'
-                        }
-                    }
-                    scm {
-                        url = 'https://github.com/Brassworks-smp/BrassUi'
-                        connection = 'scm:git:https://github.com/Brassworks-smp/BrassUi.git'
-                    }
-                }
-            }
-        }
-
-        repositories {
-            maven {
-                name = 'BrassworksMaven'
-                url = uri(
-                    project.findProperty('brassworks.maven.url')
-                        ?: System.getenv('BRASSWORKS_MAVEN_URL')
-                        ?: dotEnv('BRASSWORKS_MAVEN_URL')
-                        ?: 'https://maven.opnsoc.org/releases'
-                )
-                // Local verification uses HTTP; the production default above is always HTTPS.
-                allowInsecureProtocol = url.scheme == 'http'
-                credentials {
-                    username = project.findProperty('brassworks.maven.user')
-                        ?: System.getenv('BRASSWORKS_MAVEN_USER')
-                        ?: dotEnv('BRASSWORKS_MAVEN_USER')
-                        ?: 'brassui'
-                    password = project.findProperty('brassworks.maven.key')
-                        ?: System.getenv('BRASSWORKS_MAVEN_KEY')
-                        ?: dotEnv('BRASSWORKS_MAVEN_KEY')
-                }
-                authentication { basic(BasicAuthentication) }
-            }
-        }
-    }
-}
+// Shared with Create Linkworks via gradle/brassworks-maven.gradle (single source of truth). Only the
+// two artifacts another project would ever depend on are published: `brassui-core` (the toolkit
+// library) and `brassui` (the self-contained NeoForge mod). `:demo` and `:desktop` are development
+// surfaces, not something to depend on, so they stay unpublished.
+ext.brassworksMaven = [
+    projects: [':core', ':mod'],
+    artifactIds: [':core': 'brassui-core', ':mod': 'brassui'],
+    pom: [
+        url: 'https://github.com/Brassworks-smp/BrassUi',
+        license: 'PolyForm Noncommercial License 1.0.0',
+        licenseUrl: 'https://polyformproject.org/licenses/noncommercial/1.0.0',
+        developerId: 'swzo',
+        scmUrl: 'https://github.com/Brassworks-smp/BrassUi',
+        scmConnection: 'scm:git:https://github.com/Brassworks-smp/BrassUi.git',
+    ],
+    projectPoms: [
+        // The mod jar is self-contained at runtime: core + demo classes are folded in and
+        // Elementa/UniversalCraft ride as jar-in-jar. Its POM deliberately carries Elementa +
+        // UniversalCraft as compile-scope dependencies (so consumers compile against them without
+        // adding anything), but KFF is pruned: it is a required *mod* (neoforge.mods.toml), not a
+        // library - Kotlin consumers already declare it themselves and it lives on a repo we
+        // shouldn't force them to add. `brassui-core` keeps its (honest) deps.
+        ':mod': [
+            description: 'brassui as a self-contained NeoForge mod, Elementa/UniversalCraft included.',
+            pruneGroups: ['thedarkcolour'],
+        ],
+        ':core': [description: 'Elementa widget toolkit for Minecraft in the Brassworks launcher idiom.'],
+    ],
+]
+apply from: rootProject.file('gradle/brassworks-maven.gradle')

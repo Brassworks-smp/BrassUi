@@ -1,0 +1,108 @@
+def dotEnv = { String name ->
+    def f = rootProject.file('.env')
+    if (!f.isFile()) return null
+    for (line in f.readLines('UTF-8')) {
+        def t = line.trim()
+        if (t.startsWith('export ')) t = t.substring('export '.length()).trim()
+        if (t.isEmpty() || t.startsWith('#') || !t.contains('=')) continue
+        def eq = t.indexOf('=')
+        if (t.substring(0, eq).trim() != name) continue
+        def v = t.substring(eq + 1).trim()
+        if (v.length() >= 2 && v.startsWith('"') && v.endsWith('"')) {
+            v = v.substring(1, v.length() - 1)
+        }
+        return v
+    }
+    null
+}
+
+def cfg = (ext.find('brassworksMaven') as Map) ?: [:]
+def targetProjects = ((cfg.projects as List) ?: [project]).collect {
+    it instanceof Project ? it : project(it)
+}
+def artifactIds = (cfg.artifactIds as Map) ?: [:]
+def sharedPom = (cfg.pom as Map) ?: [:]
+def pruneDefault = (cfg.pruneGroups as List) ?: []
+def projectPoms = (cfg.projectPoms as Map) ?: [:]
+
+configure(targetProjects) {
+    apply plugin: 'maven-publish'
+
+    java {
+        withSourcesJar()
+    }
+
+    def perProject = (projectPoms[path] as Map) ?: [:]
+    def pomCfg = perProject + sharedPom
+    def pubArtifactId = artifactIds[path] ?: artifactIds[name] ?: (cfg.artifactId ?: name)
+    def pruneGroups = (perProject.pruneGroups as List) ?: pruneDefault
+
+    publishing {
+        publications {
+            maven(MavenPublication) {
+                from components.java
+                artifactId = pubArtifactId
+
+                pom {
+                    name = pomCfg.name ?: pubArtifactId
+                    description = pomCfg.description ?: project.description
+                    if (pomCfg.url) url = pomCfg.url
+                    if (pomCfg.license) {
+                        licenses {
+                            license {
+                                name = pomCfg.license
+                                if (pomCfg.licenseUrl) url = pomCfg.licenseUrl
+                            }
+                        }
+                    }
+                    if (pomCfg.developerId) {
+                        developers {
+                            developer {
+                                id = pomCfg.developerId
+                            }
+                        }
+                    }
+                    if (pomCfg.scmUrl) {
+                        scm {
+                            url = pomCfg.scmUrl
+                            if (pomCfg.scmConnection) connection = pomCfg.scmConnection
+                        }
+                    }
+
+                    withXml {
+                        def deps = asNode().dependencies?.get(0)
+                        if (deps != null) {
+                            deps.children().removeAll {
+                                it.name().localPart == 'dependency' &&
+                                    pruneGroups.contains(it.groupId.text())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                name = 'BrassworksMaven'
+                url = uri(
+                    findProperty('brassworks.maven.url')
+                        ?: System.getenv('BRASSWORKS_MAVEN_URL')
+                        ?: dotEnv('BRASSWORKS_MAVEN_URL')
+                        ?: 'https://maven.opnsoc.org/releases'
+                )
+                allowInsecureProtocol = url.scheme == 'http'
+                credentials {
+                    username = findProperty('brassworks.maven.user')
+                        ?: System.getenv('BRASSWORKS_MAVEN_USER')
+                        ?: dotEnv('BRASSWORKS_MAVEN_USER')
+                        ?: 'brassui'
+                    password = findProperty('brassworks.maven.key')
+                        ?: System.getenv('BRASSWORKS_MAVEN_KEY')
+                        ?: dotEnv('BRASSWORKS_MAVEN_KEY')
+                }
+                authentication { basic(BasicAuthentication) }
+            }
+        }
+    }
+}

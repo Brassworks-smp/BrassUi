@@ -2,7 +2,7 @@
 // Source: the build's gradle.properties. Re-run `node scripts/gen-widgets.mjs` to refresh.
 
 export const META = {
-  "version": "2.2.19",
+  "version": "2.2.39",
   "elementaVersion": "760",
   "universalcraftVersion": "505",
   "owner": "Brassworks-smp",

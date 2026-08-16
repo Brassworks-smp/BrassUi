@@ -286,6 +286,15 @@ object NodeIO {
                     val el2 = fields.get(f.key) ?: continue
                     if (el2 is JsonPrimitive) f.decode(primitive(el2))
                 }
+                // Script-derived fields (a Lua node's ui.* controls) don't exist until the code field
+                // is decoded, so rebuild them NOW and decode their saved values too.
+                if (node.type.onFieldsChanged != null) {
+                    node.type.onFieldsChanged.invoke(node)
+                    for (f in node.fields) {
+                        val el2 = fields.get(f.key) ?: continue
+                        if (el2 is JsonPrimitive) f.decode(primitive(el2))
+                    }
+                }
             }
         }
 
@@ -364,6 +373,15 @@ object NodeIO {
                 for (f in node.fields) {
                     val el2 = fields[f.key] ?: continue
                     f.decode(primitive(el2))
+                }
+                // Script-derived fields (a Lua node's ui.* controls) don't exist until the code field
+                // is decoded, so rebuild them NOW and decode their saved values too.
+                if (node.type.onFieldsChanged != null) {
+                    node.type.onFieldsChanged.invoke(node)
+                    for (f in node.fields) {
+                        val el2 = fields[f.key] ?: continue
+                        f.decode(primitive(el2))
+                    }
                 }
             }
         }

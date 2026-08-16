@@ -47,6 +47,9 @@ class NodeDrawCtx(
 
     var coveredBy: ((GraphNode, Float, Float, Float, Float) -> Boolean)? = null
 
+    /** The world-space rects of nodes drawn ABOVE [GraphNode] that overlap it (may partially overlap). */
+    var coverersOf: ((GraphNode) -> List<FloatArray>?)? = null
+
     fun screenX(wx: Float): Float = originX + panX + wx * zoom
     fun screenY(wy: Float): Float = originY + panY + wy * zoom
 

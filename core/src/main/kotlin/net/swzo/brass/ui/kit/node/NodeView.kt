@@ -70,6 +70,7 @@ object NodeView {
         fun covered(rx1: Float, ry1: Float, rx2: Float, ry2: Float): Boolean =
             coveredBy?.invoke(node, rx1, ry1, rx2, ry2) == true
 
+        val drawInterior: () -> Unit = {
         // title + collapse chevron: the whole header strip is skipped when a node above covers it.
         if (!covered(x1, y1, x2, y1 + NodeLayout.HEADER)) {
             val title = BrassFont.fit(ctx.host, node.type.title, if (value != null) node.width - 52f else node.width - 22f)
@@ -82,7 +83,7 @@ object NodeView {
             // Live value badge: a small keycap in the header, tinted by the node's first output port type
             // and showing the current value formatted for that kind (whole numbers drop their .0).
             value?.let { raw ->
-                val tint = node.type.outputs.firstOrNull()?.type?.color() ?: Colors.DANGER
+                val tint = node.effectiveOutputs().firstOrNull()?.type?.color() ?: Colors.DANGER
                 val label = when (raw) {
                     is Double -> formatBadge(raw)
                     is Float -> formatBadge(raw.toDouble())
@@ -118,23 +119,45 @@ object NodeView {
         // ports (over the halo, so the nubs stay clean at any selection state)
         drawPorts(ctx, graph, node, dy)
 
-            // Fields fold as the node rolls up: clip them to the animating body so they scissor away from the
-            // bottom edge rather than fading in place. The clip is only needed mid-animation.
-            val roll = node.roll.value
-            if (roll < 0.985f && node.fields.any { it.reveal.value > 0.01f }) {
-                val rolling = roll > 0.001f
-                val reflowing = node.fields.any { !it.reveal.settled }
-                val clip = if (rolling || reflowing) {
-                    ScissorEffect(ctx.screenX(x1) - 2f, ctx.screenY(y1), ctx.screenX(x2) + 2f, ctx.screenY(y2), true)
-                } else null
-                clip?.beforeDraw(m)
-                for (f in node.fields) if (f.reveal.value > 0.01f) {
-                    val row = NodeLayout.fieldRow(node, f)
-                    // A field row (slider/param/control) fully under a node above is skipped too.
-                    if (!covered(row[0], row[1], row[2], row[3])) drawField(ctx, node, f, dy)
-                }
-                clip?.afterDraw(m)
+        // Fields fold as the node rolls up: clip them to the animating body so they scissor away from the
+        // bottom edge rather than fading in place. The clip is only needed mid-animation.
+        val roll = node.roll.value
+        if (roll < 0.985f && node.fields.any { it.reveal.value > 0.01f }) {
+            val rolling = roll > 0.001f
+            val reflowing = node.fields.any { !it.reveal.settled }
+            val clip = if (rolling || reflowing) {
+                ScissorEffect(ctx.screenX(x1) - 2f, ctx.screenY(y1), ctx.screenX(x2) + 2f, ctx.screenY(y2), true)
+            } else null
+            clip?.beforeDraw(m)
+            for (f in node.fields) if (f.reveal.value > 0.01f) {
+                val row = NodeLayout.fieldRow(node, f)
+                // A field row (slider/param/control) fully under a node above is skipped too.
+                if (!covered(row[0], row[1], row[2], row[3])) drawField(ctx, node, f, dy)
             }
+            clip?.afterDraw(m)
+        }
+        }
+
+        // Scissor the interior to the parts of this node not covered by nodes drawn above it, so
+        // covered text/items never paint over the covering node's card. The covered node's own card
+        // was already drawn in the batched LOD pass (behind the coverer's card), so the interior is
+        // the only thing that leaks. The region is the node rect minus the union of coverer rects,
+        // decomposed into axis-aligned strips so one scissor per strip clips exactly what overlaps.
+        val coverers = ctx.coverersOf?.invoke(node)
+        val subRects = if (coverers.isNullOrEmpty()) null else visibleSubRects(x1, y1, x2, y2, coverers)
+        if (subRects == null) {
+            drawInterior()
+        } else {
+            for (r in subRects) {
+                val clip = ScissorEffect(
+                    ctx.screenX(r[0]), ctx.screenY(r[1]),
+                    ctx.screenX(r[2]), ctx.screenY(r[3]), true,
+                )
+                clip.beforeDraw(m)
+                drawInterior()
+                clip.afterDraw(m)
+            }
+        }
 
         BrassAmbientFade.current = savedFade
         m.pop()
@@ -216,13 +239,58 @@ object NodeView {
         return String.format(Locale.ROOT, "%.2f", raw).trimEnd('0').trimEnd('.').ifEmpty { "0" }
     }
 
+    /**
+     * Decomposes [x1,y1,x2,y2] minus the union of [coverers] (each a world-space rect) into a small
+     * set of axis-aligned rectangles covering exactly the visible region. Both halves of a "punch a
+     * hole in the node" coverer (a node drawn above overlapping part of this one) become strips, so
+     * one scissor per rect clips the interior precisely where it overlaps.
+     */
+    private fun visibleSubRects(
+        x1: Float, y1: Float, x2: Float, y2: Float,
+        coverers: List<FloatArray>,
+    ): List<FloatArray> {
+        val xs = ArrayList<Float>()
+        val ys = ArrayList<Float>()
+        xs.add(x1); xs.add(x2)
+        ys.add(y1); ys.add(y2)
+        for (c in coverers) {
+            xs.add(c[0]); xs.add(c[2])
+            ys.add(c[1]); ys.add(c[3])
+        }
+        xs.sort(); ys.sort()
+        val out = ArrayList<FloatArray>()
+        for (ix in 0 until xs.size - 1) {
+            val rl = xs[ix]; val rr = xs[ix + 1]
+            if (rr - rl < 0.01f) continue
+            var runStart = Float.NaN
+            var runEnd = Float.NaN
+            for (iy in 0 until ys.size - 1) {
+                val tb = ys[iy]; val bb = ys[iy + 1]
+                if (bb - tb < 0.01f) continue
+                val cx = (rl + rr) / 2f
+                val cy = (tb + bb) / 2f
+                val inside = cx > x1 && cx < x2 && cy > y1 && cy < y2
+                val covered = !inside || coverers.any { cx >= it[0] && cx <= it[2] && cy >= it[1] && cy <= it[3] }
+                if (!covered) {
+                    if (runStart.isNaN()) runStart = tb
+                    runEnd = bb
+                } else if (!runStart.isNaN()) {
+                    out.add(floatArrayOf(rl, runStart, rr, runEnd))
+                    runStart = Float.NaN
+                }
+            }
+            if (!runStart.isNaN()) out.add(floatArrayOf(rl, runStart, rr, runEnd))
+        }
+        return out
+    }
+
     private fun drawPorts(ctx: NodeDrawCtx, graph: NodeGraph, node: GraphNode, dy: Float) {
         val m = ctx.m
         val coveredBy = ctx.coveredBy
         fun covered(rx1: Float, ry1: Float, rx2: Float, ry2: Float): Boolean =
             coveredBy?.invoke(node, rx1, ry1, rx2, ry2) == true
-        for (i in node.type.inputs.indices) {
-            val p = node.type.inputs[i]
+        for (i in node.effectiveInputs().indices) {
+            val p = node.effectiveInputs()[i]
             if (p.hidden) continue
             val cx = NodeLayout.inputX(node)
             val cy = NodeLayout.inputY(node, i) + dy
@@ -235,8 +303,8 @@ object NodeView {
                     cy - BrassFont.LINE / 2f, Colors.UI_TEXT_DARK)
             }
         }
-        for (i in node.type.outputs.indices) {
-            val p = node.type.outputs[i]
+        for (i in node.effectiveOutputs().indices) {
+            val p = node.effectiveOutputs()[i]
             if (p.hidden) continue
             val cx = NodeLayout.outputX(node)
             val cy = NodeLayout.outputY(node, i) + dy

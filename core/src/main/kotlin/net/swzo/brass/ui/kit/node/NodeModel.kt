@@ -87,10 +87,35 @@ class NodeType(
     val outputs: List<Port> = emptyList(),
     /** Built fresh per node, so two nodes of a type never share field state. */
     val makeFields: () -> List<NodeField> = { emptyList() },
+
+    /**
+     * Called after a node's fields may have changed (an edit, or a graph load) so the node can
+     * rebuild its SCRIPT-DERIVED fields - a Lua node re-creates its `ui.*` control fields from the
+     * current script. Fired by [NodeGraph.rebuildDynamicFields].
+     */
+    val onFieldsChanged: ((GraphNode) -> Unit)? = null,
     val width: Float = 156f,
     val executor: NodeExecutor? = null,
     val renderer: NodeRenderer? = null,
     val description: String? = null,
+    /**
+     * Per-node extra input ports, appended after [inputs] - a node whose port count depends on one of
+     * its own fields (a toggle that adds "configure from nodes" inputs). Evaluated live against the
+     * node's current field values, so flipping the field changes the port list. Extra inputs keep
+     * their indices stable (they are always appended), so existing links to the base inputs are
+     * unaffected when a graph with extra wires is loaded without them - the extra links simply fail
+     * validation and are dropped, like any now-incompatible wire.
+     */
+    val extraInputs: ((GraphNode) -> List<Port>)? = null,
+    /**
+     * The symmetric output-side hook: per-node extra output ports, appended after [outputs] - a node
+     * whose output count depends on one of its own fields (a scripting node whose pins derive from
+     * the typed code). Evaluated live against the node's current field values; extra outputs keep
+     * their indices stable (always appended), so saved wires to the base outputs survive a field
+     * change and a graph without them loads with the extra links dropped, like any now-incompatible
+     * wire. Every draw/layout/hit-test/validate/execution path reads through [GraphNode.effectiveOutputs].
+     */
+    val extraOutputs: ((GraphNode) -> List<Port>)? = null,
 )
 
 /**
@@ -146,7 +171,33 @@ class GraphNode internal constructor(
 ) {
     var collapsed: Boolean = false
     var selected: Boolean = false
-    val fields: List<NodeField> = type.makeFields()
+
+    /** The type's base fields, built fresh per node. */
+    val staticFields: List<NodeField> = type.makeFields()
+
+    /**
+     * Script-derived fields added AFTER construction (a Lua node's `ui.*` controls): mutable so the
+     * node type can rebuild them when the script changes. [fields] concatenates them under [staticFields],
+     * so every consumer that iterates `node.fields` (drawing, layout, hit-testing, encode) sees them.
+     */
+    val dynamicFields = ArrayList<NodeField>()
+
+    val fields: List<NodeField> get() = staticFields + dynamicFields
+
+    /** Replace the dynamic fields, preserving any existing instance by key (value + reveal state). */
+    fun syncDynamicFields(next: List<NodeField>) {
+        val existing = dynamicFields.associateBy { it.key }
+        dynamicFields.clear()
+        for (f in next) {
+            val old = existing[f.key]
+            if (old != null) {
+                dynamicFields.add(old)
+            } else {
+                f.reveal.snapTo(1f)
+                dynamicFields.add(f)
+            }
+        }
+    }
 
     init {
         fields.forEach { it.reveal.snapTo(if (it.visibleWhen()) 1f else 0f) }
@@ -159,11 +210,29 @@ class GraphNode internal constructor(
 
     val roll = BrassEased(0f, speed = 14f)
 
-    val glowIn = FloatArray(type.inputs.size)
-    val glowOut = FloatArray(type.outputs.size)
+    // Growable because a dynamic node's port count can change after construction (extra
+    // inputs/outputs re-derived from field values); see [ensureGlow].
+    var glowIn = FloatArray(effectiveInputs().size)
+        private set
+    var glowOut = FloatArray(effectiveOutputs().size)
+        private set
+    var rejectIn = FloatArray(effectiveInputs().size)
+        private set
+    var rejectOut = FloatArray(effectiveOutputs().size)
+        private set
 
-    val rejectIn = FloatArray(type.inputs.size)
-    val rejectOut = FloatArray(type.outputs.size)
+    /**
+     * Grow the glow/reject arrays to cover [ins] inputs and [outs] outputs. Called by the editor's
+     * animation pass (and anything else that writes glow state) so a node whose dynamic ports were
+     * revealed after construction - a scripting node whose pins come from typed code - still animates
+     * its newest ports instead of silently iterating a stale array.
+     */
+    fun ensureGlow(ins: Int, outs: Int) {
+        if (glowIn.size < ins) glowIn = glowIn.copyOf(ins)
+        if (rejectIn.size < ins) rejectIn = rejectIn.copyOf(ins)
+        if (glowOut.size < outs) glowOut = glowOut.copyOf(outs)
+        if (rejectOut.size < outs) rejectOut = rejectOut.copyOf(outs)
+    }
 
     var closing: Boolean = false
 
@@ -171,6 +240,23 @@ class GraphNode internal constructor(
 
     fun visibleFields(): List<NodeField> = fields.filter { it.visibleWhen() }
     fun field(key: String): NodeField? = fields.firstOrNull { it.key == key }
+
+    /**
+     * The full input list for this node: the type's base inputs plus any per-node extra inputs
+     * (evaluated against the current field values). Everything that draws, hit-tests or validates a
+     * node's ports must read through this so a field-driven extra input (a toggle that reveals
+     * "configure from nodes" ports) shows and behaves correctly.
+     */
+    fun effectiveInputs(): List<Port> =
+        type.extraInputs?.invoke(this)?.let { type.inputs + it } ?: type.inputs
+
+    /**
+     * The full output list for this node: the type's base outputs plus any per-node extra outputs
+     * (evaluated against the current field values). Everything that draws, hit-tests or validates a
+     * node's ports must read through this - the symmetric sibling of [effectiveInputs].
+     */
+    fun effectiveOutputs(): List<Port> =
+        type.extraOutputs?.invoke(this)?.let { type.outputs + it } ?: type.outputs
 
     fun copyValuesTo(other: GraphNode) {
         for (f in fields) other.field(f.key)?.decode(f.encode())
@@ -189,9 +275,13 @@ class Link(val from: GraphNode, val fromPort: Int, val to: GraphNode, val toPort
     val fade = BrassEased(1f, speed = 11f)
     val reroutes = ArrayList<ReroutePoint>()
 
-    fun portType(): PortType = from.type.outputs[fromPort].type
+    /**
+     * The wire's output port type, or null when the port no longer exists (a stale link whose node's
+     * dynamic ports changed - e.g. a Lua node's script lost an output). Drawing and the evaluator
+     * must treat null as "skip this link", never index an out-of-bounds port.
+     */
+    fun portType(): PortType? = from.effectiveOutputs().getOrNull(fromPort)?.type
 }
-
 data class ReroutePoint(var x: Float, var y: Float)
 
 enum class LinkRejection {
@@ -255,9 +345,9 @@ class NodeGraph(val registry: NodeRegistry) {
     }
 
     fun validateLink(from: GraphNode, fromPort: Int, to: GraphNode, toPort: Int): LinkValidation {
-        val out = from.type.outputs.getOrNull(fromPort)
+        val out = from.effectiveOutputs().getOrNull(fromPort)
             ?: return LinkValidation(false, LinkRejection.MISSING_PORT)
-        val inp = to.type.inputs.getOrNull(toPort)
+        val inp = to.effectiveInputs().getOrNull(toPort)
             ?: return LinkValidation(false, LinkRejection.MISSING_PORT)
         if (from === to) return LinkValidation(false, LinkRejection.SAME_NODE)
         if (!inp.type.accepts(out.type)) return LinkValidation(false, LinkRejection.INCOMPATIBLE_TYPE)
@@ -282,10 +372,10 @@ class NodeGraph(val registry: NodeRegistry) {
         val validation = validateLink(from, fromPort, to, toPort)
         if (!validation.allowed) {
             val replacingSingleInput = validation.rejection == LinkRejection.INPUT_FULL &&
-                to.type.inputs.getOrNull(toPort)?.maxConnections == 1
+                to.effectiveInputs().getOrNull(toPort)?.maxConnections == 1
             if (!replacingSingleInput) return null
         }
-        val inp = to.type.inputs[toPort]
+        val inp = to.effectiveInputs()[toPort]
         if (inp.maxConnections <= 1) links.removeAll { it.to === to && it.toPort == toPort }
         return Link(from, fromPort, to, toPort).also { links.add(it) }
     }
@@ -330,6 +420,15 @@ class NodeGraph(val registry: NodeRegistry) {
     fun toBson(): ByteArray = NodeIO.toBson(this)
 
     /**
+     * Let every node rebuild its script-derived fields (a Lua node re-derives its `ui.*` controls
+     * from the current script). Called after an edit and after a graph load, so a control that
+     * appears/disappears with the script stays in sync.
+     */
+    fun rebuildDynamicFields() {
+        for (node in nodes) node.type.onFieldsChanged?.invoke(node)
+    }
+
+    /**
      * Replace this graph's contents from [bytes] (BSON). Unknown node types are skipped. Invalid
      * documents return false without destroying the graph that is already open.
      */
@@ -339,6 +438,7 @@ class NodeGraph(val registry: NodeRegistry) {
         nodes.clear(); links.clear(); frames.clear(); comments.clear(); bookmarks.clear()
         return runCatching {
             NodeIO.intoBson(this, bytes)
+            rebuildDynamicFields()
             true
         }.getOrElse {
             nodes.clear(); links.clear(); frames.clear(); comments.clear(); bookmarks.clear()
@@ -355,6 +455,7 @@ class NodeGraph(val registry: NodeRegistry) {
         nodes.clear(); links.clear(); frames.clear(); comments.clear(); bookmarks.clear()
         return runCatching {
             NodeIO.into(this, json)
+            rebuildDynamicFields()
             true
         }.getOrElse {
             nodes.clear(); links.clear(); frames.clear(); comments.clear(); bookmarks.clear()

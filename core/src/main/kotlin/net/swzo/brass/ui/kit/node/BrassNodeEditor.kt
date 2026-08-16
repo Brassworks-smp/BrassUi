@@ -84,6 +84,7 @@ class BrassNodeEditor(
     private fun worldX(localX: Float) = (localX - panX) / zoom
     private fun worldY(localY: Float) = (localY - panY) / zoom
     private fun mouseLocal(): Pair<Float, Float> {
+        if (hoverLocked) return (Float.NEGATIVE_INFINITY to Float.NEGATIVE_INFINITY)
         val (mx, my) = getMousePosition(); return (mx - originX) to (my - originY)
     }
 
@@ -131,6 +132,21 @@ class BrassNodeEditor(
     private var guideX: Float? = null
     private var guideY: Float? = null
     private var pressedField: NodeField? = null
+
+    /**
+     * A scripted press for hosts that drive the editor programmatically (a ponder scene, a demo
+     * timeline): holds [field] down for [ticks] frames exactly as if the player clicked it, so a
+     * manual-press control (a Pulse Button keycap) animates and fires `onManualPress` without input.
+     * The press target is released when the budget runs out, matching the editor's own click/release.
+     */
+    private var simulatedPress: NodeField? = null
+    private var simulatedPressTicks = 0
+
+    fun simulateFieldPress(field: NodeField, ticks: Int = 10) {
+        simulatedPress = field
+        simulatedPressTicks = ticks.coerceAtLeast(1)
+        pressedField = field
+    }
     private var lastFrameClickId: Int? = null
     private var lastFrameClickAt = 0L
     private var noteEditor: BrassTextArea? = null
@@ -154,6 +170,13 @@ class BrassNodeEditor(
      * be seen there. The mod sends a tiny brassui action; the demo hosts ignore it.
      */
     var onManualPress: ((nodeId: Int) -> Unit)? = null
+
+    /**
+     * Host hook for a node's dynamic `ui.*` controls (the Lua Script node's sliders/checkboxes/text
+     * fields): fired with (nodeId, control name, value) when the player changes one in the IDE. The
+     * screen sends it to the server so the machine's script sees the new value next tick.
+     */
+    var onNodeUiValue: ((nodeId: Int, name: String, value: Any?) -> Unit)? = null
 
     // history / clipboard / palette memory
     private val changeListeners = CopyOnWriteArrayList<(GraphChange) -> Unit>()
@@ -214,9 +237,23 @@ class BrassNodeEditor(
 
     var readOnly: Boolean = false
 
+    /**
+     * Lock the editor against the real cursor: every hover query (node/field/port/wire under the
+     * pointer, and the tooltip/cursor that follows) is answered with a point far off the canvas, so
+     * nothing highlights or lifts under the actual mouse. A host that renders the editor as a static
+     * demo (a ponder scene, a screenshot) sets this so the real cursor can never disturb the frame.
+     */
+    var hoverLocked: Boolean = false
+
     var wireStrength: (Link) -> Float = { 1f }
 
     var nodeValue: (GraphNode) -> Any? = { null }
+
+    /**
+     * A per-node tooltip override: return a body string to replace the default "title / description"
+     * tooltip for that node (a host surfaces live runtime state - an erroring script, a readout).
+     */
+    var nodeTooltip: ((GraphNode) -> String?)? = null
 
     var wireStrengthTooltip: ((Link) -> String?)? = null
 
@@ -582,6 +619,8 @@ class BrassNodeEditor(
         // otherwise its floating editor would linger over a note that no longer exists.
         finishNoteEditing()
         history.record(label) { mutation(graph) }
+        // A field value may have changed the script (a Lua node's code edit) - re-derive script fields.
+        graph.rebuildDynamicFields()
     }
 
     fun autoLayout(animate: Boolean = true): Boolean {
@@ -807,7 +846,7 @@ class BrassNodeEditor(
         NodeAccessibilityEntry(
             node.id,
             node.type.title,
-            "${node.type.inputs.size} inputs, ${node.type.outputs.size} outputs, $required required",
+            "${node.effectiveInputs().size} inputs, ${node.effectiveOutputs().size} outputs, $required required",
             node.selected,
         )
     }
@@ -1252,7 +1291,7 @@ class BrassNodeEditor(
 
     private fun openCompatibleMenu(wire: Mode.Wire, lx: Float, ly: Float, wx: Float, wy: Float) {
         if (readOnly) return
-        val output = wire.node.type.outputs.getOrNull(wire.port) ?: return
+        val output = wire.node.effectiveOutputs().getOrNull(wire.port) ?: return
         val compatible = registry.all().mapNotNull { type ->
             val input = type.inputs.indexOfFirst { !it.hidden && it.type.accepts(output.type) }
             if (input >= 0) type to input else null
@@ -1474,14 +1513,14 @@ class BrassNodeEditor(
             items += BrassContextMenu.Item(
                 if (node.type.id in favoriteTypeIds) "Remove favorite" else "Add favorite",
             ) { setFavorite(node.type.id, node.type.id !in favoriteTypeIds) }
-            if (nodeMenuDebug && node.type.outputs.isNotEmpty()) {
-                val watching = node.type.outputs.indices.any { PortRef(node.id, it) in scheduler.watches }
+            if (nodeMenuDebug && node.effectiveOutputs().isNotEmpty()) {
+                val watching = node.effectiveOutputs().indices.any { PortRef(node.id, it) in scheduler.watches }
                 items += BrassContextMenu.Item(if (watching) "Unwatch outputs" else "Watch outputs") {
-                    node.type.outputs.indices.forEach { watch(node, it, !watching) }
+                    node.effectiveOutputs().indices.forEach { watch(node, it, !watching) }
                 }
-                val previewing = node.type.outputs.indices.any { PortRef(node.id, it) in previewedOutputs }
+                val previewing = node.effectiveOutputs().indices.any { PortRef(node.id, it) in previewedOutputs }
                 items += BrassContextMenu.Item(if (previewing) "Hide preview" else "Preview outputs") {
-                    node.type.outputs.indices.forEach { preview(node, it, !previewing) }
+                    node.effectiveOutputs().indices.forEach { preview(node, it, !previewing) }
                 }
             }
             registry.nodeActions.forEach { action ->
@@ -1800,8 +1839,12 @@ class BrassNodeEditor(
             n.roll.target = if (n.collapsed) 1f else 0f
             n.hover.advance(); n.lift.advance(); n.sel.advance(); n.roll.advance(); n.pop.advance()
             // Inputs: a hovered input glows green when the dragged wire could land there, reddens when it
-            // could not. With no wire in flight, any hovered port simply glows.
-            for (i in n.glowIn.indices) {
+            // could not. With no wire in flight, any hovered port simply glows. The glow arrays grow to
+            // match the node's *effective* ports so dynamically-revealed pins animate like static ones.
+            val inCount = n.effectiveInputs().size
+            val outCount = n.effectiveOutputs().size
+            n.ensureGlow(inCount, outCount)
+            for (i in 0 until inCount) {
                 val hovered = hoverPort?.let { it.first === n && it.second == i && !it.third } == true
                 val valid = hovered && (wiring == null || canConnect(wiring.node, wiring.port, n, i))
                 val reject = hovered && wiring != null && !valid
@@ -1809,7 +1852,7 @@ class BrassNodeEditor(
                 n.rejectIn[i] += ((if (reject) 1f else 0f) - n.rejectIn[i]) * ct
             }
             // Outputs are never a valid drop for a wire dragged from an output, so they reject while wiring.
-            for (i in n.glowOut.indices) {
+            for (i in 0 until outCount) {
                 val hovered = hoverPort?.let { it.first === n && it.second == i && it.third } == true
                 val self = wiring != null && wiring.node === n && wiring.port == i
                 val valid = hovered && wiring == null
@@ -1823,6 +1866,19 @@ class BrassNodeEditor(
                 f.hover.target = if (f === hoverField) 1f else 0f
                 f.press.target = if (f === pressedField) 1f else 0f
                 f.hover.advance(); f.press.advance()
+            }
+            // A scripted press releases itself once its tick budget is spent, exactly like a real
+            // click's release. Only the field the simulation targeted is released - a concurrent real
+            // press of another control is untouched.
+            if (simulatedPress != null) {
+                simulatedPressTicks--
+                if (simulatedPressTicks <= 0) {
+                    if (pressedField === simulatedPress) {
+                        pressedField?.onRelease()
+                        pressedField = null
+                    }
+                    simulatedPress = null
+                }
             }
         }
         for (l in graph.links) {
@@ -1867,7 +1923,7 @@ class BrassNodeEditor(
             if (text != null) { tipTitle = "Wire"; tipBody = text; return }
         }
         hoverPort?.let { (n, i, out) ->
-            val p = if (out) n.type.outputs[i] else n.type.inputs[i]
+            val p = if (out) n.effectiveOutputs()[i] else n.effectiveInputs()[i]
             tipTitle = p.name
             tipBody = p.description ?: "${p.type.label ?: p.type.id} · ${if (out) "output" else "input"}"
             return
@@ -1875,7 +1931,7 @@ class BrassNodeEditor(
         hoverField?.let { tipTitle = it.tip(); tipBody = it.description; return }
         hoverNode?.let {
             tipTitle = it.type.title
-            tipBody = it.type.description ?: "${it.type.inputs.size} in · ${it.type.outputs.size} out"
+            tipBody = nodeTooltip?.invoke(it) ?: it.type.description ?: "${it.effectiveInputs().size} in · ${it.effectiveOutputs().size} out"
             return
         }
         tipTitle = null; tipBody = null
@@ -1889,6 +1945,7 @@ class BrassNodeEditor(
     }
 
     private fun updateCursor() {
+        if (hoverLocked) return
         val (mx, my) = getMousePosition()
         if (mx < getLeft() || mx > getRight() || my < getTop() || my > getBottom()) return
         when {
@@ -1980,17 +2037,19 @@ class BrassNodeEditor(
             ctx.coveredBy = { node, rx1, ry1, rx2, ry2 ->
                 coverers[node.id]?.any { it[0] <= rx1 && it[1] <= ry1 && it[2] >= rx2 && it[3] >= ry2 } == true
             }
+            ctx.coverersOf = { coverers[it.id] }
         } else {
             occludedNodes.clear()
             coverers.clear()
             occlusionValid = false
             ctx.coveredBy = null
+            ctx.coverersOf = null
         }
         for (node in graph.nodes) if (node.id !in occludedNodes && nodeVisible(ctx, node)) NodeView.drawLod(ctx, node)
         lodRects.flush()
 
         (mode as? Mode.Wire)?.let { wm ->
-            val base = wm.node.type.outputs[wm.port].type.color()
+            val base = wm.node.effectiveOutputs().getOrNull(wm.port)?.type?.color() ?: Colors.UI_TEXT_DARK
             val over = hoverPort
             val col = when {
                 over != null && !over.third && canConnect(wm.node, wm.port, over.first, over.second) ->
@@ -2147,7 +2206,9 @@ class BrassNodeEditor(
         if (fade <= 0.001f) return
         val saved = BrassAmbientFade.current
         val points = linkPoints(link)
-        val type = link.portType()
+        // A stale link (its output port no longer exists, e.g. a Lua script lost an output) is
+        // skipped rather than crashing the draw with an out-of-bounds port index.
+        val type = link.portType() ?: return
         val color = type.color()
         // The full-quality curve is drawn at every zoom - NodeWire scales its cells to at least one
         // screen pixel, so there is no line/curve switch and nothing sub-pixel to fragment.
@@ -2175,7 +2236,7 @@ class BrassNodeEditor(
                 bottom = Colors.INK_900, flat = false, defaultAccent = false,
             )
         }
-        link.to.type.inputs.getOrNull(link.toPort)?.endLabel?.let { label ->
+        link.to.effectiveInputs().getOrNull(link.toPort)?.endLabel?.let { label ->
             val tx = NodeLayout.inputX(link.to) - BrassFont.width(this, label) - 8f
             BrassFont.draw(
                 ctx.m, this, label, tx,
@@ -2321,7 +2382,7 @@ class BrassNodeEditor(
             }
             if (watched.isNotEmpty() && zoom > 0.65f) {
                 val text = watched.entries.joinToString(" · ") { (ref, value) ->
-                    "${node.type.outputs.getOrNull(ref.port)?.name ?: ref.port}=$value"
+                    "${node.effectiveOutputs().getOrNull(ref.port)?.name ?: ref.port}=$value"
                 }
                 val fit = BrassFont.fit(this, text, node.width - 12f)
                 val top = node.y + NodeLayout.height(node) + 3f

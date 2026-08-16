@@ -213,7 +213,7 @@ class GraphScheduler(
                     }
                 }
 
-                val missing = node.type.inputs.withIndex().firstOrNull { (index, port) ->
+                val missing = node.effectiveInputs().withIndex().firstOrNull { (index, port) ->
                     !port.optional && port.type != PortType.FLOW && inputValues[index].isNullOrEmpty()
                 }
                 if (missing != null) {

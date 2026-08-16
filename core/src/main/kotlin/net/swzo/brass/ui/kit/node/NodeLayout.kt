@@ -18,8 +18,8 @@ object NodeLayout {
     const val PORT_HIT = 7f
 
     fun portRows(node: GraphNode): Int = maxOf(
-        node.type.inputs.count { !it.hidden },
-        node.type.outputs.count { !it.hidden },
+        node.effectiveInputs().count { !it.hidden },
+        node.effectiveOutputs().count { !it.hidden },
     )
 
     /** Height of the header + ports band (never folds). */
@@ -38,8 +38,8 @@ object NodeLayout {
         return node.y + HEADER + 4f + row * PORT_ROW + PORT_ROW / 2f
     }
 
-    fun inputY(node: GraphNode, i: Int): Float = portY(node, node.type.inputs, i)
-    fun outputY(node: GraphNode, i: Int): Float = portY(node, node.type.outputs, i)
+    fun inputY(node: GraphNode, i: Int): Float = portY(node, node.effectiveInputs(), i)
+    fun outputY(node: GraphNode, i: Int): Float = portY(node, node.effectiveOutputs(), i)
     fun inputX(node: GraphNode): Float = node.x
     fun outputX(node: GraphNode): Float = node.x + node.width
 

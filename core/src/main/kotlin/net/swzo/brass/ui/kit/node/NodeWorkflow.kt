@@ -150,7 +150,7 @@ object NodeGraphExport {
                     link.reroutes.forEach { add(it.x to it.y) }
                     add(NodeLayout.inputX(link.to) to NodeLayout.inputY(link.to, link.toPort))
                 }
-                append("""<polyline points="${points.joinToString(" ") { "${it.first},${it.second}" }}" fill="none" stroke="${hex(link.portType().color())}" stroke-width="2"/>""")
+                append("""<polyline points="${points.joinToString(" ") { "${it.first},${it.second}" }}" fill="none" stroke="${hex((link.portType()?.color() ?: java.awt.Color.GRAY))}" stroke-width="2"/>""")
             }
             for (node in graph.nodes.filterNot { it.closing }) {
                 append("""<rect x="${node.x}" y="${node.y}" width="${node.width}" height="${NodeLayout.height(node)}" fill="$panel" stroke="$edge"/>""")
