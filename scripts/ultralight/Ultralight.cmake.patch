@@ -1,0 +1,61 @@
+From: brassui CI
+Subject: [PATCH] Allow an arch-aware, pre-placed Ultralight SDK
+
+Upstream Ultralight.cmake hardcodes the architecture as "x64" (pointer-size based) and always
+downloads the SDK from Ultralight's CDN. The brassui packaging CI needs two things it does not have:
+
+ 1. `arm64` as a real architecture (so once Ultralight publishes arm64 SDK archives, this build
+    selects them instead of requesting `-x64`).
+ 2. A pre-placed SDK directory (downloaded once by the workflow and shared by both JNI modules), so
+    the download/version bookkeeping is skipped when `ULTRALIGHT_SDK_DIR` is set.
+
+Applied by scripts/ultralight/build-ultralight-natives.sh before the JNI build.
+
+---
+ 3rdparty/cmake/Ultralight.cmake | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/3rdparty/cmake/Ultralight.cmake b/3rdparty/cmake/Ultralight.cmake
+index 0000000..0000000 100644
+--- a/3rdparty/cmake/Ultralight.cmake
++++ b/3rdparty/cmake/Ultralight.cmake
+@@ -3,7 +3,9 @@
+ ################################
+ 
+ # Set the architecture information for ultralight
+-if (CMAKE_SIZEOF_VOID_P EQUAL 8)
++if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|arm64e|ARM64")
++    set(ULTRALIGHT_ARCH "arm64")
++elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
+     set(ULTRALIGHT_ARCH "x64")
+ elseif (CMAKE_SIZEOF_VOID_P EQUAL 4)
+     set(ULTRALIGHT_ARCH "x86")
+@@ -27,6 +29,12 @@
+ 
+ # Ultralight
+ set(ULTRALIGHT_DIR "${CMAKE_CURRENT_BINARY_DIR}/ultralight-${ULTRALIGHT_OS_NAME}-${ULTRALIGHT_ARCH}")
++if (DEFINED ENV{ULTRALIGHT_SDK_DIR})
++    # A pre-placed SDK wins: the packaging CI downloads the official SDK once and builds both JNI
++    # modules against it, so the version bookkeeping and download below are skipped entirely.
++    set(ULTRALIGHT_DIR "$ENV{ULTRALIGHT_SDK_DIR}")
++    set(ULTRALIGHT_SDK_PREPLACED TRUE)
++endif ()
+ set(ULTRALIGHT_ARCHIVE "${ULTRALIGHT_DIR}/ultralight.7z")
+ # b8daecd797a6ae8c373ec8cf140c1bb2ae6dde2e
+ # Fix bug in last commit (SDK packager install script copied resources to resources/resources)
+@@ -42,13 +50,13 @@
+ endif ()
+ 
+ # Check if the installed version matches the target version
+-if (NOT "${ULTRALIGHT_VERSION}" STREQUAL "${ULTRALIGHT_INSTALLED_VERSION}")
++if (NOT ULTRALIGHT_SDK_PREPLACED AND NOT "${ULTRALIGHT_VERSION}" STREQUAL "${ULTRALIGHT_INSTALLED_VERSION}")
+     # Versions do not match, erase the installed version
+     file(REMOVE_RECURSE "${ULTRALIGHT_DIR}")
+ endif ()
+ 
+ # Check if the ultralight directory exists
+-if (NOT EXISTS "${ULTRALIGHT_DIR}")
++if (NOT ULTRALIGHT_SDK_PREPLACED AND NOT EXISTS "${ULTRALIGHT_DIR}")
+     # It does not, download ultralight and extract it
+     file(DOWNLOAD
+             "https://ultralight-sdk.sfo2.cdn.digitaloceanspaces.com/ultralight-sdk-${ULTRALIGHT_VERSION}-${ULTRALIGHT_OS_NAME}-${ULTRALIGHT_ARCH}.7z"

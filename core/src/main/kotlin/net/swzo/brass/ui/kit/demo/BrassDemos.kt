@@ -28,6 +28,7 @@ import net.swzo.brass.ui.kit.layout.BrassSplitPane
 import net.swzo.brass.ui.kit.media.BrassBlockPreview
 import net.swzo.brass.ui.kit.media.BrassEffectIcon
 import net.swzo.brass.ui.kit.media.BrassEntity
+import net.swzo.brass.ui.kit.html.BrassHtml
 import net.swzo.brass.ui.kit.media.BrassImage
 import net.swzo.brass.ui.kit.media.BrassItem
 import net.swzo.brass.ui.kit.media.BrassPlayerHead
@@ -146,6 +147,9 @@ object BrassDemos {
         BrassEntity,
         BrassBlockPreview,
         BrassPlayerHead,
+
+        // Embedded web content (requires the Ultralight engine + its natives)
+        BrassHtml,
     )
 
     fun byName(name: String): BrassDemo? = ALL.firstOrNull { it.name.equals(name, ignoreCase = true) }

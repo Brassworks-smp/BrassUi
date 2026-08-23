@@ -1,6 +1,7 @@
 package net.swzo.brass.ui.desktop
 
 import gg.essential.universal.UMatrixStack
+import gg.essential.universal.UMinecraft
 import net.swzo.brass.ui.kit.platform.BrassCursor
 import net.swzo.brass.ui.kit.platform.BrassPlatform
 import org.lwjgl.glfw.GLFW
@@ -31,6 +32,12 @@ class DesktopPlatform(private val windowHandle: Long) : BrassPlatform {
         // shape falls back to the arrow rather than being ignored or crashing.
         GLFW.glfwSetCursor(windowHandle, cursorFor(kind))
     }
+
+    /**
+     * The app's real GUI scale (see Main.kt: `scaleFactor × backing ratio`). The HTML widget sizes
+     * its surface with this so text renders at device resolution rather than being upscaled.
+     */
+    override fun guiScale(): Float = UMinecraft.guiScale.toFloat()
 
     private fun cursorFor(kind: BrassCursor.Kind): Long = cursors.getOrPut(kind) {
         if (kind == BrassCursor.Kind.ARROW) return@getOrPut 0L

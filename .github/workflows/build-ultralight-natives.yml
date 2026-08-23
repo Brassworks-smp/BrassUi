@@ -1,0 +1,105 @@
+# Builds the brassui Ultralight native bundles and publishes them as GitHub Release assets.
+#
+# WHY THIS EXISTS
+#   BrassHtml renders through the LabyMod ultralight-java bindings + Ultralight's C++ engine. The
+#   engine's own SDK (UltralightCore + WebCore + Ultralight + AppCore) is proprietary and published
+#   by Ultralight Inc. as prebuilt `.7z` archives on their CDN — per OS and per arch. This workflow
+#   packages those official archives into the exact bundle layout brassui loads at runtime
+#   (`bin/` natives + `resources/` ICU data + licenses), building the one open-source piece — the
+#   JNI binding layer (github.com/LabyMod/ultralight-java) — from source against the SDK.
+#
+#   There is no arm64 engine from Ultralight today (every asset on their buckets is `*-x64`). This
+#   workflow is arch-aware and idempotent: the x64 jobs produce bundles now, and the arm64 jobs skip
+#   with a clear notice until Ultralight publishes an arm64 SDK — at which point the SAME run picks
+#   it up and ships arm64 bundles with no change. (Ask Ultralight Inc. for arm64; the SDK is free
+#   for non-commercial use under $100k revenue — see scripts/ultralight/README.md.)
+#
+#   brassui's runtime consumes these via `brassui.html.resourcesUrl`:
+#     https://github.com/{owner}/{repo}/releases/latest/download/ultralight-{os}-{arch}.zip
+#   (the `{os}`/`{arch}` placeholders in kit/html/internal/HtmlResources are filled in for you).
+#
+# RUN
+#   On a schedule (weekly) or manually: Actions -> "Build Ultralight natives" -> Run workflow.
+#   `sdk_commit` lets you pin an exact engine commit (default `latest`, the CDN's moving target).
+name: Build Ultralight natives
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_commit:
+        description: 'Engine SDK commit to package (default: latest)'
+        required: false
+        default: 'latest'
+  schedule:
+    - cron: '23 3 * * 1' # weekly, so arm64 bundles arrive the week Ultralight publishes them
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: mac
+            arch: x64
+            runs-on: macos-13 # last Intel (x64) macOS runner
+          - os: mac
+            arch: arm64
+            runs-on: macos-14 # arm64 runner
+          - os: linux
+            arch: x64
+            runs-on: ubuntu-latest
+          - os: linux
+            arch: arm64
+            runs-on: ubuntu-24.04-arm
+
+    name: ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runs-on }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK (JNI headers)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          case "${{ matrix.os }}" in
+            mac)  brew install p7zip cmake ninja ;;
+            linux) sudo apt-get update && sudo apt-get install -y p7zip-full cmake ninja-build patchelf ;;
+          esac
+          cmake --version | head -1
+
+      - name: Build natives bundle
+        shell: bash
+        env:
+          ULTRA_OS: ${{ matrix.os }}
+          ULTRA_ARCH: ${{ matrix.arch }}
+          ULTRA_SDK_COMMIT: ${{ inputs.sdk_commit || 'latest' }}
+          ULTRA_JNI_COMMIT: "6cb1c5bb814ced299502ccc6c4ffe1696a0ea7fb"
+          # Workspace-relative so the upload step can hashFiles() it.
+          ULTRA_OUT: "${{ github.workspace }}/dist"
+        run: bash scripts/ultralight/build-ultralight-natives.sh
+
+      - name: Ensure the ultralight-natives release exists
+        shell: bash
+        run: |
+          gh release view ultralight-natives >/dev/null 2>&1 \
+            || gh release create ultralight-natives --title "Ultralight natives" \
+               --notes "Native engine bundles for BrassHtml (kit/html). Consumed via brassui.html.resourcesUrl." \
+               --latest=false
+
+      - name: Upload bundle
+        if: hashFiles(format('dist/ultralight-{0}-{1}.zip', matrix.os, matrix.arch)) != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ultralight-natives
+          fail_on_unmatched_files: false
+          files: dist/ultralight-${{ matrix.os }}-${{ matrix.arch }}.zip

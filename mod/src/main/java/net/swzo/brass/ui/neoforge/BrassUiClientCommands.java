@@ -12,6 +12,8 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.swzo.brass.ui.demo.BrassGalleryScreen;
 import net.swzo.brass.ui.kit.demo.BrassDemoCapture;
+import net.swzo.brass.ui.kit.html.BrassHtmlEngine;
+import net.swzo.brass.ui.kit.html.internal.UltralightHtmlEngine;
 import net.swzo.brass.ui.kit.platform.BrassPlatform;
 import net.swzo.brass.ui.neoforge.net.NeoForgeNetCommands;
 import net.swzo.brass.ui.neoforge.shot.NeoForgeDemoCapture;
@@ -45,6 +47,13 @@ public final class BrassUiClientCommands {
         // The demo browser's shutter and record button. Bound here rather than at mod construction so
         // it sits beside the platform seam it is a sibling of; unbound, the browser still previews.
         BrassDemoCapture.Companion.bind(NeoForgeDemoCapture.INSTANCE);
+
+        // The embedded-HTML widget seam. Ultralight's per-OS natives live under the game's config dir
+        // and download on first use; on a machine that cannot load them the engine reports unavailable
+        // and the widget shows its placeholder instead of breaking the UI.
+        UltralightHtmlEngine.INSTANCE.configure(net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get()
+                .resolve("ultralight").toFile());
+        BrassHtmlEngine.Companion.bind(UltralightHtmlEngine.INSTANCE);
 
         CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
         dispatcher.register(Commands.literal("brassui")

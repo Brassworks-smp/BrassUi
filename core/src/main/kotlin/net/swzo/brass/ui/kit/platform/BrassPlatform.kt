@@ -107,6 +107,12 @@ interface BrassPlatform {
      */
     fun flushText() {}
 
+    /**
+     * The GUI scale factor (device pixels per GUI pixel), so content that must render at device
+     * resolution - an embedded web view - can size itself. 1.0 off-game and on unscaled windows.
+     */
+    fun guiScale(): Float = 1f
+
     companion object {
         var current: BrassPlatform? = null
             private set

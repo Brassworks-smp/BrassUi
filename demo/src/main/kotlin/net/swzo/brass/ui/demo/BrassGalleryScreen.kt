@@ -25,6 +25,7 @@ import net.swzo.brass.ui.kit.base.proxiedBy
 import net.swzo.brass.ui.kit.demo.BrassDemoBrowser
 import net.swzo.brass.ui.kit.demo.BrassDemos
 import net.swzo.brass.ui.kit.dev.BrassDevMode
+import net.swzo.brass.ui.kit.html.BrassHtml
 import net.swzo.brass.ui.kit.input.BrassButton
 import net.swzo.brass.ui.kit.input.BrassCheckbox
 import net.swzo.brass.ui.kit.input.BrassChips
@@ -229,6 +230,10 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             // Only where the platform can actually draw game content. Off-game these widgets have
             // nothing to render, and a section of empty boxes demos nothing — it reads as a bug.
             if (host.gameWidgets) add("Items" to { openItems() })
+            // The embedded HTML widget. Rendered by the Ultralight engine when it is bound and the
+            // natives can load; otherwise the section still opens and the widget shows its "engine
+            // unavailable" card — graceful either way.
+            add("HTML" to { openHtml() })
         }
         sections.forEachIndexed { i, (label, open) ->
             val row = BrassButton(label, BrassAccent.DEFAULT) { selectNav(i); open() }.apply {
@@ -470,6 +475,28 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             .addField("Rendered document", doc.also {
                 it.constrain { height = basicHeightConstraint { _ -> doc.contentHeight() } }
             })
+            .show(background, b[0], b[1], b[2], b[3])
+    }
+
+    private fun openHtml() {
+        val b = popupBounds(380f, 320f)
+        val html = BrassHtml(
+            html = GALLERY_HTML,
+        ).apply {
+            onJsEvent = { event, payload ->
+                BrassToast.show(background, "JS: $event $payload", BrassToast.Type.INFO)
+            }
+            onFinishLoad = { url ->
+                BrassToast.show(background, "HTML loaded", BrassToast.Type.SUCCESS)
+            }
+        }
+        html.constrain {
+            width = 100.percent() - 24.pixels()
+            height = 220.pixels()
+        }
+
+        BrassPopup("Embedded HTML (Ultralight)")
+            .addField("A live page — click, type, press the buttons. brassui.send() bridges back to Kotlin.", html)
             .show(background, b[0], b[1], b[2], b[3])
     }
 
@@ -1049,6 +1076,38 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
     }
 
     private companion object {
+        val GALLERY_HTML = """
+            <html>
+            <head>
+              <style>
+                body { margin: 0; font-family: sans-serif; background: #201e18; color: #e8e2d0;
+                       display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+                header { padding: 6px 10px; background: #b5862f; color: #16130c; font-weight: bold; }
+                main { padding: 10px; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+                input, button { font-size: 13px; }
+                footer { padding: 4px 10px; font-size: 11px; color: #9a927c; border-top: 1px solid #3a362c; }
+              </style>
+            </head>
+            <body>
+              <header>brassui gallery · live HTML</header>
+              <main>
+                <input id="name" placeholder="your name…">
+                <div>
+                  <button onclick="brassui.send('greet', { name: document.getElementById('name').value || 'stranger' })">greet</button>
+                  <button onclick="brassui.send('tick', { n: (window.__t = (window.__t || 0) + 1) })">count</button>
+                </div>
+                <p id="out" style="font-size:12px; color:#c9b98a">type, then click greet — the toast is Kotlin.</p>
+                <script>
+                  document.getElementById('name').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') brassui.send('enter', { name: e.target.value });
+                  });
+                </script>
+              </main>
+              <footer>scripts run · events bridge via brassui.send</footer>
+            </body>
+            </html>
+        """.trimIndent()
+
         val SAMPLE_CODE = """
             fun render(stack: ItemStack, x: Int, y: Int) {
                 // a marker sits on the line below

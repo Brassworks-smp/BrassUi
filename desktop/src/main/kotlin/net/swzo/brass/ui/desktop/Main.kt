@@ -9,6 +9,8 @@ import net.swzo.brass.ui.desktop.net.DesktopNetDiscovery
 import net.swzo.brass.ui.desktop.net.LocalBrassNetTransport
 import net.swzo.brass.ui.kit.demo.BrassDemoBrowser
 import net.swzo.brass.ui.kit.demo.BrassDemoCapture
+import net.swzo.brass.ui.kit.html.BrassHtmlEngine
+import net.swzo.brass.ui.kit.html.internal.UltralightHtmlEngine
 import net.swzo.brass.ui.kit.net.BrassNet
 import net.swzo.brass.ui.kit.platform.BrassPlatform
 import org.lwjgl.glfw.GLFW
@@ -56,6 +58,11 @@ fun main() {
         // Bind the capture seam too, so the demo browser's shutter works off-game: it reads the region
         // straight off the GL framebuffer. Point output at the wiki with -Dbrassui.shots.dir=...
         BrassDemoCapture.bind(DesktopDemoCapture())
+
+        // The HTML widget seam. Ultralight's per-OS natives are x64-only and downloaded on first use;
+        // the engine reports unavailable rather than failing if that cannot happen on this machine.
+        UltralightHtmlEngine.configure(java.io.File(System.getProperty("user.home"), ".brassui/ultralight"))
+        BrassHtmlEngine.bind(UltralightHtmlEngine)
 
         // Networking: discover the demo's @BrassActionSet objects and run their handlers in-process.
         // -Dbrassui.net.user=Steve -Dbrassui.net.op=4 control the pretend identity; the same action

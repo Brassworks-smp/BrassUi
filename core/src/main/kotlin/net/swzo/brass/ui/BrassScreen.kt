@@ -14,6 +14,7 @@ import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.kit.base.*
 import net.swzo.brass.ui.kit.demo.BrassDemoCapture
 import net.swzo.brass.ui.kit.dev.BrassDevMode
+import net.swzo.brass.ui.kit.html.BrassHtml
 import net.swzo.brass.ui.kit.paint.BrassPaint
 import net.swzo.brass.ui.kit.platform.BrassCursor
 import net.swzo.brass.ui.kit.surface.BrassContextMenu
@@ -59,6 +60,13 @@ open class BrassScreen(
             captureShowcase()
             return
         }
+        // A focused HTML widget owns the keyboard, exactly like a focused text field: every key (Tab,
+        // Enter, arrows, Escape) goes to the page, and the screen's own shortcuts are skipped while
+        // it has the keys. Elementa cannot deliver raw key events (it has no key-up), so the raw
+        // channel lives here, on the screen - see BrassHtml.onScreenKey.
+        val html = BrassHtml.focused
+        if (html != null && html.onScreenKey(keyCode, typedChar, modifiers)) return
+
         // Window shortcuts, routed to the topmost frame (see BrassFrame). Skipped while a text field has
         // focus so Cmd+W-style combos can never eat a keystroke mid-edit.
         if (findFocusedInput(window) == null) {
@@ -139,6 +147,16 @@ open class BrassScreen(
             }
         }
         super.onKeyPressed(keyCode, typedChar, modifiers)
+    }
+
+    /**
+     * Key-up half of the HTML raw-key channel (see the routing in [onKeyPressed]). Elementa has no
+     * release event, so without this an embedded page would never see keys go back up.
+     */
+    override fun onKeyReleased(keyCode: Int, typedChar: Char, modifiers: UKeyboard.Modifiers?) {
+        val html = BrassHtml.focused
+        if (html != null && html.onScreenKeyRelease(keyCode, modifiers)) return
+        super.onKeyReleased(keyCode, typedChar, modifiers)
     }
 
     private fun topmostFrame(): BrassFrame? =

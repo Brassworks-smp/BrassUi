@@ -73,6 +73,13 @@ dependencies {
     // (already on the runtime classpath transitively via UC).
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC'
 
+    // The Ultralight HTML engine (BrassHtml): pure-JVM bindings pulled through :core at runtime; the
+    // per-OS C++ engine natives are downloaded on first use (see kit/html/internal/HtmlResources).
+    // x64-only — on an arm64 desktop the widget degrades to its "engine unavailable" card.
+    implementation "com.labymedia:ultralight-java-base:${project.ultralight_java_version}"
+    implementation "com.labymedia:ultralight-java-databind:${project.ultralight_java_version}"
+    implementation "com.labymedia:ultralight-java-gpu:${project.ultralight_java_version}"
+
     // LWJGL brings its Java bindings transitively (via elementa/UC) but NOT the per-platform native
     // libraries GLFW/OpenGL/NanoVG/STB load at runtime — those are classifier artifacts the consumer
     // adds. Pick the set matching whatever machine runs the demo. Version is BOM-managed to match the

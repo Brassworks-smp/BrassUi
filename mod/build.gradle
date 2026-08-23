@@ -117,6 +117,12 @@ dependencies {
     // serialise brassnet values and node graphs through it. Purely a runtime library (no game types,
     // no mod metadata), so it rides as an ordinary jar-in-jar next to Elementa/UniversalCraft.
     jarJar("org.mongodb:bson:${project.bson_version}") { transitive = false }
+
+    // Same ride for the Ultralight HTML engine (BrassHtml): pure-JVM bindings, jar-in-jar'd, with the
+    // C++ engine natives downloaded at runtime on first use. LGPL-3.0 — see core/build.gradle.
+    jarJar("com.labymedia:ultralight-java-base:${project.ultralight_java_version}") { transitive = false }
+    jarJar("com.labymedia:ultralight-java-databind:${project.ultralight_java_version}") { transitive = false }
+    jarJar("com.labymedia:ultralight-java-gpu:${project.ultralight_java_version}") { transitive = false }
 }
 
 // The mod's version lives once in root gradle.properties — feed it into the mods.toml so the toml

@@ -77,6 +77,14 @@ dependencies {
     // api: brassui's public surface takes ByteArray in/out, never org.bson types, so consumers only
     // need the jar on their runtime classpath.
     implementation "org.mongodb:bson:${project.bson_version}"
+
+    // LabyMod's Ultralight bindings for the embedded HTML widget (kit/html). Pure JVM + runtime
+    // natives (downloaded on first use), no transitive deps — so they jar-in-jar cleanly in :mod and
+    // shadow in :desktop. implementation, not api: the BrassHtml seam never leaks a com.labymedia
+    // type into a consumer's code.
+    implementation "com.labymedia:ultralight-java-base:${project.ultralight_java_version}"
+    implementation "com.labymedia:ultralight-java-databind:${project.ultralight_java_version}"
+    implementation "com.labymedia:ultralight-java-gpu:${project.ultralight_java_version}"
 }
 
 repositories { mavenCentral() }

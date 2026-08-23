@@ -118,6 +118,8 @@ object NeoForgePlatform : BrassPlatform {
         Minecraft.getInstance().renderBuffers().bufferSource().endBatch()
     }
 
+    override fun guiScale(): Float = Minecraft.getInstance().window.guiScale.toFloat()
+
     override fun drawEntity(
         matrixStack: UMatrixStack,
         entityId: String,
