@@ -42,6 +42,7 @@ kotlin {
 // The library subproject must be evaluated first so its sourceSets exist for the mods{} merge and the
 // jar fold below.
 evaluationDependsOn(':core')
+evaluationDependsOn(':bson')
 evaluationDependsOn(':demo')
 
 repositories {
@@ -114,9 +115,12 @@ dependencies {
     jarJar("gg.essential:universalcraft-1.21-neoforge:${project.universalcraft_version}") { transitive = false }
 
     // Bundle MongoDB's BSON so a consumer's runtime needs nothing extra: the toolkit's folded classes
-    // serialise brassnet values and node graphs through it. Purely a runtime library (no game types,
-    // no mod metadata), so it rides as an ordinary jar-in-jar next to Elementa/UniversalCraft.
-    jarJar("org.mongodb:bson:${project.bson_version}") { transitive = false }
+    // serialise brassnet values and node graphs through it. It is the RELOCATED library (`:bson`,
+    // `net.swzo.brass.vendor.bson`) so its jar-in-jar'd copy becomes its own JPMS module and cannot
+    // collide with another mod's bundled bson (Cobblemon ships real org.mongodb:bson and the two used
+    // to crash NeoForge's module layer together — see bson/build.gradle). Purely a runtime library, so
+    // it rides as an ordinary jar-in-jar next to Elementa/UniversalCraft.
+    jarJar project(':bson')
 }
 
 // The mod's version lives once in root gradle.properties — feed it into the mods.toml so the toml

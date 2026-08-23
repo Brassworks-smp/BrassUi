@@ -17,6 +17,11 @@ rootProject.name = 'brassui'
 // no mod of its own and its bytecode runs unchanged off-game (see :desktop).
 include 'core'
 
+// MongoDB's pure-JVM BSON, RELOCATED into `net.swzo.brass.vendor.bson` so its jar-in-jar'd copy cannot
+// collide as a JPMS module with another mod's bundled bson (Cobblemon's) — see bson/build.gradle. Its
+// own jar is the rewritten library; :core compiles against it and :mod embeds it.
+include 'bson'
+
 // The widget gallery, hosted by both :desktop and :mod. It is its own module so that adding a widget
 // means demoing it ONCE: the desktop demo and the in-game showcase used to be near-duplicate screens
 // that drifted apart. Game-free — anything that needs Minecraft goes through a BrassDemoHost seam.

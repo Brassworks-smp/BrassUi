@@ -1,0 +1,161 @@
+// bson: MongoDB's pure-JVM BSON library, RELOCATED into brassui's own package namespace.
+//
+// WHY this project exists (the Cobblemon JPMS crash): NeoForge 21.1 loads every jar-in-jar'd library
+// as a JPMS module in the game layer. bson ships `Automatic-Module-Name: org.mongodb.bson` and exports
+// `org.bson.*`, so any other mod that also bundles a copy (Cobblemon does) creates two modules in the
+// layer that export the same package — a module-resolution crash at startup no modpack can work around.
+//
+// The fix is the same one Minecraft mods have used for years: SHADE the bundled library into a namespace
+// only brassui owns. Every `org/bson/**` class becomes `net/swzo/brass/vendor/bson/**`, the manifest
+// gains `Automatic-Module-Name: net.swzo.brass.vendor.bson`, and the wire/file formats are untouched
+// (BSON bytes never contain Java class names). :mod embeds THIS jar as `net.swzo.brass:bson` instead of
+// `org.mongodb:bson`, so the module name, the exported packages and the jar-in-jar coordinate all stop
+// colliding with Cobblemon's copy — and with any future mod that bundles real bson.
+//
+// This project has no source of its own: the relocation task rewrites the pristine org.mongodb:bson jar
+// into the project's own classes/resources output dirs, so :core's compile classpath (Kotlin compiles
+// against project outputs, not the jar) and the jar itself both see the relocated classes. `:core`
+// depends on `project(':bson')`, `:mod` jar-in-jars it, and brassui-core's POM publishes it as
+// `net.swzo.brass:bson`.
+//
+// ASM is a build-script-only dependency; nothing it provides ships at runtime.
+buildscript {
+    repositories { mavenCentral() }
+    dependencies {
+        classpath 'org.ow2.asm:asm:9.7.1'
+        classpath 'org.ow2.asm:asm-commons:9.7.1'
+    }
+}
+
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes
+import org.objectweb.asm.commons.ClassRemapper
+import org.objectweb.asm.commons.Remapper
+import java.util.jar.JarFile
+
+version = project.bson_version
+
+class StringLdcRelocator extends MethodVisitor {
+    final String src
+    final String tgt
+
+    StringLdcRelocator(MethodVisitor mv, String src, String tgt) {
+        super(Opcodes.ASM9, mv)
+        this.src = src
+        this.tgt = tgt
+    }
+
+    void visitLdcInsn(Object cst) {
+        if (cst instanceof String) {
+            if (cst == src) cst = tgt
+            else if (cst.startsWith(src + '.')) cst = tgt + '.' + cst.substring(src.length() + 1)
+            else if (cst.startsWith(src + '/')) cst = tgt + '/' + cst.substring(src.length() + 1)
+        }
+        super.visitLdcInsn(cst)
+    }
+}
+
+class ClassLdcRelocator extends ClassVisitor {
+    final String src
+    final String tgt
+
+    ClassLdcRelocator(ClassVisitor cv, String src, String tgt) {
+        super(Opcodes.ASM9, cv)
+        this.src = src
+        this.tgt = tgt
+    }
+
+    MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+        return new StringLdcRelocator(super.visitMethod(access, name, descriptor, signature, exceptions), src, tgt)
+    }
+}
+
+abstract class RelocateBsonTask extends DefaultTask {
+    @InputFiles
+    abstract ConfigurableFileCollection getSourceJars()
+
+    @Input
+    abstract Property<String> getSourcePackage()
+
+    @Input
+    abstract Property<String> getTargetPackage()
+
+    @OutputDirectory
+    abstract DirectoryProperty getClassesDir()
+
+    @OutputDirectory
+    abstract DirectoryProperty getResourcesDir()
+
+    @TaskAction
+    void relocate() {
+        def srcFile = sourceJars.files.first()
+        def srcPkg = sourcePackage.get().replace('.', '/')
+        def tgtPkg = targetPackage.get().replace('.', '/')
+        def classes = classesDir.get().asFile
+        def resources = resourcesDir.get().asFile
+        classes.deleteDir(); classes.mkdirs()
+        resources.deleteDir(); resources.mkdirs()
+
+        def remapper = new Remapper() {
+            String map(String internalName) {
+                if (internalName == srcPkg) return tgtPkg
+                if (internalName.startsWith(srcPkg + '/')) return tgtPkg + internalName.substring(srcPkg.length())
+                return internalName
+            }
+        }
+
+        new JarFile(srcFile).withCloseable { jf ->
+            jf.entries().toList().findAll { !it.directory }.each { e ->
+                def name = e.name
+                if (name == 'META-INF/MANIFEST.MF' || name.startsWith('module-info')) return
+                def bytes = jf.getInputStream(e).withCloseable { it.bytes }
+                if (name.endsWith('.class')) {
+                    name = name.startsWith(srcPkg + '/') ? tgtPkg + name.substring(srcPkg.length()) : name
+                    def cw = new ClassWriter(0)
+                    def ldcRelocator = new ClassLdcRelocator(cw, srcPkg.replace('/', '.'), tgtPkg.replace('/', '.'))
+                    new ClassReader(bytes).accept(new ClassRemapper(ldcRelocator, remapper), 0)
+                    bytes = cw.toByteArray()
+                    def target = new File(classes, name)
+                    target.parentFile.mkdirs()
+                    target.bytes = bytes
+                } else if (name.startsWith('META-INF/native-image/')) {
+                    bytes = new String(bytes, 'UTF-8').replace(srcPkg, tgtPkg).bytes
+                    def target = new File(resources, name)
+                    target.parentFile.mkdirs()
+                    target.bytes = bytes
+                }
+            }
+        }
+        logger.lifecycle("relocated {} -> classes in {}, {} native-image files", srcFile.name, classes, resources.listFiles().length)
+    }
+}
+
+configurations {
+    bsonSource
+}
+
+dependencies {
+    bsonSource "org.mongodb:bson:${project.bson_version}"
+}
+
+def relocateBson = tasks.register('relocateBson', RelocateBsonTask) {
+    sourceJars.from(configurations.bsonSource)
+    sourcePackage.set('org/bson')
+    targetPackage.set('net/swzo/brass/vendor/bson')
+
+    classesDir.set(sourceSets.main.output.classesDirs.singleFile)
+    resourcesDir.set(layout.buildDirectory.dir('generated/relocated-resources'))
+}
+
+tasks.named('classes') { dependsOn relocateBson }
+tasks.named('processResources') { dependsOn relocateBson }
+sourceSets.main.resources.srcDir(relocateBson.flatMap { it.resourcesDir })
+
+tasks.named('jar', Jar) {
+    manifest {
+        attributes 'Automatic-Module-Name': 'net.swzo.brass.vendor.bson'
+    }
+}

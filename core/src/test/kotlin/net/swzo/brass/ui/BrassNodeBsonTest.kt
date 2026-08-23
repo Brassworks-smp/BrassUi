@@ -84,11 +84,11 @@ class BrassNodeBsonTest {
         g.spawn("time", 0f, 0f)
         val root = net.swzo.brass.ui.kit.net.BrassBson.parseDocument(g.toBson())!!
         val nodes = root.getArray("nodes")
-        val alien = org.bson.BsonDocument()
-        alien.put("id", org.bson.BsonInt32(999))
-        alien.put("type", org.bson.BsonString("not-a-real-type"))
-        alien.put("x", org.bson.BsonDouble(0.0))
-        alien.put("y", org.bson.BsonDouble(0.0))
+        val alien = net.swzo.brass.vendor.bson.BsonDocument()
+        alien.put("id", net.swzo.brass.vendor.bson.BsonInt32(999))
+        alien.put("type", net.swzo.brass.vendor.bson.BsonString("not-a-real-type"))
+        alien.put("x", net.swzo.brass.vendor.bson.BsonDouble(0.0))
+        alien.put("y", net.swzo.brass.vendor.bson.BsonDouble(0.0))
         nodes.add(alien)
 
         val restored = NodeGraph.fromBson(registry(), net.swzo.brass.ui.kit.net.BrassBson.writeDocument(root))
@@ -111,7 +111,7 @@ class BrassNodeBsonTest {
         val g = NodeGraph(registry())
         g.spawn("time", 0f, 0f)
         val doc = net.swzo.brass.ui.kit.net.BrassBson.parseDocument(g.toBson())!!
-        doc.put("version", org.bson.BsonInt32(NodeIO.CURRENT_VERSION + 1))
+        doc.put("version", net.swzo.brass.vendor.bson.BsonInt32(NodeIO.CURRENT_VERSION + 1))
         assertEquals(
             NodeIO.Compatibility.FUTURE,
             NodeIO.compatibility(net.swzo.brass.ui.kit.net.BrassBson.writeDocument(doc)),

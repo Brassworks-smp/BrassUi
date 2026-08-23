@@ -70,8 +70,11 @@ configure(targetProjects) {
                     }
 
                     withXml {
-                        def deps = asNode().dependencies?.get(0)
-                        if (deps != null) {
+                        // `dependencies` is absent (a project with no deps at all, like :bson) as an
+                        // empty NodeList, not null — guard both, or get(0) throws IndexOutOfBounds.
+                        def depsNode = asNode().dependencies
+                        if (depsNode != null && !depsNode.isEmpty()) {
+                            def deps = depsNode.get(0)
                             deps.children().removeAll {
                                 it.name().localPart == 'dependency' &&
                                     pruneGroups.contains(it.groupId.text())

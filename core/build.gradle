@@ -71,12 +71,12 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.10.1'
 
     // MongoDB's BSON: the binary wire format for brassnet values and the node editor's native
-    // save/load (BrassBson + NodeIO). Pure JVM with no transitive deps (its only POM dep is optional
-    // slf4j-api), so :mod jar-in-jars it and consumers never add a repository — it is mirrored to
-    // maven.opnsoc.org like Elementa/UniversalCraft (scripts/mirror-bson.sh). implementation, not
-    // api: brassui's public surface takes ByteArray in/out, never org.bson types, so consumers only
-    // need the jar on their runtime classpath.
-    implementation "org.mongodb:bson:${project.bson_version}"
+    // save/load (BrassBson + NodeIO). Consumed as `:bson` — the library RELOCATED into
+    // `net.swzo.brass.vendor.bson` — because a bare org.mongodb:bson jar-in-jar'd by :mod would collide
+    // as a JPMS module with other mods that bundle bson (the Cobblemon crash; see bson/build.gradle).
+    // implementation, not api: brassui's public surface takes ByteArray in/out, never org.bson types,
+    // so consumers only need the (relocated, jar-in-jar'd, published) jar on their runtime classpath.
+    implementation project(':bson')
 }
 
 repositories { mavenCentral() }

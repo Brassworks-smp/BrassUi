@@ -44,13 +44,14 @@ subprojects {
 }
 
 // ---- publishing ---------------------------------------------------------------------------------
-// Shared with Create Linkworks via gradle/brassworks-maven.gradle (single source of truth). Only the
-// two artifacts another project would ever depend on are published: `brassui-core` (the toolkit
-// library) and `brassui` (the self-contained NeoForge mod). `:demo` and `:desktop` are development
-// surfaces, not something to depend on, so they stay unpublished.
+// Shared with Create Linkworks via gradle/brassworks-maven.gradle (single source of truth). The three
+// artifacts another project could ever depend on are published: `bson` (the relocated BSON library,
+// consumed at runtime by brassui-core), `brassui-core` (the toolkit library) and `brassui` (the
+// self-contained NeoForge mod). `:demo` and `:desktop` are development surfaces, not something to
+// depend on, so they stay unpublished.
 ext.brassworksMaven = [
-    projects: [':core', ':mod'],
-    artifactIds: [':core': 'brassui-core', ':mod': 'brassui'],
+    projects: [':bson', ':core', ':mod'],
+    artifactIds: [':bson': 'bson', ':core': 'brassui-core', ':mod': 'brassui'],
     pom: [
         url: 'https://github.com/Brassworks-smp/BrassUi',
         license: 'PolyForm Noncommercial License 1.0.0',
@@ -71,6 +72,7 @@ ext.brassworksMaven = [
             pruneGroups: ['thedarkcolour'],
         ],
         ':core': [description: 'Elementa widget toolkit for Minecraft in the Brassworks launcher idiom.'],
+        ':bson': [description: 'MongoDB bson relocated into the brassui package namespace (net.swzo.brass.vendor.bson) so its jar-in-jar copy cannot collide with other mods\' bundled bson as a JPMS module.'],
     ],
 ]
 apply from: rootProject.file('gradle/brassworks-maven.gradle')

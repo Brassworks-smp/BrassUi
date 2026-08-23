@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Mirror MongoDB's pure-JVM BSON library into the Brassworks Maven, so brassui consumers need only
-# maven.opnsoc.org + mavenCentral and never a MongoDB repository line.
+# OBSOLETE — kept for history only.
 #
-# Run after bumping bson_version in gradle.properties:
-#     ./scripts/mirror-bson.sh
-#
-# The mirror is a straight copy of the Maven Central release (same coordinates, POM as-is; its only
-# dependency is an *optional* slf4j-api, so nothing else needs mirroring). Credentials come from the
-# gitignored root .env (BRASSWORKS_MAVEN_USER / BRASSWORKS_MAVEN_KEY).
+# This used to mirror MongoDB's pure-JVM BSON into the Brassworks Maven so brassui consumers never
+# needed a MongoDB repository line. Since the relocation work the `:bson` project builds the library
+# IN-REPO (ASM-rewriting org.mongodb:bson into net.swzo.brass.vendor.bson — see bson/build.gradle) and
+# `./gradlew publish` ships it as net.swzo.brass:bson; consumers no longer resolve org.mongodb:bson
+# from anywhere. Do not re-run this. The real bson is still fetched from Maven Central at build time by
+# `:bson`'s own configuration.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -1,22 +1,22 @@
 package net.swzo.brass.ui.kit.net
 
-import org.bson.BsonArray
-import org.bson.BsonBinary
-import org.bson.BsonBoolean
-import org.bson.BsonDocument
-import org.bson.BsonDouble
-import org.bson.BsonInt32
-import org.bson.BsonInt64
-import org.bson.BsonNull
-import org.bson.BsonNumber
-import org.bson.BsonString
-import org.bson.BsonValue
-import org.bson.BsonBinaryWriter
-import org.bson.BsonDocumentReader
-import org.bson.codecs.BsonDocumentCodec
-import org.bson.codecs.DecoderContext
-import org.bson.codecs.EncoderContext
-import org.bson.io.BasicOutputBuffer
+import net.swzo.brass.vendor.bson.BsonArray
+import net.swzo.brass.vendor.bson.BsonBinary
+import net.swzo.brass.vendor.bson.BsonBoolean
+import net.swzo.brass.vendor.bson.BsonDocument
+import net.swzo.brass.vendor.bson.BsonDouble
+import net.swzo.brass.vendor.bson.BsonInt32
+import net.swzo.brass.vendor.bson.BsonInt64
+import net.swzo.brass.vendor.bson.BsonNull
+import net.swzo.brass.vendor.bson.BsonNumber
+import net.swzo.brass.vendor.bson.BsonString
+import net.swzo.brass.vendor.bson.BsonValue
+import net.swzo.brass.vendor.bson.BsonBinaryWriter
+import net.swzo.brass.vendor.bson.BsonDocumentReader
+import net.swzo.brass.vendor.bson.codecs.BsonDocumentCodec
+import net.swzo.brass.vendor.bson.codecs.DecoderContext
+import net.swzo.brass.vendor.bson.codecs.EncoderContext
+import net.swzo.brass.vendor.bson.io.BasicOutputBuffer
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 import java.lang.reflect.ParameterizedType
@@ -43,8 +43,10 @@ import sun.misc.Unsafe
  * `Map<Int, Any?>` or `List<String>` - so a data class round-trips through BSON with the same shapes
  * it used to round-trip through JSON. Object allocation uses `sun.misc.Unsafe`, the same trick Gson
  * uses on the NeoForge 21.1 classpath, so Kotlin data classes need no no-arg constructor.
- * The public surface takes and returns [ByteArray]; org.bson types never leak into brassui's API, so
- * consumers only need the (jar-in-jar'd, mirrored) BSON library on their runtime classpath.
+ * The public surface takes and returns [ByteArray]; the relocated bson types
+ * (`net.swzo.brass.vendor.bson.*`, see the `:bson` project) never leak into brassui's API, so consumers
+ * only need the jar on their runtime classpath — and the relocation is exactly what keeps brassui's
+ * jar-in-jar'd copy from colliding with another mod's bundled bson in NeoForge's module layer.
  */
 object BrassBson {
 
@@ -107,7 +109,7 @@ object BrassBson {
      */
     internal fun parseDocument(bytes: ByteArray): BsonDocument? = runCatching {
         BsonDocumentCodec().decode(
-            BsonDocumentReader(org.bson.RawBsonDocument(bytes)),
+            BsonDocumentReader(net.swzo.brass.vendor.bson.RawBsonDocument(bytes)),
             DecoderContext.builder().build(),
         )
     }.getOrNull()

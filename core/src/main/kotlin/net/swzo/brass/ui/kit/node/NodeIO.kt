@@ -6,15 +6,15 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import net.swzo.brass.ui.kit.net.BrassBson
-import org.bson.BsonArray
-import org.bson.BsonBoolean
-import org.bson.BsonDocument
-import org.bson.BsonDouble
-import org.bson.BsonInt32
-import org.bson.BsonInt64
-import org.bson.BsonNumber
-import org.bson.BsonString
-import org.bson.BsonValue
+import net.swzo.brass.vendor.bson.BsonArray
+import net.swzo.brass.vendor.bson.BsonBoolean
+import net.swzo.brass.vendor.bson.BsonDocument
+import net.swzo.brass.vendor.bson.BsonDouble
+import net.swzo.brass.vendor.bson.BsonInt32
+import net.swzo.brass.vendor.bson.BsonInt64
+import net.swzo.brass.vendor.bson.BsonNumber
+import net.swzo.brass.vendor.bson.BsonString
+import net.swzo.brass.vendor.bson.BsonValue
 
 /**
  * The native save/load formats for a [NodeGraph]: a versioned **BSON document** for the wire and the
@@ -37,8 +37,9 @@ import org.bson.BsonValue
  * recognise is simply skipped, so an older build opens a newer file without crashing.
  * [compatibility] lets a host warn before that tolerant future-version read, while versions
  * [OLDEST_SUPPORTED_VERSION] through [CURRENT_VERSION] are the explicit compatibility contract.
- * BSON comes from MongoDB's pure-JVM `org.mongodb:bson` (jar-in-jar'd by the mod and mirrored to the
- * Brassworks maven, so consumers add no repository). JSON uses Gson, already on the classpath (see
+ * BSON comes from MongoDB's pure-JVM `org.mongodb:bson`, RELOCATED into `net.swzo.brass.vendor.bson` by
+ * the `:bson` project so its jar-in-jar'd copy cannot collide with another mod's bundled bson in
+ * NeoForge's module layer (the Cobblemon crash). JSON uses Gson, already on the classpath (see
  * [net.swzo.brass.ui.kit.media.BrassIcons]).
  */
 object NodeIO {
