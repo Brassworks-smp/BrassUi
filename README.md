@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="wiki/public/logo.svg" width="84" alt="BrassUi logo" />
-</p>
-
 <h1 align="center">BrassUi</h1>
 
 <p align="center">
@@ -9,14 +5,10 @@
 </p>
 
 <p align="center">
-  <a href="https://brassworks-smp.github.io/BrassUi/"><img src="https://img.shields.io/badge/docs-wiki-34d27a?style=flat-square" alt="Wiki" /></a>
+  <a href="https://github.com/Brassworks-smp/BrassUi/wiki"><img src="https://img.shields.io/badge/docs-wiki-34d27a?style=flat-square" alt="Wiki" /></a>
   <img src="https://img.shields.io/badge/minecraft-1.21.1-blue?style=flat-square" alt="Minecraft 1.21.1" />
   <img src="https://img.shields.io/badge/loader-NeoForge-orange?style=flat-square" alt="NeoForge" />
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-lightgrey?style=flat-square" alt="License" />
-</p>
-
-<p align="center">
-  <img src="wiki/public/screenshots/screens/gallery.png" width="720" alt="The BrassUi gallery" />
 </p>
 
 BrassUi is the widget kit behind the Brassworks launcher, ported into the game. It sits on top of
@@ -26,44 +18,20 @@ wrap instead of overflow. You compose Elementa components, and the kit handles t
 and the thousand small alignment fights so you don't have to.
 
 The best part is that the same widgets run in two places without a single change: inside Minecraft as a
-self-contained NeoForge mod, and on your desktop as a standalone app. Every screenshot in this repo was
-captured from the desktop build.
+self-contained NeoForge mod, and on your desktop as a standalone app.
 
 ## What it looks like
 
 The toolkit ships with its own dev tools. A layout inspector that reads like a browser's, and a capture
-pipeline that produced every image here.
-
-<p align="center">
-  <img src="wiki/public/screenshots/dev/devmode.png" width="49%" alt="The layout inspector" />
-  <img src="wiki/public/screenshots/dev/demo-browser.png" width="49%" alt="The demo browser" />
-</p>
-
-<p align="center"><sub>Left: the layout inspector (Ctrl+Shift+D). Right: the demo browser, where the widget shots come from.</sub></p>
+pipeline that produced the screenshots in the [wiki](https://github.com/Brassworks-smp/BrassUi/wiki).
 
 ## Showcase
 
-<p align="center">
-  <a href="https://brassworks-smp.github.io/BrassUi/#/node-editor">
-    <img src="wiki/public/screenshots/screens/node-editor.png" width="80%" alt="The BrassUi node editor" />
-  </a>
-</p>
+The node editor: typed graphs, animated inline controls, reroutable wires, notes, groups, execution
+and debugging.
 
-<p align="center"><sub>The node editor: typed graphs, animated inline controls, reroutable wires, notes, groups, execution and debugging.</sub></p>
-
-<p align="center">
-  <img src="wiki/public/screenshots/screens/exampleteamsui.png" width="80%" alt="War room admin" />
-</p>
-
-<p align="center">
-  <img src="wiki/public/screenshots/screens/skinchangerui.png" width="49%" alt="Skin studio" />
-  <img src="wiki/public/screenshots/screens/prettyinpink.png" width="49%" alt="Rose accent" />
-</p>
-
-<p align="center">
-  <img src="wiki/public/screenshots/screens/showcase.png" width="32%" alt="Title Machine" />
-  <img src="wiki/public/screenshots/screens/areyousure.png" width="32%" alt="Teleport request" />
-</p>
+Screenshots of the gallery, node editor, and the example screens live in the
+[wiki](https://github.com/Brassworks-smp/BrassUi/wiki).
 
 ## Highlights
 
@@ -164,13 +132,12 @@ Already running the mod? Open the live gallery in game with `/brassui`.
 
 ## Documentation
 
-The full wiki lives at **[brassworks-smp.github.io/BrassUi](https://brassworks-smp.github.io/BrassUi/)**:
+The wiki lives on GitHub:
 
-- [Getting started](https://brassworks-smp.github.io/BrassUi/#/getting-started) walks the first screen end to end.
-- [Using Elementa](https://brassworks-smp.github.io/BrassUi/#/elementa) covers components, constraints, drawing, events, and where it runs.
-- [All widgets](https://brassworks-smp.github.io/BrassUi/#/widgets) has a page per widget with usage and parameters.
-- [Node editor](https://brassworks-smp.github.io/BrassUi/#/node-editor) documents its features, interaction model, runtime, extension APIs, persistence, collaboration, and architecture.
-- [Dev tools](https://brassworks-smp.github.io/BrassUi/#/dev-tools) explains the inspector and the capture tools.
+- [Getting started](https://github.com/Brassworks-smp/BrassUi/wiki/Getting-Started) walks the first screen end to end.
+- [Using Elementa](https://github.com/Brassworks-smp/BrassUi/wiki/Elementa) covers components, constraints, drawing, events, and where it runs.
+- [Node editor](https://github.com/Brassworks-smp/BrassUi/wiki/Node-Editor) documents its features, interaction model, runtime, extension APIs, persistence, collaboration, and architecture.
+- [Dev tools](https://github.com/Brassworks-smp/BrassUi/wiki/Dev-Tools) explains the inspector and the capture tools.
 
 ## Building from source
 

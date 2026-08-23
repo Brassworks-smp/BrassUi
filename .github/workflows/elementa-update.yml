@@ -2,9 +2,8 @@
 #
 # Elementa is published to Essential's maven as gg.essential:elementa, versioned by a build number that
 # ticks up on every release. This job checks that maven's metadata once a day, and if a newer version is
-# out it bumps `elementa_version` in gradle.properties and commits it. That commit lands on main, which
-# is what the refresh-docs job watches, so the wiki's Gradle snippet follows Elementa without anyone
-# touching a file. Node-only work, so it needs no secrets.
+# out it bumps `elementa_version` in gradle.properties and commits it. Node-only work, so it needs no
+# secrets.
 name: Update Elementa
 
 on:

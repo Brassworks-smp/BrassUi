@@ -34,7 +34,7 @@ gallery app, so UI code you write once runs in-game and off-game.
 
 ## Links
 
-- [Wiki & docs](https://brassworks-smp.github.io/BrassUi/)
+- [Wiki & docs](https://github.com/Brassworks-smp/BrassUi/wiki)
 - [Source](https://github.com/Brassworks-smp/BrassUi)
 
 ## License
