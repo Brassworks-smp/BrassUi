@@ -4,7 +4,13 @@ import io.netty.buffer.ByteBuf
 import net.minecraft.network.codec.ByteBufCodecs
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
+// net.minecraft.resources.ResourceLocation was renamed to Identifier in MC 26.x (aliased to keep the
+// single source of truth for both nodes).
+//? if >=26.1 {
+/*import net.minecraft.resources.Identifier as ResourceLocation*/
+//?} else {
 import net.minecraft.resources.ResourceLocation
+//?}
 import net.swzo.brass.ui.kit.net.BrassJson
 
 /**

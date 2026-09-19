@@ -26,7 +26,14 @@ object NeoForgeDemoCapture : BrassDemoCapture {
         System.getProperty("brassui.shots.dir")?.let { Path.of(it) }
             ?: Minecraft.getInstance().gameDirectory.toPath().resolve("screenshots").resolve("brassui")
 
-    override fun grab(x: Float, y: Float, width: Float, height: Float): BufferedImage? = runCatching {
+    override fun grab(x: Float, y: Float, width: Float, height: Float): BufferedImage? =
+        //? if >=26.1 {
+        /*// TODO(26.1 new-renderer): the framebuffer readback path (RenderTarget.bindRead +
+        // NativeImage.downloadTexture/getPixelRGBA) was replaced by the new GpuTexture/GpuBuffer API.
+        // Demo capture is disabled until it's reimplemented against that.
+        null*/
+        //?} else {
+        runCatching {
         val mc = Minecraft.getInstance()
         val target = mc.mainRenderTarget
         val fbW = target.width
@@ -65,6 +72,7 @@ object NeoForgeDemoCapture : BrassDemoCapture {
             out
         }
     }.getOrNull()
+        //?}
 
     override fun writePng(name: String, image: BufferedImage): String? = runCatching {
         val path = unique(name, "png")

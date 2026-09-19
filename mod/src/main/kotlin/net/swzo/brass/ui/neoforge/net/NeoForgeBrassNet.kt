@@ -5,6 +5,10 @@ import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import net.neoforged.fml.loading.FMLEnvironment
 import net.neoforged.neoforge.network.PacketDistributor
+// MC/NeoForge 26.x moved client->server sends out of PacketDistributor into ClientPacketDistributor.
+//? if >=26.1 {
+/*import net.neoforged.neoforge.client.network.ClientPacketDistributor*/
+//?}
 import net.neoforged.neoforge.network.handling.IPayloadContext
 import net.neoforged.neoforge.network.registration.PayloadRegistrar
 import net.neoforged.neoforge.server.ServerLifecycleHooks
@@ -105,14 +109,24 @@ object NeoForgeBrassNet {
         if (!BrassNet.isBound()) {
             BrassNet.bind(NeoForgeBrassNetTransport, NeoForgeAuthorizer)
         }
+        // FMLEnvironment.dist (field) became FMLEnvironment.getDist() in 26.x.
+        //? if >=26.1 {
+        /*if (FMLEnvironment.getDist().isClient) {*/
+        //?} else {
         if (FMLEnvironment.dist.isClient) {
+        //?}
             // Resolve failure messages through Minecraft's own language system, so resource packs
             // translate the built-in codes (keys ship in assets/brassui/lang/en_us.json). A key with
             // no translation resolves to itself, which falls back to the core English catalog.
             BrassMessages.translator = BrassMessages.Translator { code, args ->
                 val key = "brassui.net.error.$code"
+                // Component.translatable's vararg tightened to non-null Object in 26.x.
+                //? if >=26.1 {
+                /*val params: Array<Any> = Array(args.size) { args[it] ?: "" }*/
+                //?} else {
                 val params = arrayOfNulls<Any?>(args.size)
                 args.forEachIndexed { index, arg -> params[index] = arg }
+                //?}
                 val translated = Component.translatable(key, *params).string
                 if (translated == key) null else translated
             }
@@ -141,8 +155,12 @@ object NeoForgeBrassNet {
             BrassNet.dispatch(payload.actionId, data.takeIf { it.isNotEmpty() }, player.authContext())
                 .thenAccept { result ->
                     // The handler may have completed on a worker thread; always send from the server
-                    // main thread.
+                    // main thread. (ServerPlayer.server became private in 26.x; reach it via level().)
+                    //? if >=26.1 {
+                    /*player.level().server.execute { replyTo(player, payload.requestId, result) }*/
+                    //?} else {
                     player.server.execute { replyTo(player, payload.requestId, result) }
+                    //?}
                 }
         }
     }
@@ -207,7 +225,11 @@ object NeoForgeBrassNet {
             val transferId = stateSeq.incrementAndGet()
             sendChunked(
                 count = pieces.size,
+                //? if >=26.1 {
+                /*runOnTarget = { block -> player.level().server.execute(block) },*/
+                //?} else {
                 runOnTarget = { block -> player.server.execute(block) },
+                //?}
                 sendOne = { i ->
                     PacketDistributor.sendToPlayer(player, BrassStatePayload(stateId, pieces[i], i, pieces.size, transferId))
                 },
@@ -322,7 +344,14 @@ object NeoForgeBrassNetTransport : BrassNetTransport {
 
     override fun can(action: BrassAction<*>): AuthDecision {
         val player = Minecraft.getInstance().player ?: return AuthDecision.Deny("no player")
+        // Player.getPermissionLevel() was removed in 26.x for the PermissionSet model; read the level
+        // off the player's LevelBasedPermissionSet (client pre-check only — the server re-authorizes).
+        //? if >=26.1 {
+        /*val level = (player.permissions() as? net.minecraft.server.permissions.LevelBasedPermissionSet)?.level()?.id() ?: 0
+        return if (level >= action.minOpLevel) {*/
+        //?} else {
         return if (player.getPermissionLevel() >= action.minOpLevel) {
+        //?}
             AuthDecision.Grant
         } else {
             AuthDecision.Deny("requires op level ${action.minOpLevel}")
@@ -348,9 +377,15 @@ object NeoForgeBrassNetTransport : BrassNetTransport {
             count = pieces.size,
             runOnTarget = { block -> Minecraft.getInstance().execute(block) },
             sendOne = { i ->
+                //? if >=26.1 {
+                /*ClientPacketDistributor.sendToServer(
+                    BrassActionPayload(requestId, BrassNet.PROTOCOL_VERSION, actionId, pieces[i], i, pieces.size),
+                )*/
+                //?} else {
                 PacketDistributor.sendToServer(
                     BrassActionPayload(requestId, BrassNet.PROTOCOL_VERSION, actionId, pieces[i], i, pieces.size),
                 )
+                //?}
             },
             onProgress = { sent -> NeoForgeBrassNet.onActionChunkProgress?.invoke(requestId, sent, pieces.size) },
         )
@@ -358,14 +393,22 @@ object NeoForgeBrassNetTransport : BrassNetTransport {
 
     override fun requestPermissions() {
         if (Minecraft.getInstance().connection != null) {
+            //? if >=26.1 {
+            /*ClientPacketDistributor.sendToServer(BrassPermsRequestPayload)*/
+            //?} else {
             PacketDistributor.sendToServer(BrassPermsRequestPayload)
+            //?}
         }
     }
 
     override fun subscribe(stateId: String, onUpdate: (ByteArray?) -> Unit): () -> Unit {
         val handle = NeoForgeStateSubscriptions.subscribe(stateId, onUpdate)
         // Ask the server for the current value; the snapshot arrives as a BrassStatePayload.
+        //? if >=26.1 {
+        /*ClientPacketDistributor.sendToServer(BrassSubscribePayload(stateId))*/
+        //?} else {
         PacketDistributor.sendToServer(BrassSubscribePayload(stateId))
+        //?}
         return handle
     }
 
@@ -402,7 +445,13 @@ object NeoForgeAuthorizer : BrassAuthorizer {
     internal fun nodeFor(action: BrassAction<*>): PermissionNode<Boolean> = nodes.getOrPut(action.permission) {
         @Suppress("REDUNDANT_SAM_CONSTRUCTOR") // a vararg follows the resolver, so a bare lambda cannot fill it
         PermissionNode("brassui", action.permission, PermissionTypes.BOOLEAN, PermissionResolver { player, _, _ ->
+            // Player.hasPermissions(int) was removed in 26.x for the PermissionSet model; compare levels.
+            //? if >=26.1 {
+            /*(player?.permissions() as? net.minecraft.server.permissions.LevelBasedPermissionSet)
+                ?.level()?.isEqualOrHigherThan(net.minecraft.server.permissions.PermissionLevel.byId(action.minOpLevel)) == true*/
+            //?} else {
             player?.hasPermissions(action.minOpLevel) == true
+            //?}
         })
     }
 
@@ -424,7 +473,15 @@ object NeoForgeAuthorizer : BrassAuthorizer {
 private fun ServerPlayer.authContext(): AuthContext {
     // The ops list is the server's own permission data - getProfilePermissions is the same lookup the
     // login handler uses to decide operator status.
+    // 26.x: server is reached via level(), getProfilePermissions takes a NameAndId and returns a
+    // LevelBasedPermissionSet whose level().id() is the classic 0-4 op level.
+    //? if >=26.1 {
+    /*val opLevel = runCatching {
+        level().server.getProfilePermissions(net.minecraft.server.players.NameAndId(gameProfile)).level().id()
+    }.getOrDefault(0)*/
+    //?} else {
     val opLevel = runCatching { server.getProfilePermissions(gameProfile) }.getOrDefault(0)
+    //?}
     return AuthContext(gameProfile.id.toString(), opLevel)
 }
 

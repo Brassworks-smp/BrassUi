@@ -36,7 +36,14 @@ class NeoForgeDemoHost : BrassDemoHost {
         Minecraft.getInstance().setScreen(screen)
     }
 
-    override fun rawCanvases(): List<BrassDemoHost.DemoCanvas> = listOf(
+    override fun rawCanvases(): List<BrassDemoHost.DemoCanvas> =
+        //? if >=26.1 {
+        /*// TODO(26.1 new-renderer): these demo cards draw straight through the old immediate GuiGraphics
+        // (renderItem/drawString + a 3D PoseStack), which the retained-mode renderer doesn't expose. Omit
+        // the raw-canvas cards until NeoForgePlatform.drawNative hands out a GuiGraphicsExtractor.
+        emptyList()*/
+        //?} else {
+        listOf(
         BrassDemoHost.DemoCanvas(
             // The oversized item deliberately overruns the box, to show the clip doing its job.
             brassCanvas { g, w, h ->
@@ -56,7 +63,8 @@ class NeoForgeDemoHost : BrassDemoHost {
             },
             72f,
         ),
-    )
+        )
+        //?}
 
     private companion object {
         val SCREEN_DIM: Color = Color(

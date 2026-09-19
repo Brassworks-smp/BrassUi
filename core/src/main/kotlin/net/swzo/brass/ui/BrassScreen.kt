@@ -12,6 +12,7 @@ import gg.essential.elementa.dsl.percent
 import gg.essential.universal.UKeyboard
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.kit.base.*
+import net.swzo.brass.ui.kit.platform.BrassPlatform
 import net.swzo.brass.ui.kit.demo.BrassDemoCapture
 import net.swzo.brass.ui.kit.dev.BrassDevMode
 import net.swzo.brass.ui.kit.paint.BrassPaint
@@ -32,7 +33,10 @@ import kotlin.math.roundToInt
  */
 open class BrassScreen(
     private val backdropColor: Color? = null,
-) : WindowScreen(ElementaVersion.V8, drawDefaultBackground = false) {
+// The Elementa render version is chosen by the bound platform (V8 on 1.21.x / desktop, V11 on the MC
+// 26.x retained-mode renderer where translucency needs the newer BlendState.ALPHA compositing). The
+// platform is bound at client setup, before any screen opens; unbound (a raw construction) keeps V8.
+) : WindowScreen(BrassPlatform.current?.renderVersion ?: ElementaVersion.V8, drawDefaultBackground = false) {
 
     private val backdrop: UIBlock = UIBlock(basicColorConstraint { backdropColor ?: Colors.UI_BACKGROUND }).constrain {
         width = 100.percent()
@@ -202,15 +206,23 @@ open class BrassScreen(
             captureShowcaseNow(matrixStack)
         }
 
-        // Tooltips draw above everything, from a single shared instance rather than a component in
-        // the tree - no z-order fight with popups, and nothing that reparents itself mid-frame.
-        BrassTooltip.draw(matrixStack, window, window.getWidth(), window.getHeight())
+        // Tooltips and the dev overlay draw here, AFTER the Elementa Window's own draw call has
+        // returned - so the ElementaVersion opt-in the Window applies to its draw (see the constructor)
+        // is no longer active. On MC 26.x that means these out-of-window draws miss V10's
+        // BlendState.ALPHA compositing and their translucent parts (a tooltip's drop shadow) show the
+        // game straight through. Re-enter the platform's render version around them so they blend
+        // exactly like the rest of the UI. On 1.21.x this is V8 - the same version the Window uses.
+        (BrassPlatform.current?.renderVersion ?: ElementaVersion.V8).enableFor {
+            // Tooltips draw above everything, from a single shared instance rather than a component in
+            // the tree - no z-order fight with popups, and nothing that reparents itself mid-frame.
+            BrassTooltip.draw(matrixStack, window, window.getWidth(), window.getHeight())
 
-        if (BrassDevMode.enabled) {
-            BrassDevMode.drawOverlay(
-                matrixStack, window, window.getWidth(), window.getHeight(),
-                mouseX.toFloat(), mouseY.toFloat(),
-            )
+            if (BrassDevMode.enabled) {
+                BrassDevMode.drawOverlay(
+                    matrixStack, window, window.getWidth(), window.getHeight(),
+                    mouseX.toFloat(), mouseY.toFloat(),
+                )
+            }
         }
 
         // Widgets request a cursor while hovered; the strongest request wins and is applied once,

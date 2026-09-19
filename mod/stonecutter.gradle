@@ -1,0 +1,27 @@
+// Stonecutter controller for :mod — the multi-version / multi-loader chunk root.
+//
+// This file REPLACES a plain build.gradle for :mod: Stonecutter treats mod/ as a versioned chunk, this
+// controller sets the active node, and each node (`1.21.1-neoforge`, `26.1-neoforge`, …) is built by
+// its own buildscript (mod/build.neoforge.gradle), wired in settings.gradle.
+//
+// Only :mod is versioned. :core/:demo/:bson stay single-version (1.21.1) and fold into every node.
+//
+// NOTE: Stonecutter is pinned to 0.7.x (the last line that runs on Gradle 8 — 0.8+ requires Gradle 9,
+// which this build deliberately avoids). Its Groovy DSL support is limited, so this controller keeps to
+// the minimal, supported surface: set the active node. Version predicates (`//? if >=26.1`) work in
+// source without any config here; the active line below is managed by Stonecutter (`chiseated`/switch).
+plugins {
+    id 'dev.kikugie.stonecutter'
+}
+
+stonecutter.active('1.21.1-neoforge') /* [SC] DO NOT EDIT */
+
+// `./gradlew :mod:chiseledBuild` builds every node's jar in one go (each `brassui-<ver>-mc<mc>.jar`).
+// A plain `./gradlew build` also builds them all; this is the explicit "all versions" entry point.
+// (Stonecutter 0.7.x's Groovy DSL doesn't expose its own chiseled task type, so this aggregates the
+// per-node build tasks directly — the version nodes are this controller's subprojects.)
+tasks.register('chiseledBuild') {
+    group = 'brassui'
+    description = 'Build the mod jar for every Minecraft version node.'
+    dependsOn subprojects.collect { "${it.path}:build" }
+}

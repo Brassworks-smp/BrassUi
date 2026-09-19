@@ -1,6 +1,13 @@
 package net.swzo.brass.ui.neoforge
 
+// The native draw handle is MC's GUI graphics object. In MC 26.x GuiGraphics became the retained-mode
+// GuiGraphicsExtractor, so the DSL's callback type follows via this alias (the handle a 26.x
+// BrassNativeDraw receives is a GuiGraphicsExtractor once NeoForgePlatform.drawNative is implemented).
+//? if >=26.1 {
+/*import net.minecraft.client.gui.GuiGraphicsExtractor as GuiGraphics*/
+//?} else {
 import net.minecraft.client.gui.GuiGraphics
+//?}
 import net.swzo.brass.ui.kit.base.BrassAccent
 import net.swzo.brass.ui.kit.base.BrassChrome
 import net.swzo.brass.ui.kit.media.BrassCanvas

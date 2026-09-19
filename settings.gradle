@@ -3,11 +3,20 @@ pluginManagement {
         gradlePluginPortal()
         mavenCentral()
         maven { url = 'https://maven.neoforged.net/releases' }
+        // Stonecutter (the multi-version plugin) publishes here as well as to the plugin portal.
+        maven { url = 'https://maven.kikugie.dev/releases' }
+        maven { url = 'https://maven.kikugie.dev/snapshots' }
+        // For the future Fabric loader node (Loom lives here).
+        maven { url = 'https://maven.fabricmc.net/' }
     }
 }
 
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+    // Multi-version / multi-loader for :mod. One src/main, per-version deltas via `//? if` comments,
+    // and version-suffixed nodes (`1.21.1-neoforge`, …) that build a jar each. See mod/stonecutter.gradle.
+    // Pinned to the 0.8.x line: 0.9+ requires Gradle 9 and this build stays on Gradle 8 (mod-publish 1.x).
+    id 'dev.kikugie.stonecutter' version '0.7.11'
 }
 
 rootProject.name = 'brassui'
@@ -34,3 +43,34 @@ include 'mod'
 // A standalone JVM app that runs the toolkit OUTSIDE Minecraft, on Essential's Minecraft-free
 // UniversalCraft. `./gradlew :desktop:run`. The Rust launcher that wraps it lives in ../launcher.
 include 'desktop'
+
+// ---- Multi-version / multi-loader for :mod ------------------------------------------------------
+//
+// Only :mod is versioned. :core/:demo/:bson stay single-version (built against 1.21.1 mappings) and
+// are folded into every :mod node — they are written against UniversalCraft's binary-stable API, so
+// their bytecode rides unchanged; anything genuinely version-specific lives in :mod behind the
+// BrassPlatform seam (NeoForgePlatform.kt), gated with Stonecutter `//? if` comments.
+//
+// Each entry is `<node name> -> <minecraft version>`. The node name carries the loader as a suffix so
+// adding Fabric later is just more nodes (`1.21.1-fabric`, …) plus a build.fabric.gradle — the source
+// tree does not move. The active node is what plain `:mod:…` tasks resolve to; `./gradlew chiseledBuild`
+// builds them all. Per-version dependency coordinates (NeoForge/Elementa/UniversalCraft/KFF) live in
+// the single `V` map in mod/build.gradle — the one place to touch when a version is added.
+stonecutter {
+    create(project(':mod')) {
+        // Each node gets a per-loader buildscript (`mod/build.<loader>.gradle`). Today they are all
+        // NeoForge; adding Fabric later is a new `version('…-fabric', …).buildscript = 'build.fabric.gradle'`
+        // plus that one file — the shared source tree at mod/src/main does not move.
+        version('1.21.1-neoforge', '1.21.1').buildscript = 'build.neoforge.gradle'
+        // 26.1: MC 26.x's GUI is retained-mode (GuiGraphics -> GuiGraphicsExtractor recording into a
+        // frame GuiRenderState; no immediate draw/flush). The version-divergent net.minecraft calls in
+        // NeoForgePlatform.kt / net/* are gated with Stonecutter `//? if` comments (1.21.1 unchanged).
+        version('26.1-neoforge',   '26.1').buildscript   = 'build.neoforge.gradle'
+        // 26.2: NeoForge exists (26.2.0.x) but Essential has NOT published universalcraft-26.2-neoforge
+        // yet (26.2/26.3 are Fabric-only upstream). Add the row in mod/build.neoforge.gradle's `V` map
+        // and uncomment this once universalcraft-26.2-neoforge lands.
+        // version('26.2-neoforge', '26.2').buildscript = 'build.neoforge.gradle'
+
+        vcsVersion = '1.21.1-neoforge'
+    }
+}

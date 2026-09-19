@@ -12,7 +12,12 @@ import net.swzo.brass.ui.kit.net.BrassNet
  * one class that makes the single brassui jar self-sufficient for UI -> server logic - host mods never
  * register anything themselves.
  */
+// MC 26.x unified the mod/game event buses, so @EventBusSubscriber dropped the `bus` param + Bus enum.
+//? if >=26.1 {
+/*@EventBusSubscriber(modid = "brassui")*/
+//?} else {
 @EventBusSubscriber(modid = "brassui", bus = EventBusSubscriber.Bus.MOD)
+//?}
 object BrassNetNeoForgeEvents {
 
     @SubscribeEvent

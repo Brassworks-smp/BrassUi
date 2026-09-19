@@ -1,0 +1,277 @@
+// brassui (the mod) — the NeoForge node build, shared by every `*-neoforge` Stonecutter node
+// (`1.21.1-neoforge`, `26.1-neoforge`, …). See mod/stonecutter.gradle (the controller) and the
+// `stonecutter { create(project(':mod')) { … } }` block in settings.gradle for how the nodes are wired.
+//
+// A self-contained NeoForge mod that ships the brassui Elementa toolkit and its /brassui showcase. It
+// bundles Elementa + UniversalCraft as jar-in-jar game libraries and declares Kotlin-For-Forge, so any
+// host mod only has to jar-in-jar THIS one to get a working in-game UI.
+//
+// How a host mod consumes it (see the wiki's Getting Started page): pick the build matching its MC —
+//
+//     implementation(jarJar("net.swzo.brass:brassui:<version>-mc<minecraft>") {})
+//
+// That works because the published POM exposes Elementa + UniversalCraft as compile-scope dependencies
+// (so the consumer's code sees BrassScreen's Elementa base classes without listing them) while the jar
+// carries Elementa/UC jar-in-jar (so nothing extra is needed at runtime).
+//
+// ### One source tree, many Minecraft versions
+//
+// Stonecutter feeds this same file one node at a time; `stonecutter.current.version` selects the row in
+// the `V` map below, which is the single place that pins the NeoForge / Elementa / UniversalCraft / KFF
+// coordinates for each Minecraft version. Version-divergent source (raw net.minecraft calls in
+// NeoForgePlatform.kt and the net/* files) is gated inline with Stonecutter `//? if` comments.
+//
+// ### Why the toolkit's classes are FOLDED in, not jar-in-jar'd
+//
+// The toolkit library (:core) is a plain LIBRARY. In a packaged jar-in-jar launch FML puts each
+// embedded jar in its own JPMS module: a LIBRARY module cannot read a GAMELIBRARY module (Elementa /
+// UniversalCraft, which sit in the game layer so they can reach net.minecraft), so
+// `BrassScreen extends WindowScreen` would throw `IllegalAccessError: … does not read module elementa`.
+// Folding the library's compiled classes straight into THIS mod jar puts them in the mod module, which
+// reads the elementa/universalcraft gamelibraries the same way it reads minecraft. :core/:demo stay
+// single-version (built against 1.21.1 mappings) and fold into every node — they are written against
+// UniversalCraft's binary-stable API, so their bytecode rides unchanged.
+plugins {
+    id 'org.jetbrains.kotlin.jvm'
+    id 'net.neoforged.moddev'
+    id 'me.modmuss50.mod-publish-plugin'
+}
+
+// ---- Per-Minecraft-version coordinates ----------------------------------------------------------
+// THE one place to touch to add a Minecraft version (or verify one). Keys are the node's Minecraft
+// version (`stonecutter.current.version`). Adding Fabric later adds a parallel map in build.fabric.gradle
+// using `universalcraft-<ucBranch>-fabric`.
+def V = [
+    '1.21.1': [
+        java       : 21,
+        neo        : '21.1.217',
+        ucBranch   : '1.21',       // no 1.21.1 UC build exists; MC 1.21 is binary-compatible.
+        uc         : '505',        // the pin this mod shipped on 1.21.1; kept as-is (regression guard).
+        elementa   : '762',
+        kff        : '5.12.0',
+        mcDep      : '[1.21,1.21.3)',
+        neoDep     : '[21.1.128,)',
+        kffDep     : '[5.12.0,6.0.0)',
+        packFormat : 34,
+        parchmentMc: '1.21.1',
+        parchment  : '2024.11.17',
+    ],
+    '26.1': [
+        java       : 25,           // NeoForge 26.x requires a Java 25 toolchain (fancymodloader/neoform).
+        neo        : '26.1.2.107',
+        ucBranch   : '26.1',
+        uc         : '530',
+        elementa   : '774',
+        kff        : '6.3.0',      // TODO(26.1): confirm this KFF build targets 26.1 before release.
+        mcDep      : '[26.1,26.2)',
+        neoDep     : '[26.1.2,)',
+        kffDep     : '[6.0.0,7.0.0)',
+        packFormat : 81,           // TODO(26.1): verify the real pack_format for 26.1 at runtime.
+        parchmentMc: null,         // 26.x ships unobfuscated; no parchment mapping needed/available.
+        parchment  : null,
+    ],
+    // '26.2': [ neo:'26.2.0.82', ucBranch:'26.2', uc:'530', elementa:'774', kff:'6.3.0',
+    //           mcDep:'[26.2,26.3)', neoDep:'[26.2.0,)', kffDep:'[6.0.0,7.0.0)', packFormat:81,
+    //           parchmentMc:null, parchment:null ],  // blocked: no universalcraft-26.2-neoforge yet.
+]
+
+def mc = stonecutter.current.version
+def d  = V[mc]
+if (d == null) {
+    throw new GradleException("No dependency row in mod/build.neoforge.gradle `V` map for Minecraft ${mc}")
+}
+
+// The mod's semantic version carries the Minecraft version (as unplugged-afk does), so each node's jar
+// and maven coordinate are distinct: `brassui-2.4.0-mc1.21.1.jar`, `…-mc26.1.jar`.
+version = "${rootProject.version}-mc${mc}"
+
+// `brassui-<version>.jar` on disk — matches the maven coordinate and what Modrinth/CurseForge show.
+base {
+    archivesName = 'brassui'
+}
+
+// Per-node JDK toolchain AND bytecode target. NeoForge 26.x is published as Java-25 artifacts and
+// refuses any consumer that targets < Java 25, so the 26.x nodes must both run on JDK 25 and emit Java
+// 25 bytecode; the 1.21.x line stays on Java 21. This overrides the root subprojects{} toolchain/release
+// of 21 for this node only. (The global Kotlin bump to 2.2.x is what lets Kotlin emit JVM 25.)
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(d.java)
+}
+kotlin {
+    jvmToolchain(d.java)
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(d.java.toString())
+    }
+}
+tasks.withType(JavaCompile).configureEach {
+    options.release.set(d.java)
+}
+
+// The library subprojects must be evaluated first so their sourceSets exist for the mods{} merge and
+// the jar fold below. These are absolute paths — the single-version library projects, not node-scoped.
+evaluationDependsOn(':core')
+evaluationDependsOn(':bson')
+evaluationDependsOn(':demo')
+
+repositories {
+    // Elementa + UniversalCraft.
+    maven {
+        url = 'https://repo.essential.gg/repository/maven-public'
+        content { includeGroup 'gg.essential' }
+    }
+    // Kotlin For Forge — the Kotlin runtime provider for NeoForge.
+    maven {
+        url = 'https://thedarkcolour.github.io/KotlinForForge/'
+        content { includeGroup 'thedarkcolour' }
+    }
+}
+
+neoForge {
+    version = d.neo
+    // 26.x jars are unobfuscated, so parchment only applies where a mapping exists (1.21.1).
+    if (d.parchmentMc != null) {
+        parchment {
+            mappingsVersion = d.parchment
+            minecraftVersion = d.parchmentMc
+        }
+    }
+    mods {
+        brassui {
+            sourceSet sourceSets.main
+            // Dev-run only: associate the toolkit library's classes with this mod so they load in the
+            // same module (otherwise a dev run can't load e.g. BrassScreen: NoClassDefFoundError at
+            // construction). Packaging is handled by the jar fold below, not this.
+            sourceSet project(':core').sourceSets.main
+            sourceSet project(':demo').sourceSets.main
+            // The relocated BSON too: :core's BrassBson references it, and (unlike a packaged run) a dev
+            // run loads from source sets, not the folded jar — without this a dev client throws
+            // NoClassDefFoundError: net/swzo/brass/vendor/bson/... the moment BrassBson is touched.
+            sourceSet project(':bson').sourceSets.main
+        }
+    }
+    runs {
+        // `/brassui` is testable straight from this node: ./gradlew :mod:1.21.1-neoforge:runClient
+        client {
+            client()
+        }
+        // Headless dedicated-server boot for the CI smoke test: :mod:<node>:runServer.
+        server {
+            server()
+        }
+    }
+}
+
+dependencies {
+    // The toolkit library and gallery, for compilation only. Their classes are FOLDED into the jar
+    // below (see the header), so they must not appear in the published POM.
+    compileOnly project(':core')
+    compileOnly project(':demo')
+
+    // Elementa/UniversalCraft: `api` so the published POM exposes them as compile-scope dependencies
+    // and a consumer's `implementation("net.swzo.brass:brassui:…")` pulls them without extra lines.
+    // transitive=false keeps UniversalCraft's own transitive deps out of resolution.
+    api("gg.essential:elementa:${d.elementa}") { transitive = false }
+    api("gg.essential:universalcraft-${d.ucBranch}-neoforge:${d.uc}") { transitive = false }
+
+    // Kotlin For Forge provides the Kotlin runtime AND the FML wiring that makes kotlin.* readable to
+    // this mod's module. runtimeOnly: we reference none of its classes. NOT bundled, NOT in the POM.
+    runtimeOnly "thedarkcolour:kotlinforforge-neoforge:${d.kff}"
+
+    // Bundle Elementa + UniversalCraft AS-IS (Essential ships them with FMLModType: GAMELIBRARY, which
+    // is what lets UniversalCraft read the minecraft module). The base game ships neither.
+    jarJar("gg.essential:elementa:${d.elementa}") { transitive = false }
+    jarJar("gg.essential:universalcraft-${d.ucBranch}-neoforge:${d.uc}") { transitive = false }
+
+    // The RELOCATED BSON (`:bson`, net.swzo.brass.vendor.bson) is FOLDED into this jar (see the jar
+    // task), not jar-in-jar'd. `:core`'s folded BrassBson references its classes directly; a jar-in-jar'd
+    // `:bson` becomes its own JPMS module the mod module can't read -> runtime
+    // NoClassDefFoundError: net/swzo/brass/vendor/bson/... (hit on MC 26.x's stricter module layer).
+    // Folding puts the relocated classes in the mod module beside their only caller, and the relocation
+    // still solves the Cobblemon collision (no org.bson-exporting module exists at all), so no jar-in-jar
+    // is needed. :mod references no BSON type itself (BrassBson lives in :core), so no compile dep here.
+}
+
+// Stonecutter rewrites this node's sources into a generated tree; moddev must not compile before that
+// generation runs. (Mirrors the wiring in the official Stonecutter + ModDevGradle template.)
+tasks.matching { it.name == 'createMinecraftArtifacts' }.configureEach {
+    dependsOn tasks.named('stonecutterGenerate')
+}
+
+// The mod's version + dependency ranges live once in the `V` map above — feed them into the mods.toml
+// and pack.mcmeta so those files can't drift from what the jar/maven coordinate say.
+tasks.named('processResources') {
+    def props = [
+        version             : project.version,
+        minecraft_dependency: d.mcDep,
+        neoforge_dependency : d.neoDep,
+        kff_dependency      : d.kffDep,
+        pack_format         : d.packFormat,
+    ]
+    inputs.properties(props)
+    filesMatching('META-INF/neoforge.mods.toml') { expand(props) }
+    filesMatching('pack.mcmeta') { expand(props) }
+}
+
+// Fold the toolkit library's compiled classes (and its resources) into this mod jar rather than
+// jar-in-jar'ing it as a separate LIBRARY module. See the header for why.
+tasks.named('jar') {
+    from(project(':core').sourceSets.main.output)
+    from(project(':demo').sourceSets.main.output)
+    // Fold the relocated BSON too (see the dependencies block) so its classes live in the mod module
+    // alongside BrassBson, rather than in a separate jar-in-jar module the mod module cannot read.
+    from(project(':bson').sourceSets.main.output)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// The mod POM is the consumer contract (Elementa/UC compile deps, KFF pruned) and must be the only
+// metadata consumers see — Gradle module metadata could smuggle in the jarJar/folded internals.
+tasks.withType(GenerateModuleMetadata).configureEach { enabled = false }
+
+// ---- BrassworksMaven publishing -----------------------------------------------------------------
+// Reuse the shared publishing script (single source of truth for the POM shape + repo/credentials).
+// It defaults its target to `[project]` (this node) and reads coordinates from `ext.brassworksMaven`;
+// the version suffix set above keeps each node's coordinate distinct. `:mod` was removed from the root
+// build's brassworksMaven target list because the controller has no jar of its own.
+ext.brassworksMaven = [
+    artifactIds: [(project.path): (rootProject.brassworksMaven.artifactIds[':mod'] ?: 'brassui')],
+    pom        : rootProject.brassworksMaven.pom,
+    projectPoms: [(project.path): rootProject.brassworksMaven.projectPoms[':mod']],
+]
+apply from: rootProject.file('gradle/brassworks-maven.gradle')
+
+// ---- Modrinth / CurseForge / GitHub releases ----------------------------------------------------
+//
+// `:mod:<node>:publishMods` uploads this node's jar under its own Minecraft version. `chiseledBuild`
+// builds every node; a per-node publishMods run uploads each. When a token is missing the destination
+// falls back to dryRun.
+publishMods {
+    file = tasks.named('jar').flatMap { it.archiveFile }
+    changelog = providers.gradleProperty('changelog').getOrElse('See the GitHub releases page for the changelog.')
+    displayName = "BrassUi ${project.version}"
+    type = STABLE
+    modLoaders.add('neoforge')
+
+    curseforge {
+        projectId = providers.gradleProperty('curseforge.projectId').getOrElse('000000')
+        projectSlug = providers.gradleProperty('curseforge.projectSlug').getOrElse('brassui')
+        accessToken = providers.environmentVariable('CURSEFORGE_TOKEN')
+        minecraftVersions.add(mc)
+        dryRun = providers.environmentVariable('CURSEFORGE_TOKEN').getOrNull() == null
+    }
+
+    modrinth {
+        projectId = providers.gradleProperty('modrinth.projectId').getOrElse('00000000')
+        accessToken = providers.environmentVariable('MODRINTH_TOKEN')
+        minecraftVersions.add(mc)
+        dryRun = providers.environmentVariable('MODRINTH_TOKEN').getOrNull() == null
+        // brassui declares Kotlin-For-Forge as a runtime requirement (see neoforge.mods.toml).
+        requires { slug = 'kotlinforforge' }
+    }
+
+    github {
+        repository = 'Brassworks-smp/BrassUi'
+        accessToken = providers.environmentVariable('GITHUB_TOKEN')
+        commitish = 'main'
+        dryRun = providers.environmentVariable('GITHUB_TOKEN').getOrNull() == null
+    }
+}

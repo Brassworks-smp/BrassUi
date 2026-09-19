@@ -327,7 +327,7 @@ object LauncherBrowserDemo {
             val desc = BrassFont.fit(this, entry.description, avail)
             BrassFont.draw(m, this, desc, textX, y + 16f, Colors.UI_TEXT_DARK, false)
 
-            // downloads · date · category pills
+            // downloads · date ·    category pills
             val meta = "${fmtDownloads(entry.downloads)} downloads  ·  ${entry.updated}"
             BrassFont.draw(m, this, meta, textX, y + 27f, Colors.UI_TEXT_DARK, false)
             var px = textX + BrassFont.width(this, meta) + 6f

@@ -1,18 +1,32 @@
 package net.swzo.brass.ui.neoforge
 
+// Render-layer imports for the 1.21.x immediate-mode renderer. MC 26.x replaced GuiGraphics with the
+// retained-mode GuiGraphicsExtractor + GuiRenderState and stripped the RenderSystem immediate calls
+// (setShaderColor/enableScissor/…), so the draw methods below fork by node: 1.21.x uses these, 26.x
+// records into the live GuiGraphicsExtractor (see the 26.x imports + `currentExtractor()` helper below).
+//? if <26.1 {
 import com.mojang.blaze3d.systems.RenderSystem
-import gg.essential.universal.UMatrixStack
-import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.inventory.InventoryScreen
 import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.texture.OverlayTexture
+//?}
+//? if >=26.1 {
+/*import net.minecraft.client.gui.GuiGraphicsExtractor
+import net.minecraft.client.renderer.RenderPipelines*/
+//?}
+import gg.essential.universal.UMatrixStack
+import net.minecraft.client.Minecraft
 import net.minecraft.core.Holder
 import net.minecraft.world.effect.MobEffect
 import net.minecraft.world.level.block.Block
 import java.util.UUID
 import net.minecraft.core.registries.BuiltInRegistries
+//? if >=26.1 {
+/*import net.minecraft.resources.Identifier as ResourceLocation*/
+//?} else {
 import net.minecraft.resources.ResourceLocation
+//?}
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
@@ -37,6 +51,69 @@ import kotlin.math.sqrt
  */
 object NeoForgePlatform : BrassPlatform {
 
+    // MC 26.x is a retained-mode renderer: translucency needs Elementa's V9 URenderPipeline + V10
+    // BlendState.ALPHA compositing (V11 is the current latest). Without it, anything transparent
+    // composites wrong and shows the game straight through. 1.21.x keeps the interface default (V8).
+    //? if >=26.1 {
+    /*override val renderVersion: gg.essential.elementa.ElementaVersion
+        get() = gg.essential.elementa.ElementaVersion.V11*/
+    //?}
+
+    //? if >=26.1 {
+    /*// The live retained-mode draw context. MC 26.x's GUI records into a per-frame GuiGraphicsExtractor
+    // that UniversalCraft manages on the current UScreen during onDrawScreen — privately, so it is not
+    // publicly reachable, but the toolkit always draws inside that pass. Read it reflectively; a null
+    // result degrades a single draw to "unavailable" instead of crashing.
+    private val drawContextsField: java.lang.reflect.Field? by lazy(LazyThreadSafetyMode.NONE) {
+        runCatching {
+            Class.forName("gg.essential.universal.UScreen")
+                .getDeclaredField("drawContexts").apply { isAccessible = true }
+        }.getOrNull()
+    }
+
+    private fun currentExtractor(): GuiGraphicsExtractor? {
+        val screen = Minecraft.getInstance().screen ?: return null
+        val field = drawContextsField ?: return null
+        val list = runCatching { field.get(screen) as? List<*> }.getOrNull() ?: return null
+        return list.lastOrNull() as? GuiGraphicsExtractor
+    }
+
+    // Adopt Elementa's accumulated 2D transform onto the extractor's pose for the duration of [body].
+    // Elementa hands the toolkit a UMatrixStack in the widget's own space; the extractor draws in screen
+    // space, so its 2D projection (to3x2Joml) is what places a draw where the widget actually sits.
+    private inline fun <R> GuiGraphicsExtractor.withElementaPose(m: UMatrixStack, body: () -> R): R {
+        val p = pose()
+        p.pushMatrix()
+        p.mul(m.to3x2Joml(org.joml.Matrix3x2f()))
+        return try { body() } finally { p.popMatrix() }
+    }
+
+    // Elementa's clip (a scroll viewport's ScissorEffect) is a raw GL scissor set through UniversalCraft
+    // (ScissorState -> GL11.glScissor), which the retained-mode item/entity render states never capture.
+    // Read that live GL scissor back and return it as a GUI-space [x0,y0,x1,y1] so the draws below can
+    // hand it to the extractor's own scissor stack. Null means no clip is active (draw unclipped).
+    private fun currentGuiClip(): IntArray? {
+        if (!GL11.glIsEnabled(GL11.GL_SCISSOR_TEST)) return null
+        val box = IntArray(4).also { GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, it) }
+        val window = Minecraft.getInstance().window
+        val scale = window.guiScale.toDouble()
+        val fbHeight = window.height
+        // GL scissor is framebuffer pixels, origin bottom-left; the GUI is scaled pixels, top-left.
+        val x0 = floor(box[0] / scale).toInt()
+        val y0 = floor((fbHeight - (box[1] + box[3])) / scale).toInt()
+        val x1 = ceil((box[0] + box[2]) / scale).toInt()
+        val y1 = ceil((fbHeight - box[1]) / scale).toInt()
+        return intArrayOf(x0, y0, x1, y1)
+    }
+
+    // Run [body] with the extractor clipped to Elementa's current viewport clip, so a scrolled/clipped
+    // widget's item/entity/block no longer spills past its scroll viewport. No-op when nothing is clipped.
+    private inline fun <R> GuiGraphicsExtractor.withViewportClip(body: () -> R): R {
+        val c = currentGuiClip() ?: return body()
+        enableScissor(c[0], c[1], c[2], c[3])
+        return try { body() } finally { disableScissor() }
+    }*/
+    //?}
 
     private val cursors = HashMap<BrassCursor.Kind, Long>()
 
@@ -60,7 +137,12 @@ object NeoForgePlatform : BrassPlatform {
 
     override fun setCursor(kind: BrassCursor.Kind) {
         val window = Minecraft.getInstance().window ?: return
+        // The GLFW window handle getter was renamed Window.getWindow() -> Window.handle() in MC 26.x.
+        //? if >=26.1 {
+        /*GLFW.glfwSetCursor(window.handle(), handleFor(kind))*/
+        //?} else {
         GLFW.glfwSetCursor(window.window, handleFor(kind))
+        //?}
     }
 
 
@@ -106,7 +188,12 @@ object NeoForgePlatform : BrassPlatform {
         val level = Minecraft.getInstance().level ?: return@getOrPut null
         val location = ResourceLocation.tryParse(entityId) ?: return@getOrPut null
         val type = BuiltInRegistries.ENTITY_TYPE.getOptional(location).orElse(null) ?: return@getOrPut null
+        // EntityType.create(Level) gained a mandatory EntitySpawnReason in MC 26.x.
+        //? if >=26.1 {
+        /*runCatching { type.create(level, net.minecraft.world.entity.EntitySpawnReason.LOAD) as? LivingEntity }.getOrNull()*/
+        //?} else {
         runCatching { type.create(level) as? LivingEntity }.getOrNull()
+        //?}
     }
 
     override fun entityName(entityId: String): String? {
@@ -129,6 +216,58 @@ object NeoForgePlatform : BrassPlatform {
         pitch: Float,
         alpha: Float,
     ): Boolean {
+        //? if >=26.1 {
+        /*if (alpha <= 0.02f) return true
+        val entity = entityFor(entityId) ?: return false
+        val ex = currentExtractor() ?: return false
+        val mc = Minecraft.getInstance()
+
+        // The new extractor.entity(...) positions the model within a screen-space box (not a centre
+        // point), so project the widget rectangle out through Elementa's transform.
+        val m = matrixStack.to3x2Joml(org.joml.Matrix3x2f())
+        val a = m.transformPosition(org.joml.Vector2f(x, y))
+        val b = m.transformPosition(org.joml.Vector2f(x + width, y + height))
+        val x0 = floor(minOf(a.x, b.x)).toInt(); val y0 = floor(minOf(a.y, b.y)).toInt()
+        val x1 = ceil(maxOf(a.x, b.x)).toInt(); val y1 = ceil(maxOf(a.y, b.y)).toInt()
+
+        // Bounding-sphere fit, identical to the 1.21.x path.
+        val bbHeight = entity.bbHeight.coerceAtLeast(0.1f)
+        val bbWidth = entity.bbWidth.coerceAtLeast(0.1f)
+        val diameter = sqrt(bbWidth * bbWidth + bbHeight * bbHeight + bbWidth * bbWidth)
+        val scale = (minOf(width, height) / diameter) * 0.9f
+
+        // The render state captures the entity's rotation, so set the isometric yaw before extracting
+        // it and restore afterwards (the LivingEntity is cached and shared between previews).
+        val savedBodyRot = entity.yBodyRot
+        val savedYRot = entity.yRot
+        val savedXRot = entity.xRot
+        val savedHeadRot = entity.yHeadRot
+        val savedHeadRotO = entity.yHeadRotO
+        return try {
+            entity.yBodyRot = 180f + yaw
+            entity.setYRot(180f + yaw)
+            entity.setXRot(0f)
+            entity.yHeadRot = 180f + yaw
+            entity.yHeadRotO = 180f + yaw
+            val renderState = mc.entityRenderDispatcher.extractEntity(entity, 1f)
+            val pitchRad = pitch * Math.PI.toFloat() / 180f
+            // upright flip + downward tilt onto the model (isometric), matching the 1.21.x quaternions.
+            val bodyPose = org.joml.Quaternionf().rotateZ(Math.PI.toFloat()).rotateX(-pitchRad)
+            val tilt = org.joml.Quaternionf().rotateX(-pitchRad)
+            ex.withViewportClip {
+                ex.entity(renderState, scale, org.joml.Vector3f(0f, 0f, 0f), bodyPose, tilt, x0, y0, x1, y1)
+            }
+            true
+        } catch (_: Throwable) {
+            false
+        } finally {
+            entity.yBodyRot = savedBodyRot
+            entity.setYRot(savedYRot)
+            entity.setXRot(savedXRot)
+            entity.yHeadRot = savedHeadRot
+            entity.yHeadRotO = savedHeadRotO
+        }*/
+        //?} else {
         if (alpha <= 0.02f) return true
         val entity = entityFor(entityId) ?: return false
         val mc = Minecraft.getInstance()
@@ -217,6 +356,7 @@ object NeoForgePlatform : BrassPlatform {
             entity.yHeadRotO = savedHeadRotO
             pose.popPose()
         }
+        //?}
     }
 
     override fun drawItem(
@@ -228,6 +368,26 @@ object NeoForgePlatform : BrassPlatform {
         count: Int,
         alpha: Float,
     ): Boolean {
+        //? if >=26.1 {
+        /*if (alpha <= 0.02f) return true
+        val stack = stackFor(itemId)
+        if (stack.isEmpty) return false
+        val ex = currentExtractor() ?: return false
+        val mc = Minecraft.getInstance()
+        return ex.withElementaPose(matrixStack) {
+            val p = ex.pose()
+            p.translate(x, y)
+            val scale = size / 16f
+            p.scale(scale, scale)
+            try {
+                ex.withViewportClip {
+                    ex.item(stack, 0, 0)
+                    if (count > 1) ex.itemDecorations(mc.font, stack.copyWithCount(count), 0, 0)
+                }
+                true
+            } catch (_: Throwable) { false }
+        }*/
+        //?} else {
         if (alpha <= 0.02f) return true
         val stack = stackFor(itemId)
         if (stack.isEmpty) return false
@@ -271,6 +431,7 @@ object NeoForgePlatform : BrassPlatform {
             clearFade(alpha)
             pose.popPose()
         }
+        //?}
     }
 
 
@@ -282,6 +443,22 @@ object NeoForgePlatform : BrassPlatform {
         size: Float,
         alpha: Float,
     ): Boolean {
+        //? if >=26.1 {
+        /*val skin = skinFor(player) ?: return false
+        val ex = currentExtractor() ?: return false
+        val px = size.toInt().coerceAtLeast(1)
+        return ex.withElementaPose(matrixStack) {
+            ex.pose().translate(x, y)
+            try {
+                ex.withViewportClip {
+                    // The 12-arg stretched blit: (pipeline, texture, x, y, u, v, w, h, regionW, regionH, texW, texH).
+                    ex.blit(RenderPipelines.GUI_TEXTURED, skin, 0, 0, 8f, 8f, px, px, 8, 8, 64, 64)
+                    ex.blit(RenderPipelines.GUI_TEXTURED, skin, 0, 0, 40f, 8f, px, px, 8, 8, 64, 64)
+                }
+                true
+            } catch (_: Throwable) { false }
+        }*/
+        //?} else {
         val skin = skinFor(player) ?: return false
         return drawNative(matrixStack, x, y, size, size, alpha, clip = true, depth = false) { handle, w, _ ->
             val g = handle as GuiGraphics
@@ -289,6 +466,7 @@ object NeoForgePlatform : BrassPlatform {
             g.blit(skin, 0, 0, px, px, 8f, 8f, 8, 8, 64, 64)
             g.blit(skin, 0, 0, px, px, 40f, 8f, 8, 8, 64, 64)
         }
+        //?}
     }
 
     private fun skinFor(player: String): ResourceLocation? {
@@ -296,7 +474,12 @@ object NeoForgePlatform : BrassPlatform {
         val info = runCatching { UUID.fromString(player) }.getOrNull()
             ?.let { connection.getPlayerInfo(it) }
             ?: connection.getPlayerInfo(player)
+        // PlayerSkin.texture (an Identifier) became PlayerSkin.body(): ClientAsset.Texture in 26.x.
+        //? if >=26.1 {
+        /*return info?.skin?.body()?.texturePath()*/
+        //?} else {
         return info?.skin?.texture
+        //?}
     }
 
 
@@ -319,6 +502,22 @@ object NeoForgePlatform : BrassPlatform {
         pitch: Float,
         alpha: Float,
     ): Boolean {
+        //? if >=26.1 {
+        /*// The new renderer has no immediate "draw a block state into the GUI" path; render the block's
+        // item form instead, which for a normal block is its 3-D inventory model (the iso view we want).
+        // The custom yaw/pitch aren't applied here — the item model uses the standard GUI presentation.
+        val block = blockFor(blockId) ?: return false
+        val stack = net.minecraft.world.item.ItemStack(block.asItem())
+        if (stack.isEmpty) return false
+        val ex = currentExtractor() ?: return false
+        return ex.withElementaPose(matrixStack) {
+            val p = ex.pose()
+            p.translate(x, y)
+            val scale = size / 16f
+            p.scale(scale, scale)
+            try { ex.withViewportClip { ex.item(stack, 0, 0) }; true } catch (_: Throwable) { false }
+        }*/
+        //?} else {
         val block = blockFor(blockId) ?: return false
         val mc = Minecraft.getInstance()
         return drawNative(matrixStack, x, y, size, size, alpha, clip = true, depth = true) { handle, w, h ->
@@ -354,6 +553,7 @@ object NeoForgePlatform : BrassPlatform {
             buffers.endBatch()
             pose.popPose()
         }
+        //?}
     }
 
 
@@ -361,7 +561,12 @@ object NeoForgePlatform : BrassPlatform {
 
     private fun effectFor(effectId: String): Holder<MobEffect>? = effects.getOrPut(effectId) {
         val location = ResourceLocation.tryParse(effectId) ?: return@getOrPut null
+        // Registry.getHolder(...) was renamed to Registry.get(...) (both -> Optional<Holder.Reference>) in 26.x.
+        //? if >=26.1 {
+        /*BuiltInRegistries.MOB_EFFECT.get(location).orElse(null)*/
+        //?} else {
         BuiltInRegistries.MOB_EFFECT.getHolder(location).orElse(null)
+        //?}
     }
 
     override fun effectName(effectId: String): String? =
@@ -375,6 +580,20 @@ object NeoForgePlatform : BrassPlatform {
         size: Float,
         alpha: Float,
     ): Boolean {
+        //? if >=26.1 {
+        /*if (effectFor(effectId) == null) return false
+        val location = ResourceLocation.tryParse(effectId) ?: return false
+        val ex = currentExtractor() ?: return false
+        // Effect icons moved onto the GUI sprite atlas (MobEffectTextureManager is gone): they live at
+        // `mob_effect/<effect path>` and are blitted by sprite id.
+        val spriteId = ResourceLocation.fromNamespaceAndPath(location.namespace, "mob_effect/" + location.path)
+        val s = size.toInt().coerceAtLeast(1)
+        return ex.withElementaPose(matrixStack) {
+            ex.pose().translate(x, y)
+            try { ex.withViewportClip { ex.blitSprite(RenderPipelines.GUI_TEXTURED, spriteId, 0, 0, s, s) }; true }
+            catch (_: Throwable) { false }
+        }*/
+        //?} else {
         val effect = effectFor(effectId) ?: return false
         val mc = Minecraft.getInstance()
         val sprite = mc.getMobEffectTextures().get(effect) ?: return false
@@ -382,6 +601,7 @@ object NeoForgePlatform : BrassPlatform {
             val g = handle as GuiGraphics
             g.blit(0, 0, 0, w.toInt().coerceAtLeast(1), h.toInt().coerceAtLeast(1), sprite)
         }
+        //?}
     }
 
 
@@ -405,6 +625,38 @@ object NeoForgePlatform : BrassPlatform {
         depth: Boolean,
         draw: BrassNativeDraw,
     ): Boolean {
+        //? if >=26.1 {
+        /*if (alpha <= 0.02f) return true
+        if (width <= 0f || height <= 0f) return true
+        val ex = currentExtractor() ?: return false
+        // The extractor clips in screen pixels (independent of its pose), so project the UI box out.
+        val screen = matrixStack.to3x2Joml(org.joml.Matrix3x2f())
+        val a = screen.transformPosition(org.joml.Vector2f(x, y))
+        val b = screen.transformPosition(org.joml.Vector2f(x + width, y + height))
+        return ex.withElementaPose(matrixStack) {
+            ex.pose().translate(x, y)
+            if (clip) {
+                // The widget box, intersected with Elementa's viewport clip so a scrolled canvas stays
+                // inside its scroll view.
+                val vc = currentGuiClip()
+                var sx0 = floor(minOf(a.x, b.x)).toInt(); var sy0 = floor(minOf(a.y, b.y)).toInt()
+                var sx1 = ceil(maxOf(a.x, b.x)).toInt(); var sy1 = ceil(maxOf(a.y, b.y)).toInt()
+                if (vc != null) { sx0 = maxOf(sx0, vc[0]); sy0 = maxOf(sy0, vc[1]); sx1 = minOf(sx1, vc[2]); sy1 = minOf(sy1, vc[3]) }
+                ex.enableScissor(sx0, sy0, sx1, sy1)
+            }
+            try {
+                // BrassNativeDraw callers receive the live extractor as their opaque handle (see
+                // BrassCanvasDsl, which types it as GuiGraphics -> GuiGraphicsExtractor on 26.x) and draw
+                // at (0,0) in the translated pose.
+                draw.draw(ex, width, height)
+                true
+            } catch (_: Throwable) {
+                false
+            } finally {
+                if (clip) ex.disableScissor()
+            }
+        }*/
+        //?} else {
         if (alpha <= 0.02f) return true
         if (width <= 0f || height <= 0f) return true
 
@@ -438,9 +690,15 @@ object NeoForgePlatform : BrassPlatform {
             if (clip) popScissor()
             pose.popPose()
         }
+        //?}
     }
 
 
+    // The fade (RenderSystem.setShaderColor) and hand-rolled GL scissor below are immediate-mode only —
+    // RenderSystem.enableBlend/setShaderColor/enableScissor and the raw GL11 scissor calls were removed
+    // in the 26.x renderer. They exist for the 1.21.x draw paths above and are gated out on 26.x, where
+    // the draw methods degrade (fade/clip will be handled by the extractor when those are reimplemented).
+    //? if <26.1 {
     private fun applyFade(alpha: Float) {
         if (alpha >= 0.999f) return
         val a = alpha.coerceIn(0f, 1f)
@@ -504,4 +762,5 @@ object NeoForgePlatform : BrassPlatform {
             RenderSystem.disableScissor()
         }
     }
+    //?}
 }

@@ -15,8 +15,11 @@
 // Declaring the versions here (and nowhere else) puts one copy of each plugin in the root
 // classloader, shared by every subproject. Subprojects apply them without a version.
 plugins {
-    id 'org.jetbrains.kotlin.jvm' version '2.0.21' apply false
-    id 'net.neoforged.moddev' version '2.0.74' apply false
+    // Bumped 2.0.21 -> 2.3.0 so the 26.x nodes can emit Java 25 bytecode (NeoForge 26.x refuses any
+    // consumer targeting < Java 25; Kotlin only gained the JVM 25 target in 2.3). 2.3 still targets JVM
+    // 21 for the 1.21.x line and the off-game modules, so this is a compiler bump, not a source change.
+    id 'org.jetbrains.kotlin.jvm' version '2.3.0' apply false
+    id 'net.neoforged.moddev' version '2.0.146' apply false
     id 'com.gradleup.shadow' version '8.3.6' apply false
     // Modrinth / CurseForge / GitHub release publishing (`:mod:publishMods`). Pinned to 1.x: 2.x
     // requires Gradle 9 and this build is on 8.12.1.
@@ -24,6 +27,11 @@ plugins {
 }
 
 subprojects {
+    // `:mod` is the Stonecutter controller (the versioned chunk root), not a buildable project — it
+    // must not receive the java plugin. Its version nodes (`:mod:1.21.1-neoforge`, …) are ordinary
+    // subprojects and ARE configured here.
+    if (project.path == ':mod') return
+
     apply plugin: 'java-library'
 
     group = rootProject.group
@@ -49,8 +57,12 @@ subprojects {
 // consumed at runtime by brassui-core), `brassui-core` (the toolkit library) and `brassui` (the
 // self-contained NeoForge mod). `:demo` and `:desktop` are development surfaces, not something to
 // depend on, so they stay unpublished.
+// Note: `:mod` is NOT in `projects` — it is now a Stonecutter controller (no jar of its own). Each
+// `*-neoforge` node reapplies gradle/brassworks-maven.gradle for itself (see mod/build.neoforge.gradle),
+// reusing the `:mod` artifactId/POM entries below. Its version carries `-mc<minecraft>` so nodes don't
+// collide.
 ext.brassworksMaven = [
-    projects: [':bson', ':core', ':mod'],
+    projects: [':bson', ':core'],
     artifactIds: [':bson': 'bson', ':core': 'brassui-core', ':mod': 'brassui'],
     pom: [
         url: 'https://github.com/Brassworks-smp/BrassUi',

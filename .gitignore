@@ -3,6 +3,12 @@
 build/
 !gradle/wrapper/gradle-wrapper.jar
 
+# Stonecutter (:mod multiversion) — generated per-node source trees and active-version cache. The
+# committed inputs (mod/src/main, mod/versions/<node>/src overlays, mod/stonecutter.gradle) stay tracked.
+.stonecutter/
+mod/versions/*/build/
+mod/build/
+
 # NeoForge dev runs
 run/
 

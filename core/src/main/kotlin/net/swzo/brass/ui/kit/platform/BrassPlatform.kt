@@ -1,5 +1,6 @@
 package net.swzo.brass.ui.kit.platform
 
+import gg.essential.elementa.ElementaVersion
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.kit.surface.BrassTooltip
 import java.awt.Color
@@ -20,6 +21,16 @@ import java.awt.Color
  * the arrow and item slots draw empty.
  */
 interface BrassPlatform {
+
+    /**
+     * The Elementa rendering opt-in [BrassScreen][net.swzo.brass.ui.BrassScreen] draws under (see
+     * `WindowScreen`'s version arg). It is platform-specific because it depends on the game's renderer:
+     * MC 1.21.x's immediate-mode GUI is served correctly by V8, but MC 26.x's retained-mode renderer
+     * needs V9's `URenderPipeline` path and V10's `BlendState.ALPHA` compositing (without them, anything
+     * translucent composites wrong and shows the game straight through). Defaults to V8 so 1.21.x and the
+     * off-game desktop app are unchanged; the 26.x platform overrides it to the latest.
+     */
+    val renderVersion: ElementaVersion get() = ElementaVersion.V8
 
     fun setCursor(kind: BrassCursor.Kind)
 
