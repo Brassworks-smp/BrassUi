@@ -11,7 +11,7 @@ import net.swzo.brass.ui.kit.surface.BrassTooltip
 
 object BrassIconSheet : BrassDemoSource {
 
-    override fun demo() = BrassDemo("icons", "Icons", 300f, 190f) {
+    override fun demo() = BrassDemo("icons", "Icons", 300f, 280f) {
         val flow = BrassFlow(gapX = 3f, gapY = 3f, itemHeight = 14f)
         for (name in BrassIcons.spriteNames().sorted()) {
             val key = BrassSquareButton(BrassIcons.Icon(name), BrassAccent.DEFAULT) {}
