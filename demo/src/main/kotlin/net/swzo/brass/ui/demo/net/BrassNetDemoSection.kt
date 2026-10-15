@@ -115,6 +115,7 @@ object BrassNetDemoSection {
 
         val code = BrassCodeView(SNIPPET, language = "kotlin")
         code.constrain { height = 100.pixels() }
+        net.swzo.brass.ui.kit.dev.BrassLayoutAudit.allow(code, "nested-scroll", "fixed-height snippet inside a popup form")
 
         BrassPopup("Networking", onClose = {
             BrassNet.onActionExecuted = null

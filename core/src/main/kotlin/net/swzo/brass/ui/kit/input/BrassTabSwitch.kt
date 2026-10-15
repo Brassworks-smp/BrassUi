@@ -48,6 +48,15 @@ class BrassTabSwitch(
 
     val selectedIndex: Int get() = holder.value
 
+    var shrinkToFit: Boolean = false
+
+    private fun shrink(): Float {
+        if (!shrinkToFit || options.isEmpty()) return 1f
+        val gaps = GAP * (options.size - 1)
+        val natural = contentWidth() - gaps
+        return if (natural <= 0f) 1f else ((getWidth() - gaps) / natural).coerceIn(0f, 1f)
+    }
+
     /**
      * Measured label widths, filled on first use.
      * Width constraints resolve every frame, and measuring a string through the font provider is not
@@ -65,7 +74,11 @@ class BrassTabSwitch(
             tab.constrain {
                 x = if (i == 0) 0.pixels() else SiblingConstraint(GAP)
                 y = 0.pixels()
-                width = if (equalWidths) (100f / n).percent() else basicWidthConstraint { tabWidth(i) }
+                width = if (equalWidths) {
+                    basicWidthConstraint { ((this@BrassTabSwitch.getWidth() - GAP * (n - 1)) / n).coerceAtLeast(0f) }
+                } else {
+                    basicWidthConstraint { tabWidth(i) * shrink() }
+                }
                 height = 100.percent()
             } childOf this
             tabs.add(tab)

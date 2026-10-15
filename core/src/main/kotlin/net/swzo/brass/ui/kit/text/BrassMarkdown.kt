@@ -43,7 +43,10 @@ class BrassMarkdown(
     }
 
     /** The total content height at the current wrap width (the scrollable document). */
-    fun contentHeight(): Float = items.size * rowHeight
+    fun contentHeight(): Float {
+        if (getWidth() > 0f) ensureWrapped(getWidth())
+        return items.size * rowHeight
+    }
 
     private fun ensureWrapped(width: Float) {
         // Text is drawn x+6 from the card edge, so the wrap width gives it that margin on both sides.

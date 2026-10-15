@@ -76,6 +76,11 @@ class BrassSearchField(
         onSearch("")
     }
 
+    fun setQuery(query: String) {
+        input.value = query
+        searchNow()
+    }
+
     fun searchNow() {
         sinceEdit = -1f
         onSearch(input.text)

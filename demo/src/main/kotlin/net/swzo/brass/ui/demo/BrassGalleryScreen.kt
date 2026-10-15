@@ -25,6 +25,7 @@ import net.swzo.brass.ui.kit.base.proxiedBy
 import net.swzo.brass.ui.kit.demo.BrassDemoBrowser
 import net.swzo.brass.ui.kit.demo.BrassDemos
 import net.swzo.brass.ui.kit.dev.BrassDevMode
+import net.swzo.brass.ui.kit.dev.BrassLayoutAudit
 import net.swzo.brass.ui.kit.input.BrassButton
 import net.swzo.brass.ui.kit.input.BrassCheckbox
 import net.swzo.brass.ui.kit.input.BrassChips
@@ -468,6 +469,7 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
 
         BrassPopup("Markdown")
             .addField("Rendered document", doc.also {
+                BrassLayoutAudit.allow(it, "nested-scroll", "sized to its whole document, so it never scrolls itself")
                 it.constrain { height = basicHeightConstraint { _ -> doc.contentHeight() } }
             })
             .show(background, b[0], b[1], b[2], b[3])
@@ -608,7 +610,10 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         ) { player, _ -> BrassToast.show(background, player.name, BrassToast.Type.INFO) }
 
         BrassPopup("Players (${players.size})")
-            .addField("Virtualized table", table.also { it.constrain { height = 160.pixels() } })
+            .addField("Virtualized table", table.also {
+                it.constrain { height = 160.pixels() }
+                BrassLayoutAudit.allow(it, "nested-scroll", "fixed-height table demo inside a popup form")
+            })
             .addButtons(
                 BrassButton("Jump to end", BrassAccent.DEFAULT) { table.scrollToEnd() },
                 BrassButton("Top", BrassAccent.DEFAULT) { table.scrollTo(0) },
@@ -649,6 +654,10 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             chat.add("Notch", cannedReply(text), Colors.PATINA_400, avatar = "Notch")
         }
         chat.constrain { height = 240.pixels() }
+        BrassLayoutAudit.allow(chat, "nested-editor", "fixed-height chat demo inside a popup form")
+        BrassTree.descendantsOfType(chat, ScrollComponent::class.java).forEach {
+            BrassLayoutAudit.allow(it, "nested-scroll", "the chat log scrolls itself; fixed-height demo")
+        }
 
         // Only your own lines are yours to change — teammates' messages get the copy/reply half only.
         chat.canModify = { it.author == me }
@@ -887,6 +896,7 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             card = true,
         )
         split.constrain { height = 96.pixels() }
+        BrassLayoutAudit.allow(list, "nested-scroll", "fixed-height table demo inside a popup form")
 
         BrassPopup("Sections & panes")
             .addField("Accordion", accordion)
@@ -926,6 +936,7 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         )
         tree.expandTo(1)
         tree.constrain { height = 120.pixels() }
+        BrassLayoutAudit.allow(tree, "nested-scroll", "fixed-height tree demo inside a popup form")
 
         val chart = BrassChart(window = 120, fixedMax = 20f)
         val tps = chart.series("TPS", Colors.BRASS_400, filled = true)
@@ -969,6 +980,7 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
         val code = BrassCodeView(SAMPLE_CODE, language = "kotlin")
         code.markers = setOf(4)
         code.constrain { height = 110.pixels() }
+        BrassLayoutAudit.allow(code, "nested-scroll", "fixed-height code viewer inside a popup form")
 
         BrassPopup("Trees, charts & code")
             .addField("Tree view", tree)

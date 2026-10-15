@@ -12,6 +12,7 @@ import net.swzo.brass.ui.kit.demo.BrassDemoCapture
 import net.swzo.brass.ui.kit.net.BrassNet
 import net.swzo.brass.ui.kit.platform.BrassPlatform
 import org.lwjgl.glfw.GLFW
+import kotlin.system.exitProcess
 
 /**
  * Entry point for the standalone desktop demo.
@@ -66,6 +67,13 @@ fun main() {
         // -Dui.demo=<name> jumps straight into the demo browser on that widget (like -Dui.section does
         // for the gallery); -Dui.shot=<name> does the same, captures a PNG and quits. Both are for
         // working on one widget without clicking through the gallery every launch.
+        System.getProperty("ui.reference")?.let { which ->
+            val harness = ReferenceHarness(which, window.glfwWindow.glfwId)
+            harness.start()
+            window.renderScreenUntilClosed()
+            exitProcess(if (harness.errors == 0) 0 else 1)
+        }
+
         val jumpTo = System.getProperty("ui.demo")
         val shotOf = System.getProperty("ui.shot")
         val screen = if (jumpTo != null || shotOf != null) {
@@ -79,7 +87,24 @@ fun main() {
             BrassGalleryScreen(DesktopDemoHost())
         }
 
+        val auditShot = System.getProperty("ui.audit")
+        var auditErrors = 0
+        if (auditShot != null) {
+            var frames = 0
+            net.swzo.brass.ui.BrassScreen.frameHook = { s, _ ->
+                if (++frames == 90) {
+                    DesktopDemoCapture().grab(0f, 0f, UResolution.scaledWidth.toFloat(), UResolution.scaledHeight.toFloat())
+                        ?.let { javax.imageio.ImageIO.write(it, "png", java.io.File(auditShot)) }
+                    val findings = net.swzo.brass.ui.kit.dev.BrassLayoutAudit.run(s.window)
+                    auditErrors = findings.count { it.severity == net.swzo.brass.ui.kit.dev.BrassLayoutRules.Severity.ERROR }
+                    println(net.swzo.brass.ui.kit.dev.BrassLayoutAudit.report(findings))
+                    GLFW.glfwSetWindowShouldClose(window.glfwWindow.glfwId, true)
+                }
+            }
+        }
+
         UScreen.displayScreen(screen)
         window.renderScreenUntilClosed()
+        if (auditShot != null) exitProcess(if (auditErrors == 0) 0 else 1)
     }
 }

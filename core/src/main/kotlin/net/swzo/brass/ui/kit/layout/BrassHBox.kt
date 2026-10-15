@@ -5,6 +5,7 @@ import gg.essential.elementa.components.UIContainer
 import gg.essential.elementa.constraints.SiblingConstraint
 import gg.essential.elementa.dsl.childOf
 import gg.essential.elementa.dsl.constrain
+import gg.essential.elementa.dsl.basicWidthConstraint
 import gg.essential.elementa.dsl.pixels
 import net.swzo.brass.ui.kit.base.BrassWidget
 
@@ -35,7 +36,15 @@ class BrassHBox(
 
     init {
         constrain {
-            width = BrassLayout.contentWidth(padX)
+            width = basicWidthConstraint { c ->
+                val kids = children
+                if (kids.any { it is Spring }) {
+                    if (!c.hasParent) 0f
+                    else (c.parent.getWidth() - 2f * (c.getLeft() - c.parent.getLeft())).coerceAtLeast(0f)
+                }
+                else if (kids.isEmpty()) padX * 2
+                else padX * 2 + kids.sumOf { it.getWidth().toDouble() }.toFloat() + (gap + padX) * (kids.size - 1)
+            }
             height = BrassLayout.contentHeight(if (bleed) BrassWidget.BLEED_BOTTOM else 0f)
         }
     }
@@ -52,10 +61,11 @@ class BrassHBox(
         return this
     }
 
-    fun spring(): BrassHBox = add(UIContainer().constrain {
+    fun spring(): BrassHBox = add(Spring().constrain {
         width = gg.essential.elementa.dsl.basicWidthConstraint { c ->
-            val used = c.parent.children.filter { it !== c }.sumOf { (it.getWidth() + gap).toDouble() }.toFloat()
-            (c.parent.getWidth() - used - padX * 2).coerceAtLeast(0f)
+            val siblings = c.parent.children
+            val others = siblings.filter { it !== c }.sumOf { it.getWidth().toDouble() }.toFloat()
+            (c.parent.getWidth() - padX * 2 - others - (gap + padX) * (siblings.size - 1)).coerceAtLeast(0f)
         }
         height = 1.pixels()
     })
@@ -64,4 +74,6 @@ class BrassHBox(
         width = size.pixels()
         height = 1.pixels()
     })
+
+    private class Spring : UIContainer()
 }

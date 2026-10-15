@@ -37,9 +37,11 @@ import net.swzo.brass.ui.kit.base.BrassWidget
  * list.add(rowA, rowB, rowC)          // vertical stack, or position in `content` by hand
  * ```
  */
-class BrassScrollArea @JvmOverloads constructor(
+open class BrassScrollArea @JvmOverloads constructor(
     private val scrollbarGap: Float = 3f,
     alwaysShowBar: Boolean = false,
+    private val gap: Float = 6f,
+    private val bleed: Boolean = true,
 ) : UIContainer() {
 
     val body: ScrollComponent
@@ -70,7 +72,7 @@ class BrassScrollArea @JvmOverloads constructor(
         } childOf body
     }
 
-    private fun column(): BrassVBox = stack ?: BrassVBox().also {
+    private fun column(): BrassVBox = stack ?: BrassVBox(gap, bleed).also {
         it.constrain { x = 0.pixels(); y = 0.pixels(); width = 100.percent() } childOf content
         stack = it
     }
@@ -78,7 +80,7 @@ class BrassScrollArea @JvmOverloads constructor(
     fun add(vararg rows: UIComponent): BrassScrollArea {
         val col = column()
         for (row in rows) {
-            row.constrain { width = 100.percent() - (BrassWidget.BLEED_X * 2).pixels() }
+            row.constrain { width = if (bleed) 100.percent() - (BrassWidget.BLEED_X * 2).pixels() else 100.percent() }
             col.add(row)
         }
         return this
@@ -87,5 +89,10 @@ class BrassScrollArea @JvmOverloads constructor(
     fun clear() {
         content.clearChildren()
         stack = null
+    }
+
+    companion object {
+        @JvmStatic
+        fun list(): BrassScrollArea = BrassScrollArea(gap = 1f, bleed = false)
     }
 }

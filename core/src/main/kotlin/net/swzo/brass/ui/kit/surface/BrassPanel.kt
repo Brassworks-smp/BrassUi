@@ -154,6 +154,18 @@ class BrassPanel @JvmOverloads constructor(
         return add(flow)
     }
 
+    fun flush(): UIContainer = flushArea ?: UIContainer().constrain {
+        x = 1.pixels()
+        y = (titleH + 1f).pixels()
+        width = 100.percent() - 2.pixels()
+        height = basicHeightConstraint { c -> (c.parent.getHeight() - titleH - 2f).coerceAtLeast(0f) }
+    }.also {
+        it childOf this
+        flushArea = it
+    }
+
+    private var flushArea: UIContainer? = null
+
     fun addSpacer(size: Float): BrassPanel {
         column().addSpacer(size)
         return this

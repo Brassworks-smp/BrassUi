@@ -65,6 +65,7 @@ object BrassFocus {
         val out = ArrayList<UIComponent>()
         fun walk(c: UIComponent) {
             for (child in c.children) {
+                if (child is BrassInert && child.inert) continue
                 if (child is BrassFocusable && child.focusable) out.add(child)
                 walk(child)
             }

@@ -490,6 +490,7 @@ class BrassChat(
                 x = basicXConstraint { if (fits()) body.getLeft() + body.lastLineWidth() + 4f else body.getLeft() }
                 y = basicYConstraint { if (fits()) body.getBottom() - BrassFont.LINE else body.getBottom() }
             } childOf this
+            net.swzo.brass.ui.kit.dev.BrassLayoutAudit.allow(tag, "overlap", "inline (edited) marker after the last line")
             editedTag = tag
         }
 

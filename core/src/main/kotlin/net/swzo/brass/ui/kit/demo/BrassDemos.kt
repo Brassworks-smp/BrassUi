@@ -37,6 +37,11 @@ import net.swzo.brass.ui.kit.surface.BrassBarChart
 import net.swzo.brass.ui.kit.surface.BrassChart
 import net.swzo.brass.ui.kit.surface.BrassChat
 import net.swzo.brass.ui.kit.surface.BrassPanel
+import net.swzo.brass.ui.kit.surface.BrassListRow
+import net.swzo.brass.ui.kit.surface.BrassStat
+import net.swzo.brass.ui.kit.layout.BrassSectionHeader
+import net.swzo.brass.ui.kit.input.BrassNavRail
+import net.swzo.brass.ui.kit.media.BrassIconSheet
 import net.swzo.brass.ui.kit.surface.BrassEmptyState
 import net.swzo.brass.ui.kit.node.BrassNodeEditor
 import net.swzo.brass.ui.kit.surface.BrassLoading
@@ -87,6 +92,7 @@ object BrassDemos {
         BrassRadioGroup,
         BrassToggle,
         BrassTabSwitch,
+        BrassNavRail,
         BrassConfirmSlider,
         BrassKeybind,
         BrassDropdown,
@@ -106,6 +112,8 @@ object BrassDemos {
         BrassLabel,
         BrassWrappedLabel,
         BrassTag,
+        BrassSectionHeader,
+        BrassStat,
         BrassTimeAgo,
         BrassDivider,
         BrassEmptyState,
@@ -121,6 +129,7 @@ object BrassDemos {
         BrassBarChart,
         BrassChart,
         BrassTable,
+        BrassListRow,
         BrassTreeView,
         BrassAccordion,
         BrassChat,
@@ -146,6 +155,8 @@ object BrassDemos {
         BrassEntity,
         BrassBlockPreview,
         BrassPlayerHead,
+
+        BrassIconSheet,
     )
 
     fun byName(name: String): BrassDemo? = ALL.firstOrNull { it.name.equals(name, ignoreCase = true) }

@@ -69,6 +69,16 @@ class BrassLabel(
 
     private val effectiveTint: Color get() = tintRole?.invoke() ?: tint
 
+    fun fitWidth(): BrassLabel {
+        constrain {
+            width = basicWidthConstraint { c ->
+                val room = if (c.hasParent) c.parent.getRight() - c.getLeft() else measuredWidth()
+                measuredWidth().coerceAtMost(room.coerceAtLeast(0f))
+            }
+        }
+        return this
+    }
+
     fun copyable(): BrassLabel {
         selectable = true
         clickable = true
@@ -114,7 +124,8 @@ class BrassLabel(
     override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
         // withAlpha applies the base class's entrance fade to our own colour - the animated text
         // colour the keycaps use is not wanted here, since a label's colour is chosen by the caller.
-        BrassFont.draw(m, this, text, x.toFloat(), y.toFloat(), withAlpha(effectiveTint, entranceFade), shadow, scale)
+        val shown = if (measuredWidth() > w + 0.5f) BrassFont.fit(this, text, w / scale) else text
+        BrassFont.draw(m, this, shown, x.toFloat(), y.toFloat(), withAlpha(effectiveTint, entranceFade), shadow, scale)
     }
 
     companion object : BrassDemoSource {

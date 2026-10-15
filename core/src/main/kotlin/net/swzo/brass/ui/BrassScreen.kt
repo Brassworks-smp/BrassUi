@@ -15,6 +15,7 @@ import net.swzo.brass.ui.kit.base.*
 import net.swzo.brass.ui.kit.platform.BrassPlatform
 import net.swzo.brass.ui.kit.demo.BrassDemoCapture
 import net.swzo.brass.ui.kit.dev.BrassDevMode
+import net.swzo.brass.ui.kit.dev.BrassLayoutAudit
 import net.swzo.brass.ui.kit.paint.BrassPaint
 import net.swzo.brass.ui.kit.platform.BrassCursor
 import net.swzo.brass.ui.kit.surface.BrassContextMenu
@@ -61,6 +62,17 @@ open class BrassScreen(
         // captureShowcase). Checked here, above the focus guard, so it fires while a field is focused too.
         if (keyCode == GLFW.GLFW_KEY_S && modifiers?.isCtrl == true && modifiers.isShift) {
             captureShowcase()
+            return
+        }
+        if (keyCode == GLFW.GLFW_KEY_L && modifiers?.isCtrl == true && modifiers.isShift) {
+            val findings = BrassLayoutAudit.run(window)
+            println(BrassLayoutAudit.report(findings))
+            val errors = findings.count { it.severity == net.swzo.brass.ui.kit.dev.BrassLayoutRules.Severity.ERROR }
+            BrassToast.show(
+                background,
+                if (findings.isEmpty()) "Layout audit: clean" else "Layout audit: $errors errors, ${findings.size - errors} warnings (see log)",
+                if (errors == 0) BrassToast.Type.SUCCESS else BrassToast.Type.ERROR,
+            )
             return
         }
         // Window shortcuts, routed to the topmost frame (see BrassFrame). Skipped while a text field has
@@ -228,6 +240,8 @@ open class BrassScreen(
         // Widgets request a cursor while hovered; the strongest request wins and is applied once,
         // here, after everything has had its say.
         BrassCursor.apply()
+
+        frameHook?.invoke(this, matrixStack)
     }
 
 
@@ -366,7 +380,10 @@ open class BrassScreen(
         return out
     }
 
-    private companion object {
-        const val EDGE_PAD = 10f
+    companion object {
+        private const val EDGE_PAD = 10f
+
+        @JvmStatic
+        var frameHook: ((BrassScreen, UMatrixStack) -> Unit)? = null
     }
 }

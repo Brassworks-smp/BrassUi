@@ -15,6 +15,7 @@ import net.swzo.brass.ui.kit.input.BrassButton
 import net.swzo.brass.ui.kit.input.BrassDropdown
 import net.swzo.brass.ui.kit.input.BrassSlider
 import net.swzo.brass.ui.kit.input.BrassToggle
+import net.swzo.brass.ui.kit.text.BrassFont
 import net.swzo.brass.ui.kit.text.BrassLabel
 import net.swzo.brass.ui.kit.text.BrassTag
 import net.swzo.brass.ui.kit.text.BrassTextInput
@@ -148,8 +149,11 @@ class BrassForm(
     fun addToggleRow(label: String, initial: Boolean, onChange: (Boolean) -> Unit = {}): BrassForm {
         val t = register(label, BrassToggle(initial, onChange))
         val row = UIContainer().constrain { height = 18.pixels() }
-        caption(label).constrain { x = 0.pixels(); y = CenterConstraint() } childOf row
-        t.constrain { x = 0.pixels(true); y = CenterConstraint(); width = 40.pixels(); height = 18.pixels() } childOf row
+        caption(label).constrain {
+            x = 0.pixels(); y = CenterConstraint()
+            width = basicWidthConstraint { c -> minOf(BrassFont.width(c, label), (row.getWidth() - TOGGLE_W - 6f).coerceAtLeast(0f)) }
+        } childOf row
+        t.constrain { x = 0.pixels(true); y = CenterConstraint(); width = TOGGLE_W.pixels(); height = 18.pixels() } childOf row
         // The whole row drives the toggle, as a settings row should - the caption is inside it, so a
         // click on the words bubbles up to here. Binding only the row (not the caption too) is what
         // keeps a click from firing twice and cancelling itself out. See BrassProxy.
@@ -244,5 +248,6 @@ class BrassForm(
         private const val SCROLLBAR_GAP = 3f
 
         private const val MIN_CONTROL = 76f
+        private const val TOGGLE_W = 40f
     }
 }

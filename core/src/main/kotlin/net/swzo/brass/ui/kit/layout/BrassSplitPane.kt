@@ -100,6 +100,7 @@ class BrassSplitPane(
     private val grip = Grip()
 
     init {
+        net.swzo.brass.ui.kit.dev.BrassLayoutAudit.allow(grip, "overlap", "split-pane grip straddles the divider")
         // The card is painted by drawContent, not by the keycap machinery: a split pane is a surface,
         // not a control, and must not gain a hover tint or press travel.
         chrome = BrassChrome.NONE

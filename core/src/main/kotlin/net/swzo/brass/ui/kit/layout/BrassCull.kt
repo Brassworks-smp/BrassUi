@@ -1,5 +1,7 @@
 package net.swzo.brass.ui.kit.layout
 
+import net.swzo.brass.ui.kit.base.BrassInert
+
 import gg.essential.elementa.UIComponent
 import gg.essential.elementa.components.ScrollComponent
 import gg.essential.elementa.effects.ScissorEffect
@@ -45,6 +47,10 @@ object BrassCull {
             val parent = node.parent
             if (parent === node) {
                 out.intersect(node.getLeft(), node.getTop(), node.getRight(), node.getBottom())
+                break
+            }
+            if (parent is BrassInert && parent.inert) {
+                out.mutate(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY)
                 break
             }
             // A scroll view clips, and so does anything carrying a ScissorEffect - a collapsed
