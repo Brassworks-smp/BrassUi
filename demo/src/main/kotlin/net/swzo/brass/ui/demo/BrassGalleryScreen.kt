@@ -1,6 +1,7 @@
 package net.swzo.brass.ui.demo
 
 import gg.essential.elementa.components.ScrollComponent
+import gg.essential.elementa.UIComponent
 import gg.essential.elementa.components.UIContainer
 import gg.essential.elementa.constraints.CenterConstraint
 import gg.essential.elementa.constraints.SiblingConstraint
@@ -215,6 +216,7 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             add("Feedback" to { openFeedback() })
             add("Chat" to { openChat() })
             add("Layout" to { openLayout() })
+            add("Navigation" to { openNavigation() })
             add("Sections" to { openSections() })
             add("Data" to { openData() })
             add("Appearance" to { openAppearance() })
@@ -622,6 +624,40 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
     }
 
     private data class Player(val name: String, val ping: Int, val state: String)
+
+    /** BrassNavStack: rows open a deeper level that slides in; back slides it away, the list as it was. */
+    private fun openNavigation() {
+        val b = popupBounds(340f, 300f)
+        val nav = net.swzo.brass.ui.kit.layout.BrassNavStack()
+        fun level(title: String, depth: Int): UIComponent {
+            val box = UIContainer()
+            val header = net.swzo.brass.ui.kit.layout.BrassHBox(gap = 4f)
+            if (depth > 0) header.add(net.swzo.brass.ui.kit.input.BrassSquareButton(net.swzo.brass.ui.kit.media.BrassIcons.ARROW_LEFT) { nav.pop() }
+                .also { it.constrain { width = 18.pixels(); height = 18.pixels() } })
+            header.add(net.swzo.brass.ui.kit.text.BrassLabel(title).also { it.constrain { y = 5.pixels() } })
+            header.constrain { x = 0.pixels(); y = 0.pixels() } childOf box
+            val pages = net.swzo.brass.ui.kit.layout.BrassPages(lazy = false)
+            for (tab in listOf("Rows", "More")) {
+                pages.page(tab) { root ->
+                    val list = net.swzo.brass.ui.kit.layout.BrassScrollArea.list()
+                        .constrain { x = 0.pixels(); y = 0.pixels(); width = 100.percent(); height = 100.percent() } childOf root
+                    BrassLayoutAudit.allow(list.body, "nested-scroll", "fixed-height navigation demo inside a popup form")
+                    for (i in 1..14) {
+                        val name = "$tab ${depth + 1}.$i"
+                        list.add(net.swzo.brass.ui.kit.surface.BrassListRow(name, "opens level ${depth + 2}", onClick = { _ -> nav.push(level(name, depth + 1)) }))
+                    }
+                }
+            }
+            val tabs = pages.tabs()
+            tabs.constrain { x = 0.pixels(); y = 22.pixels(); width = basicWidthConstraint { tabs.contentWidth() }; height = 18.pixels() } childOf box
+            pages.constrain { x = 0.pixels(); y = 44.pixels(); width = 100.percent(); height = 100.percent() - 44.pixels() } childOf box
+            return box
+        }
+        nav.push(level("Places", 0), animate = false)
+        BrassPopup("Navigation")
+            .addField("Drill-down (tab and scroll survive going back)", nav.also { it.constrain { height = 200.pixels() } })
+            .show(background, b[0], b[1], b[2], b[3])
+    }
 
     private fun openFeedback() {
         val b = popupBounds(340f, 340f)
