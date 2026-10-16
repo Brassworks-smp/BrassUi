@@ -9,7 +9,6 @@ import gg.essential.elementa.dsl.constrain
 import gg.essential.elementa.dsl.minus
 import gg.essential.elementa.dsl.percent
 import gg.essential.elementa.dsl.pixels
-import gg.essential.universal.UScreen
 import net.swzo.brass.ui.kit.layout.BrassSpacing
 import net.swzo.brass.ui.kit.surface.BrassWindow
 import java.awt.Color
@@ -67,7 +66,7 @@ open class BrassAppScreen @JvmOverloads constructor(
     }
 
     protected open fun onCloseRequested() {
-        UScreen.displayScreen(null)
+        goBack()
     }
 
     companion object {

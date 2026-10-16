@@ -34,8 +34,8 @@ import kotlin.math.roundToInt
  * add their content to [background]. A translucent backdrop lets the running game show through
  * ([SEE_THROUGH]); [over] opens the screen above another one (a map, say), drawn beneath it.
  *
- * Escape (once nothing is layered over the screen) closes it straight back to the game: see
- * [escapeClosesToGame].
+ * Escape (once nothing is layered over the screen) closes it straight back to the game, or to the
+ * screen it opened over: see [escapeClosesToGame] and [goBack].
  */
 open class BrassScreen(
     backdropColor: Color? = null,
@@ -54,6 +54,15 @@ open class BrassScreen(
      * own handling, for a screen that returns somewhere else).
      */
     var escapeClosesToGame: Boolean = true
+
+    /**
+     * Closes this screen: back to the one it opened over ([over]: a map stays open), else to the game.
+     * Escape and a window's close button both end up here.
+     */
+    fun goBack() {
+        val back = under
+        if (back == null || BrassPlatform.current?.showScreen(back) != true) UScreen.displayScreen(null)
+    }
 
     /** The screen drawn beneath this one (a platform screen object), see [over]. */
     var under: Any? = null
@@ -181,7 +190,7 @@ open class BrassScreen(
             // node editor consumes the key and Escape would otherwise never close the screen.
             if (shouldCloseOnEsc()) {
                 if (escapeClosesToGame) {
-                    gg.essential.elementa.components.Window.enqueueRenderOperation { UScreen.displayScreen(null) }
+                    gg.essential.elementa.components.Window.enqueueRenderOperation { goBack() }
                 } else {
                     onClose()
                 }

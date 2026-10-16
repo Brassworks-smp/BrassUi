@@ -614,6 +614,12 @@ object NeoForgePlatform : BrassPlatform {
      * between a snippet that works in a scroll view inside a dragged window and one that only works at
      * the origin.
      */
+    override fun showScreen(screen: Any): Boolean {
+        val s = screen as? net.minecraft.client.gui.screens.Screen ?: return false
+        Minecraft.getInstance().setScreen(s)
+        return true
+    }
+
     override fun drawScreenUnder(screen: Any, matrixStack: UMatrixStack, partialTicks: Float): Boolean {
         //? if >=26.1 {
         /*return false*/

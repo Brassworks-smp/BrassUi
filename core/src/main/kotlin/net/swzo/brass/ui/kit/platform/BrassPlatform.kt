@@ -124,6 +124,9 @@ interface BrassPlatform {
      */
     fun drawScreenUnder(screen: Any, matrixStack: UMatrixStack, partialTicks: Float): Boolean = false
 
+    /** Shows one of the platform's screens again (the one a screen opened over). False when it can't. */
+    fun showScreen(screen: Any): Boolean = false
+
     companion object {
         var current: BrassPlatform? = null
             private set
