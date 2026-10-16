@@ -101,6 +101,11 @@ class BrassTabSwitch(
         return (measured[index] + PAD * 2f).coerceAtLeast(MIN_W)
     }
 
+    /** A tooltip on one tab: its [title] (usually the tab's label) and what the tab holds. */
+    fun tooltip(index: Int, title: String, body: String? = null): BrassTabSwitch = apply {
+        tabs.getOrNull(index)?.let { net.swzo.brass.ui.kit.surface.BrassTooltip.attach(it, title, body?.ifEmpty { null }) }
+    }
+
     fun contentWidth(): Float {
         if (options.isEmpty()) return 0f
         var total = 0f

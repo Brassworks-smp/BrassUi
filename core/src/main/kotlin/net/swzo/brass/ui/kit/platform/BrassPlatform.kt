@@ -118,6 +118,12 @@ interface BrassPlatform {
      */
     fun flushText() {}
 
+    /**
+     * Draws another of the platform's screens ([screen]: the one a [net.swzo.brass.ui.BrassScreen]
+     * opened over) as it draws itself, beneath the current one. False when it can't.
+     */
+    fun drawScreenUnder(screen: Any, matrixStack: UMatrixStack, partialTicks: Float): Boolean = false
+
     companion object {
         var current: BrassPlatform? = null
             private set

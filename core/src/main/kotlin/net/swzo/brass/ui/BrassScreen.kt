@@ -13,6 +13,7 @@ import gg.essential.universal.UKeyboard
 import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.kit.base.*
 import net.swzo.brass.ui.kit.platform.BrassPlatform
+import gg.essential.universal.UScreen
 import net.swzo.brass.ui.kit.demo.BrassDemoCapture
 import net.swzo.brass.ui.kit.dev.BrassDevMode
 import net.swzo.brass.ui.kit.dev.BrassLayoutAudit
@@ -30,16 +31,45 @@ import kotlin.math.roundToInt
 
 /**
  * Base Elementa screen with a full-bleed [backdropColor] already laid into the window; subclasses
- * add their content to [background]. A translucent backdrop lets the running game show through.
+ * add their content to [background]. A translucent backdrop lets the running game show through
+ * ([SEE_THROUGH]); [over] opens the screen above another one (a map, say), drawn beneath it.
+ *
+ * Escape (once nothing is layered over the screen) closes it straight back to the game: see
+ * [escapeClosesToGame].
  */
 open class BrassScreen(
-    private val backdropColor: Color? = null,
+    backdropColor: Color? = null,
 // The Elementa render version is chosen by the bound platform (V8 on 1.21.x / desktop, V11 on the MC
 // 26.x retained-mode renderer where translucency needs the newer BlendState.ALPHA compositing). The
 // platform is bound at client setup, before any screen opens; unbound (a raw construction) keeps V8.
 ) : WindowScreen(BrassPlatform.current?.renderVersion ?: ElementaVersion.V8, drawDefaultBackground = false) {
 
-    private val backdrop: UIBlock = UIBlock(basicColorConstraint { backdropColor ?: Colors.UI_BACKGROUND }).constrain {
+    /** The colour behind the content: null is the theme's solid background; see [SEE_THROUGH]. */
+    var backdropColor: Color? = backdropColor
+
+    /**
+     * Escape closes the screen back to the game (the default). Closing inside the key press let the
+     * same Escape fall through to the game, which opened the pause menu; the close now waits for the
+     * next frame, so the key is spent on this screen. False: Escape calls [onClose] at once (UScreen's
+     * own handling, for a screen that returns somewhere else).
+     */
+    var escapeClosesToGame: Boolean = true
+
+    /** The screen drawn beneath this one (a platform screen object), see [over]. */
+    var under: Any? = null
+        private set
+
+    /**
+     * Opens this screen above [screen] (the platform's screen it was opened from, a map, say): that one
+     * keeps drawing beneath, through a see-through backdrop ([dim], [SEE_THROUGH] unless given).
+     */
+    @JvmOverloads
+    fun over(screen: Any?, dim: Color = SEE_THROUGH): BrassScreen = apply {
+        under = screen
+        if (screen != null) backdropColor = dim
+    }
+
+    private val backdrop: UIBlock = UIBlock(basicColorConstraint { this.backdropColor ?: Colors.UI_BACKGROUND }).constrain {
         width = 100.percent()
         height = 100.percent()
     } childOf window
@@ -150,7 +180,11 @@ open class BrassScreen(
             // to the superclass, which dispatches it to the focused component first - a focused canvas or
             // node editor consumes the key and Escape would otherwise never close the screen.
             if (shouldCloseOnEsc()) {
-                onClose()
+                if (escapeClosesToGame) {
+                    gg.essential.elementa.components.Window.enqueueRenderOperation { UScreen.displayScreen(null) }
+                } else {
+                    onClose()
+                }
                 return
             }
         }
@@ -203,6 +237,9 @@ open class BrassScreen(
         BrassLifecycle.sweep()
         BrassStats.beginFrame(window)
         BrassTooltip.cursor(mouseX.toFloat(), mouseY.toFloat())
+
+        // The screen this one opened over, as it draws itself (no mouse: nothing under there is hovered).
+        under?.let { BrassPlatform.current?.drawScreenUnder(it, matrixStack, partialTicks) }
 
         // Attach/detach the docked dev panel before the tree draws, so it renders as part of the normal
         // pass (under a BrassDevLayer that keeps it out of the stats) and shrinks the content beside it.
@@ -381,6 +418,10 @@ open class BrassScreen(
     }
 
     companion object {
+        /** A dim the game (or the screen beneath) shows through: for menus over the world or a map. */
+        @JvmField
+        val SEE_THROUGH = Color(8, 8, 10, 120)
+
         private const val EDGE_PAD = 10f
 
         @JvmStatic

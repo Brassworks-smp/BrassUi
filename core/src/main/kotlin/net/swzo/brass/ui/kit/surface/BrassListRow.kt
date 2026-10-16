@@ -120,15 +120,17 @@ class BrassListRow @JvmOverloads constructor(
         } childOf this
     }
 
+    /** A trailing key: [tooltip] names it, [detail] (optional) says what pressing it does. */
     fun action(
         icon: BrassIcons.Icon,
         tooltip: String,
         accent: BrassAccent = BrassAccent.DEFAULT,
+        detail: String? = null,
         onPress: () -> Unit,
     ): BrassListRow = apply {
         val key = BrassSquareButton(icon, accent) { onPress() }
         key.entranceEnabled = false
-        BrassTooltip.attach(key, tooltip)
+        BrassTooltip.attach(key, tooltip, detail?.ifEmpty { null })
         val index = actions.size
         key.constrain {
             x = basicXConstraint { actionHolder.getLeft() + index * (KEY_W + KEY_GAP) }

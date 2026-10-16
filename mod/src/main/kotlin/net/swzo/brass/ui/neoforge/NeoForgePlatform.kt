@@ -614,6 +614,31 @@ object NeoForgePlatform : BrassPlatform {
      * between a snippet that works in a scroll view inside a dragged window and one that only works at
      * the origin.
      */
+    override fun drawScreenUnder(screen: Any, matrixStack: UMatrixStack, partialTicks: Float): Boolean {
+        //? if >=26.1 {
+        /*return false*/
+        //?} else {
+        val s = screen as? net.minecraft.client.gui.screens.Screen ?: return false
+        val mc = Minecraft.getInstance()
+        val w = mc.window.guiScaledWidth
+        val h = mc.window.guiScaledHeight
+        // Laid out for this window size (it may have been resized while it was hidden).
+        if (s.width != w || s.height != h) s.init(mc, w, h)
+        val graphics = GuiGraphics(mc, mc.renderBuffers().bufferSource())
+        return try {
+            // Off-screen mouse: nothing beneath is hovered while this screen is on top.
+            s.render(graphics, -1000, -1000, partialTicks)
+            graphics.flush()
+            true
+        } catch (_: Throwable) {
+            false
+        } finally {
+            // Whatever it drew in depth must not hide the UI drawn over it.
+            RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX)
+        }
+        //?}
+    }
+
     override fun drawNative(
         matrixStack: UMatrixStack,
         x: Float,
