@@ -69,7 +69,7 @@ class BrassContextMenu private constructor(
         searchBandH = if (showSearch) SEARCH_AREA_H else 0f
     }
 
-    private val panel = Panel()
+    private val panel = Panel().also { net.swzo.brass.ui.kit.dev.BrassLayoutAudit.allow(it, "overlap", "the menu's background") }
     private var root: UIComponent? = null
 
     var onDismiss: (() -> Unit)? = null

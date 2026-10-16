@@ -72,6 +72,8 @@ class BrassTextInput(
 
     var onSubmit: ((String) -> Unit)? = null
 
+    var onInputKey: ((typedChar: Char, keyCode: Int) -> Boolean)? = null
+
     private val edit = BrassTextEdit(
         multiline = false,
         read = { holder.value },
@@ -127,6 +129,7 @@ class BrassTextInput(
         onKeyType { typedChar, keyCode ->
             // only the focused field edits - Elementa hands key events to the whole tree otherwise
             if (!active || !focused) return@onKeyType
+            if (onInputKey?.invoke(typedChar, keyCode) == true) return@onKeyType
             // Re-clamp before every edit: caret/anchor/scroll are indices into `text` but are also
             // touched from click handling and from drawing, and an interrupted frame can leave them
             // stale. An out-of-range index here means substring/removeRange throws.
