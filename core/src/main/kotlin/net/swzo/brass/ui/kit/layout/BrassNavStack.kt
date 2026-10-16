@@ -37,7 +37,8 @@ import net.swzo.brass.ui.kit.text.BrassTextField
  * ```
  * Each level is any component; the stack sizes it to fill itself. Motion follows [BrassFrameAnim]'s
  * approach: it is drawn through the matrix (no relayout per frame), so hit-testing uses the resting
- * bounds during the ~200 ms a transition runs.
+ * bounds during the ~400 ms a transition runs (eased in and out; the old level fades out in its
+ * first third).
  */
 class BrassNavStack : UIContainer() {
 
@@ -220,8 +221,10 @@ class BrassNavStack : UIContainer() {
 
     override fun animationFrame() {
         if (direction != 0) {
-            progress += (1f - progress) * (SPEED * BrassClock.dt).coerceAtMost(1f)
-            if (1f - progress < 0.004f) land() else apply()
+            // Linear in time; the curve is applied in [apply] (an exponential approach front-loads all
+            // the motion into the first frames and reads as a snap).
+            progress = (progress + BrassClock.dt / DURATION).coerceAtMost(1f)
+            if (progress >= 1f) land() else apply()
         } else if (top?.phase == BrassEntrance.Phase.SETTLING && System.nanoTime() - settledAt > SETTLE_NANOS) {
             top?.phase = BrassEntrance.Phase.IDLE
         }
@@ -231,19 +234,23 @@ class BrassNavStack : UIContainer() {
     /** Lays the moving levels out for the current [progress]. */
     private fun apply() {
         val w = getWidth()
-        val t = 1f - (1f - progress) * (1f - progress) * (1f - progress) // ease-out cubic
+        val t = smooth(progress)
+        // The level being covered (or leaving) is gone by OUT of the way; the arriving one fades in
+        // over the first IN of it, so the two never sit half-visible on top of each other.
+        val out = 1f - (progress / OUT).coerceIn(0f, 1f)
+        val inn = smooth((progress / IN).coerceIn(0f, 1f))
         val under = levels.getOrNull(levels.size - 2)
         val onTop = top
         when (direction) {
             +1 -> {
                 // The new top comes in from the right edge; the one it covers drifts left and dims.
-                onTop?.apply { shown = true; dx = (1f - t) * w; fade = t; phase = BrassEntrance.Phase.OPENING }
-                under?.apply { shown = true; dx = -t * w * DRIFT; fade = 1f - t * DIM }
+                onTop?.apply { shown = true; dx = (1f - t) * w; fade = inn; phase = BrassEntrance.Phase.OPENING }
+                under?.apply { shown = out > 0f; dx = -t * w * DRIFT; fade = out * out }
             }
             -1 -> {
                 // The leaving level goes back out to the right; the one under it returns from the left.
-                leaving?.apply { shown = true; dx = t * w; fade = 1f - t; phase = BrassEntrance.Phase.IDLE }
-                onTop?.apply { shown = true; dx = -(1f - t) * w * DRIFT; fade = 1f - (1f - t) * DIM; phase = BrassEntrance.Phase.IDLE }
+                leaving?.apply { shown = out > 0f; dx = t * w; fade = out * out; phase = BrassEntrance.Phase.IDLE }
+                onTop?.apply { shown = true; dx = -(1f - t) * w * DRIFT; fade = inn; phase = BrassEntrance.Phase.IDLE }
                 under?.shown = false
             }
             else -> {}
@@ -262,11 +269,16 @@ class BrassNavStack : UIContainer() {
     }
 
     private companion object {
-        /** Settles in ~200 ms. */
-        const val SPEED = 16f
-        /** How far (of the width) the covered level drifts left, and how much it dims. */
-        const val DRIFT = 0.3f
-        const val DIM = 0.6f
+        /** How long a slide takes, in seconds. */
+        const val DURATION = 0.42f
+        /** How far (of the width) the covered level drifts left. */
+        const val DRIFT = 0.25f
+        /** By what share of the slide the old level has faded out, and the new one in. */
+        const val OUT = 0.35f
+        const val IN = 0.6f
+
+        /** Ease in-out (quintic smootherstep): starts gently, glides, settles without a jolt. */
+        fun smooth(x: Float): Float = x * x * x * (x * (x * 6f - 15f) + 10f)
 
         val SETTLE_NANOS: Long = ((BrassWidget.ENTRANCE_DELAY_MAX + 1f / BrassWidget.ENTRANCE_SPEED) * 1e9f).toLong()
     }
