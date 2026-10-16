@@ -55,6 +55,8 @@ abstract class BrassPlatformVisual(accent: BrassAccent = BrassAccent.DEFAULT) : 
         )
     }
 
+    protected open fun paintUnbound(m: UMatrixStack, x: Float, y: Float, w: Float, h: Float, fade: Float): Boolean = false
+
     protected open fun contentBox(x: Int, y: Int, w: Int, h: Int): FloatArray =
         floatArrayOf(x.toFloat(), y.toFloat(), w.toFloat(), h.toFloat())
 
@@ -64,9 +66,11 @@ abstract class BrassPlatformVisual(accent: BrassAccent = BrassAccent.DEFAULT) : 
         val box = contentBox(x, y, w, h)
 
         val drawn = hidden || box[2] <= 0f || box[3] <= 0f || run {
-            val platform = BrassPlatform.current ?: return@run false
-            runCatching { paintNative(m, platform, box[0], box[1], box[2], box[3], fade) }
-                .getOrDefault(false)
+            val platform = BrassPlatform.current
+            runCatching {
+                if (platform == null) paintUnbound(m, box[0], box[1], box[2], box[3], fade)
+                else paintNative(m, platform, box[0], box[1], box[2], box[3], fade)
+            }.getOrDefault(false)
         }
 
         if (!drawn) paintPlaceholder(m, x, y, w, h)

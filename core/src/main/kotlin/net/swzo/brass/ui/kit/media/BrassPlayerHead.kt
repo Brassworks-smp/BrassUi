@@ -8,6 +8,7 @@ import gg.essential.universal.UMatrixStack
 import net.swzo.brass.ui.kit.base.BrassAccent
 import net.swzo.brass.ui.kit.base.BrassAmbientFade
 import net.swzo.brass.ui.kit.base.BrassStats
+import net.swzo.brass.ui.kit.net.BrassSkins
 import net.swzo.brass.ui.kit.net.BrassworksProfile
 import net.swzo.brass.ui.kit.platform.BrassPlatform
 import net.swzo.brass.ui.kit.surface.BrassTooltip
@@ -61,6 +62,7 @@ class BrassPlayerHead(
             // Drop whatever the old key resolved to, so nothing stale draws for the new player.
             profileFuture = null
             avatarFuture = null
+            remoteFace = null
             texture = null
             resolvedName = null
         }
@@ -70,6 +72,7 @@ class BrassPlayerHead(
     // BRASSWORKS resolution, in two hops: key -> profile (name + avatar url) -> decoded avatar image.
     private var profileFuture: CompletableFuture<BrassworksProfile.Profile?>? = null
     private var avatarFuture: CompletableFuture<BufferedImage?>? = null
+    private var remoteFace: CompletableFuture<BufferedImage?>? = null
 
     /**
      * The uploaded avatar texture, built on the first frame after the download lands.
@@ -108,12 +111,23 @@ class BrassPlayerHead(
         h: Float,
         fade: Float,
     ): Boolean = when (source) {
-        Source.GAME -> platform.drawPlayerFace(m, player, x, y, w, fade)
-        Source.BRASSWORKS -> paintBrassworks(m, x, y, w, h, fade)
+        Source.GAME -> platform.drawPlayerFace(m, player, x, y, w, fade) || paintImage(m, remoteImage(), x, y, w, h, fade)
+        Source.REMOTE -> paintImage(m, remoteImage(), x, y, w, h, fade)
+        Source.BRASSWORKS -> paintImage(m, avatarImage(), x, y, w, h, fade)
     }
 
-    private fun paintBrassworks(m: UMatrixStack, x: Float, y: Float, w: Float, h: Float, fade: Float): Boolean {
-        val image = avatarImage() ?: return false
+    override fun paintUnbound(m: UMatrixStack, x: Float, y: Float, w: Float, h: Float, fade: Float): Boolean =
+        paintImage(m, if (source == Source.BRASSWORKS) avatarImage() else remoteImage(), x, y, w, h, fade)
+
+    private fun remoteImage(): BufferedImage? {
+        val f = remoteFace ?: BrassSkins.face(player).also { remoteFace = it }
+        if (!f.isDone) return null
+        if (resolvedName == null) BrassSkins.load(player).getNow(null)?.name?.let { resolvedName = it }
+        return f.getNow(null)
+    }
+
+    private fun paintImage(m: UMatrixStack, image: BufferedImage?, x: Float, y: Float, w: Float, h: Float, fade: Float): Boolean {
+        if (image == null) return false
         val tex = texture ?: UIImage(CompletableFuture.completedFuture(image)).also {
             // Nearest-neighbour: a face is pixel art, and linear filtering turns its edges to mush at
             // GUI scale.
@@ -145,17 +159,19 @@ class BrassPlayerHead(
     enum class Source {
         GAME,
 
+        REMOTE,
+
         BRASSWORKS,
     }
 
     companion object : BrassDemoSource {
 
 
-        override fun demo() = BrassDemo("player-head", "Player head", 36f, 36f, worldRequired = true) {
+        override fun demo() = BrassDemo("player-head", "Player head", 36f, 36f) {
             BrassPlayerHead(DEMO_PLAYER, size = 32f)
         }
 
-        private const val DEMO_PLAYER = "Dev"
+        private const val DEMO_PLAYER = "Notch"
 
         const val DEFAULT_SIZE = 18f
 
