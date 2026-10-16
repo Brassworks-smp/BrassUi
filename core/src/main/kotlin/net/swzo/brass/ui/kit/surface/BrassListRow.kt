@@ -161,7 +161,7 @@ class BrassListRow @JvmOverloads constructor(
 
     override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
         val fx = x.toFloat(); val fy = y.toFloat()
-        val hot = (hoveredState || proxyHovered) && active && (onClick != null || onContextMenu != null)
+        val hot = (hoveredState || proxyHovered) && active
         when {
             selected -> {
                 BrassPaint.rect(m, fx, fy, fx + w, fy + h, withAlpha(Colors.UI_INNER_BG_SELECTED, entranceFade))
