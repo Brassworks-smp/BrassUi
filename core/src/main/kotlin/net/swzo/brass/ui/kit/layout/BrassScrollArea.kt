@@ -42,6 +42,11 @@ open class BrassScrollArea @JvmOverloads constructor(
     alwaysShowBar: Boolean = false,
     private val gap: Float = 6f,
     private val bleed: Boolean = true,
+    /**
+     * Keep the scrollbar's gutter free (the default). False: content runs to the right edge and the bar,
+     * when there is one, draws over it - for short lists that rarely scroll (a nav rail).
+     */
+    private val reserveBar: Boolean = true,
 ) : UIContainer() {
 
     val body: ScrollComponent
@@ -56,7 +61,7 @@ open class BrassScrollArea @JvmOverloads constructor(
             y = 0.pixels()
             // Reserve the bar's gutter rather than letting it overlay the content: the body scissors to
             // its own bounds, so a bar drawn on top would sit over the right edge of every row.
-            width = 100.percent() - (BrassScrollbar.WIDTH + scrollbarGap).pixels()
+            width = if (reserveBar) 100.percent() - (BrassScrollbar.WIDTH + scrollbarGap).pixels() else 100.percent()
             height = 100.percent()
         } childOf this
 

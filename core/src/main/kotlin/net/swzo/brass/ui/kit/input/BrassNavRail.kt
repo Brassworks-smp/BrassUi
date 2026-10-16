@@ -1,6 +1,7 @@
 package net.swzo.brass.ui.kit.input
 
 import gg.essential.elementa.constraints.SiblingConstraint
+import gg.essential.elementa.dsl.basicYConstraint
 import gg.essential.elementa.dsl.childOf
 import gg.essential.elementa.dsl.constrain
 import gg.essential.elementa.dsl.minus
@@ -16,12 +17,18 @@ import net.swzo.brass.ui.kit.demo.BrassDemo
 import net.swzo.brass.ui.kit.demo.BrassDemoSource
 import net.swzo.brass.ui.kit.layout.BrassScrollArea
 
+/**
+ * A vertical list of sections, one selected. The last [pinnedBottom] items sit at the bottom of the rail
+ * (Settings, Log out…), the rest from the top. Rows run to the rail's right edge: the scrollbar draws
+ * over them in the rare rail that scrolls.
+ */
 class BrassNavRail @JvmOverloads constructor(
     private val items: List<String>,
     initialIndex: Int = 0,
     private val rowHeight: Float = ROW_H,
     private val onChange: (Int) -> Unit = {},
-) : BrassScrollArea(), BrassValue<Int> {
+    private val pinnedBottom: Int = 0,
+) : BrassScrollArea(reserveBar = false), BrassValue<Int> {
 
     private val rows = ArrayList<BrassButton>()
 
@@ -36,6 +43,7 @@ class BrassNavRail @JvmOverloads constructor(
     override fun bind(state: BrassState<Int>) = holder.bind(this, state)
 
     init {
+        val top = items.size - pinnedBottom.coerceIn(0, items.size)
         items.forEachIndexed { i, label ->
             val row = BrassButton(label, BrassAccent.DEFAULT) { value = i }.apply {
                 centered = false
@@ -44,8 +52,17 @@ class BrassNavRail @JvmOverloads constructor(
             }
             row.constrain {
                 x = 0.pixels()
-                y = if (i == 0) 0.pixels() else SiblingConstraint(GAP)
-                width = 100.percent() - (BrassWidget.BLEED_X * 2).pixels()
+                y = when {
+                    i == 0 -> 0.pixels()
+                    i < top -> SiblingConstraint(GAP)
+                    // Pinned: from the bottom of what's visible, never over the rows above.
+                    else -> basicYConstraint {
+                        val fromBottom = (items.size - i) * (rowHeight + GAP) - GAP + BrassWidget.BLEED_BOTTOM
+                        val above = rows.getOrNull(i - 1)?.let { it.getBottom() + GAP } ?: content.getTop()
+                        maxOf(above, body.getTop() + body.getHeight() - fromBottom)
+                    }
+                }
+                width = 100.percent()
                 height = rowHeight.pixels()
             } childOf content
             rows.add(row)

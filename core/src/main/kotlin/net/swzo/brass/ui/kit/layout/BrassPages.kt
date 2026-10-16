@@ -94,8 +94,10 @@ class BrassPages @JvmOverloads constructor(
         return tabs
     }
 
-    fun navRail(): BrassNavRail {
-        val rail = BrassNavRail(all.map { it.title })
+    /** A nav rail over the pages; the last [pinnedBottom] sit at its bottom (Settings, say). */
+    @JvmOverloads
+    fun navRail(pinnedBottom: Int = 0): BrassNavRail {
+        val rail = BrassNavRail(all.map { it.title }, pinnedBottom = pinnedBottom)
         rail.bind(selection)
         return rail
     }
