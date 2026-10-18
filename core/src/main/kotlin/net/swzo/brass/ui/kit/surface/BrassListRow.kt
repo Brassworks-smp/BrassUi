@@ -110,6 +110,26 @@ class BrassListRow @JvmOverloads constructor(
         tagStyle = style
     }
 
+    private var badgeComponent: UIComponent? = null
+    private var badgeWidth = 0f
+
+    /**
+     * A small component just before the title, on its line (a rank tag before a player's name): the
+     * title starts after it. [width] is its slot; it is centred on the title's line.
+     */
+    fun badge(component: UIComponent?, width: Float = 0f): BrassListRow = apply {
+        badgeComponent?.let { removeChild(it) }
+        badgeComponent = component
+        badgeWidth = if (component == null) 0f else width
+        component?.constrain {
+            x = basicXConstraint { this@BrassListRow.getLeft() + BrassSpacing.PAD + leadingSlot().let { l -> if (l > 0f) l + BADGE_GAP else 0f } }
+            y = basicYConstraint {
+                val line = if (subtitle != null) TWO_LINE_TOP else floor((this@BrassListRow.getHeight() - BrassFont.LINE) / 2f) + 1f
+                this@BrassListRow.getTop() + line + floor((BrassFont.LINE - component.getHeight()) / 2f) - 1f
+            }
+        }?.let { it childOf this }
+    }
+
     fun leading(component: UIComponent, width: Float): BrassListRow = apply {
         leadingComponent?.let { removeChild(it) }
         leadingWidth = width
@@ -155,7 +175,8 @@ class BrassListRow @JvmOverloads constructor(
 
     private fun solve(): BrassRowLayout.Solved = BrassRowLayout.solve(
         width = getWidth(),
-        leadingW = leadingSlot(),
+        // A badge sits between the leading slot and the title, as if the leading slot were that much wider.
+        leadingW = leadingSlot().let { l -> if (badgeWidth > 0f) (if (l > 0f) l + BADGE_GAP else 0f) + badgeWidth else l },
         metaW = meta?.let { BrassFont.width(this, it) } ?: 0f,
         tagW = tagText?.let { BrassTag.measure(this, it) } ?: 0f,
         actionsW = actionsWidth(),
@@ -203,6 +224,7 @@ class BrassListRow @JvmOverloads constructor(
         const val HEIGHT_TWO_LINE = 26f
 
         private const val ICON = 8f
+        private const val BADGE_GAP = 4f
         private const val KEY_W = 14f
         private const val KEY_H = 11f
         private const val KEY_GAP = 3f
