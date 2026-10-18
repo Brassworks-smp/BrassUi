@@ -42,8 +42,10 @@ import net.swzo.brass.ui.kit.demo.BrassDemoSource
  * to add a decoder plugin to the classpath first.
  * ### Caching
  * Results are cached per URL for the process lifetime, so the same icon in twenty rows is fetched once
- * and reopening a screen costs nothing. The cache holds decoded images, not widgets, so it survives
- * the components that asked for them.
+ * and reopening a screen costs nothing. The cache holds decoded images (and one shared texture each),
+ * not widgets, so it survives the components that asked for them. Remote images are also saved on
+ * disk ([BrassImageLoader.diskDir]) and shown straight away on the next launch while the server is
+ * asked, in the background, whether they changed.
  */
 class BrassImage(
     url: String,
@@ -61,9 +63,13 @@ class BrassImage(
 
     private var pending: CompletableFuture<BufferedImage?> = BrassImageLoader.load(url)
 
+    /** The loader's [BrassImageLoader.generation] when [pending] was taken; a newer one may mean a newer image. */
+    private var generation = BrassImageLoader.generation
+
     /**
-     * The uploaded texture, built on the first frame after the download lands.
-     * Deliberately created during [drawContent] rather than in the loader's callback: [UIImage] uploads
+     * The uploaded texture, shared with every other widget showing the same image
+     * ([BrassImageLoader.texture]), taken on the first frame after the download lands.
+     * Deliberately taken during [drawContent] rather than in the loader's callback: [UIImage] uploads
      * to the GPU, which must happen on the render thread, and the loader completes on a worker.
      */
     private var texture: UIImage? = null
@@ -81,6 +87,11 @@ class BrassImage(
 
     override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
         if (w <= 0 || h <= 0) return
+        if (generation != BrassImageLoader.generation) {
+            // An image was refreshed from its server; pick it up if it is this one.
+            generation = BrassImageLoader.generation
+            BrassImageLoader.load(url).let { if (it !== pending) { pending = it; texture = null } }
+        }
 
         // The image (skeleton, decoded picture or failed mark) is drawn into this inner box. With a card
         // it is the card's interior, inset by the padding; without one it is the whole widget.
@@ -102,13 +113,7 @@ class BrassImage(
             return
         }
 
-        val tex = texture ?: UIImage(CompletableFuture.completedFuture(decoded)).also {
-            // Icons are small and land on the pixel grid; NEAREST keeps them crisp rather than smeared
-            // at the scales a Minecraft GUI runs at.
-            it.textureMinFilter = UIImage.TextureScalingMode.NEAREST
-            it.textureMagFilter = UIImage.TextureScalingMode.NEAREST
-            texture = it
-        }
+        val tex = texture ?: BrassImageLoader.texture(decoded).also { texture = it }
 
         // Fit inside the box, preserving aspect - a stretched mod icon looks worse than a smaller one.
         val scale = min(iw.toFloat() / decoded.width, ih.toFloat() / decoded.height)

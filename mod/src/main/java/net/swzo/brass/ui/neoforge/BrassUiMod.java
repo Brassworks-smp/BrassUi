@@ -26,5 +26,8 @@ public final class BrassUiMod {
         // The CI boot smoke test greps the log for this line (scripts/smoke-boot.sh) — it is the
         // deterministic "the mod actually loaded" marker on both client and dedicated server.
         LOGGER.info("BrassUi loaded");
+        // Images from links are kept between launches in the game folder.
+        net.swzo.brass.ui.kit.media.BrassImageLoader.INSTANCE.setDiskDir(
+                net.neoforged.fml.loading.FMLPaths.GAMEDIR.get().resolve("cache/brassui/images"));
     }
 }
