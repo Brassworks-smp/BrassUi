@@ -21,10 +21,12 @@ import net.swzo.brass.ui.kit.input.BrassTabSwitch
 import net.swzo.brass.ui.kit.text.BrassTextField
 
 /**
- * Pages of which one is shown, switched by [tabs] or a [navRail]. With [slide], switching moves the new
- * page in from the side it sits on (the next tab from the right, a tab before from the left; or from
- * below and above for a rail) while the old one drifts the other way and fades, as [BrassNavStack]'s
- * levels do; drawn through the matrix, so hit-testing uses the resting bounds while it runs.
+ * Pages of which one is shown, switched by [tabs] or a [navRail]. With [slide], a switch the player makes
+ * there moves the new page in from the side it sits on (the next tab from the right, a tab before from the
+ * left; or from below and above for a rail) while the old one drifts the other way and fades. A switch made
+ * in code ([select], [selection], a screen rebuilt with fresh data) lands at once: motion is for what the
+ * player did, never for state changing under them. Drawn through the matrix (whole pixels, so pixel art
+ * stays crisp), so hit-testing uses the resting bounds while it runs.
  */
 class BrassPages @JvmOverloads constructor(
     private val lazy: Boolean = true,
@@ -120,6 +122,7 @@ class BrassPages @JvmOverloads constructor(
 
     fun tabs(equalWidths: Boolean = false): BrassTabSwitch {
         val tabs = BrassTabSwitch(all.map { it.title }, selection.value.coerceAtLeast(0), equalWidths = equalWidths)
+        tabs.onChange { picked = it } // before the binding: the player's pick is known when the selection moves
         tabs.bind(selection)
         tabs.shrinkToFit = true
         return tabs
@@ -132,12 +135,18 @@ class BrassPages @JvmOverloads constructor(
     @JvmOverloads
     fun navRail(pinnedBottom: Int = 0, pinnedTop: Int = 0): BrassNavRail {
         val rail = BrassNavRail(all.map { it.title }, pinnedBottom = pinnedBottom, pinnedTop = pinnedTop)
+        rail.onChange { picked = it }
         rail.bind(selection)
         return rail
     }
 
+    /** The page the player just picked on the tabs or the rail (the next selection change is theirs). */
+    private var picked = -1
+
     private fun apply(index: Int) {
         finish()
+        val byPlayer = picked == index
+        picked = -1
         val from = all.indexOfFirst { it.active }
         all.forEachIndexed { i, page ->
             val live = i == index
@@ -145,7 +154,7 @@ class BrassPages @JvmOverloads constructor(
             page.active = live
             if (live) page.ensureBuilt()
         }
-        if (slide != Slide.NONE && from >= 0 && from != index && index in all.indices && getWidth() > 0f && getHeight() > 0f) {
+        if (byPlayer && slide != Slide.NONE && from >= 0 && from != index && index in all.indices && getWidth() > 0f && getHeight() > 0f) {
             leaving = all[from].also { it.leaving = true }
             direction = if (index > from) 1 else -1
             progress = 0f
@@ -170,15 +179,19 @@ class BrassPages @JvmOverloads constructor(
         super.animationFrame()
     }
 
-    /** The arriving page from its side, the leaving one drifting the other way and fading out early. */
+    /**
+     * The arriving page glides in from its side on a spring (quick to start, a long gentle settle, no
+     * bounce), the leaving one drifts a little the other way and fades out early, so the two are never
+     * half-seen over each other. Offsets snap to whole pixels.
+     */
     private fun layoutSlide() {
         val size = if (slide == Slide.VERTICAL) getHeight() else getWidth()
-        val t = smooth(progress)
-        val out = 1f - (progress / OUT).coerceIn(0f, 1f)
+        val t = spring(progress)
+        val out = 1f - smooth((progress / OUT).coerceIn(0f, 1f))
         val inn = smooth((progress / IN).coerceIn(0f, 1f))
         val arriving = current
-        val arrive = direction * (1f - t) * size
-        val drift = -direction * t * size * DRIFT
+        val arrive = Math.round(direction * (1f - t) * size * TRAVEL).toFloat()
+        val drift = Math.round(-direction * t * size * DRIFT).toFloat()
         arriving?.apply {
             if (slide == Slide.VERTICAL) { dy = arrive; dx = 0f } else { dx = arrive; dy = 0f }
             fade = inn
@@ -203,14 +216,26 @@ class BrassPages @JvmOverloads constructor(
     }
 
     private companion object {
-        /** A tab switch is quicker than a drill-down (BrassNavStack's 0.42 s). */
-        const val DURATION = 0.3f
-        const val DRIFT = 0.25f
-        const val OUT = 0.35f
-        const val IN = 0.6f
+        /** How long a switch takes, in seconds: unhurried, most of it the settle. */
+        const val DURATION = 0.55f
+        /** How far the arriving page starts out (of the pages' width or height): a glide, not a full sweep. */
+        const val TRAVEL = 0.35f
+        /** How far the leaving page drifts the other way. */
+        const val DRIFT = 0.12f
+        /** By what share of the switch the old page has faded out, and the new one in. */
+        const val OUT = 0.4f
+        const val IN = 0.5f
+        /** The spring's stiffness over the whole switch (critically damped: it settles without overshoot). */
+        const val STIFFNESS = 7f
 
         /** Ease in-out (quintic smootherstep), as BrassNavStack. */
         fun smooth(t: Float): Float = t * t * t * (t * (t * 6f - 15f) + 10f)
+
+        /** A critically damped spring from 0 to 1 over the switch, scaled to land exactly on 1. */
+        fun spring(t: Float): Float {
+            fun f(x: Float) = 1f - (1f + STIFFNESS * x) * kotlin.math.exp(-STIFFNESS * x)
+            return (f(t) / f(1f)).coerceIn(0f, 1f)
+        }
     }
 
     private fun release(page: Page) {
