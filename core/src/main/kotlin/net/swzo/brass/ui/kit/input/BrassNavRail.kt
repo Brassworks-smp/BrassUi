@@ -31,6 +31,8 @@ class BrassNavRail @JvmOverloads constructor(
     private val onChange: (Int) -> Unit = {},
     private val pinnedBottom: Int = 0,
     private val pinnedTop: Int = 0,
+    /** An icon before each item's label, by index (null or missing: none). */
+    private val icons: List<net.swzo.brass.ui.kit.media.BrassIcons.Icon?> = emptyList(),
 ) : BrassScrollArea(reserveBar = false), BrassValue<Int> {
 
     private val rows = ArrayList<BrassButton>()
@@ -50,8 +52,9 @@ class BrassNavRail @JvmOverloads constructor(
         val heads = pinnedTop.coerceIn(0, top)
         items.forEachIndexed { i, label ->
             val head = i < heads
-            val row = BrassButton(label, BrassAccent.DEFAULT) { value = i }.apply {
+            val row = BrassButton(label, BrassAccent.DEFAULT) { clicked(i) }.apply {
                 centered = false
+                icon = icons.getOrNull(i)
                 chrome = if (head) BrassChrome.KEYCAP else BrassChrome.FLAT
                 selectable = true
             }
@@ -88,10 +91,20 @@ class BrassNavRail @JvmOverloads constructor(
         holder.onChange(onChange)
     }
 
+    /** Set while the player's click selects a row: only that eases into its new colours. */
+    private var clicking = false
+
+    private fun clicked(index: Int) {
+        clicking = true
+        try { value = index } finally { clicking = false }
+    }
+
     private fun applySelection(index: Int) {
         rows.forEachIndexed { i, row ->
             row.selected = i == index
             row.accent = if (i == index) BrassAccent.BRASS else BrassAccent.DEFAULT
+            // A selection set in code (restored after a rebuild, from bound state) lands at once.
+            if (!clicking) row.settleColors()
         }
     }
 

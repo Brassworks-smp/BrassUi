@@ -135,8 +135,22 @@ abstract class BrassWidget(
     protected val bw: Int get() = getRight().roundToInt() - getLeft().roundToInt()
     protected val bh: Int get() = getBottom().roundToInt() - getTop().roundToInt()
 
+    /** Land the colours on their targets on the next frame instead of easing there (see [settleColors]). */
+    private var snapColors = true
+
+    /**
+     * The next frame shows the colours for the current state at once, without the ease: for a state set in
+     * code (a selection restored after a rebuild, a value from the server) rather than by the player, so a
+     * refresh never replays a transition. A widget's first frame always lands this way, so one built and then
+     * selected doesn't fade into its selection.
+     */
+    fun settleColors() {
+        snapColors = true
+    }
+
     private fun advanceColors(dt: Float, hovered: Boolean, sel: Boolean) {
-        val ct = (COLOR_SPEED * dt).coerceAtMost(1f)
+        val ct = if (snapColors) 1f else (COLOR_SPEED * dt).coerceAtMost(1f)
+        snapColors = false
         // targets (mirror ThemeManager.getElement*Color)
         val tBg: Color; val tBorder: Color; val tText: Color
         if (accent.isDefault) {

@@ -14,6 +14,7 @@ import net.swzo.brass.ui.kit.base.BrassAmbientFade
 import net.swzo.brass.ui.kit.base.BrassClock
 import net.swzo.brass.ui.kit.base.BrassFocus
 import net.swzo.brass.ui.kit.base.BrassInert
+import net.swzo.brass.ui.kit.base.BrassMotion
 import net.swzo.brass.ui.kit.base.BrassState
 import net.swzo.brass.ui.kit.base.BrassTree
 import net.swzo.brass.ui.kit.input.BrassNavRail
@@ -40,6 +41,8 @@ class BrassPages @JvmOverloads constructor(
     class Page internal constructor(
         val title: String,
         private val build: (Page) -> Unit,
+        /** Shown before the title on a [navRail]. */
+        val icon: net.swzo.brass.ui.kit.media.BrassIcons.Icon? = null,
     ) : UIContainer(), BrassInert {
 
         var active: Boolean = false
@@ -101,8 +104,11 @@ class BrassPages @JvmOverloads constructor(
         selection.onChange { apply(it) }
     }
 
-    fun page(title: String, build: (Page) -> Unit): Page {
-        val page = Page(title, build)
+    fun page(title: String, build: (Page) -> Unit): Page = page(title, null, build)
+
+    /** A page with an [icon] beside its title on a [navRail]. */
+    fun page(title: String, icon: net.swzo.brass.ui.kit.media.BrassIcons.Icon?, build: (Page) -> Unit): Page {
+        val page = Page(title, build, icon)
         page.constrain {
             x = pad.pixels(); y = pad.pixels()
             width = 100.percent() - (pad * 2).pixels()
@@ -134,7 +140,7 @@ class BrassPages @JvmOverloads constructor(
      */
     @JvmOverloads
     fun navRail(pinnedBottom: Int = 0, pinnedTop: Int = 0): BrassNavRail {
-        val rail = BrassNavRail(all.map { it.title }, pinnedBottom = pinnedBottom, pinnedTop = pinnedTop)
+        val rail = BrassNavRail(all.map { it.title }, pinnedBottom = pinnedBottom, pinnedTop = pinnedTop, icons = all.map { it.icon })
         rail.onChange { picked = it }
         rail.bind(selection)
         return rail
@@ -173,33 +179,25 @@ class BrassPages @JvmOverloads constructor(
 
     override fun animationFrame() {
         if (direction != 0) {
-            progress = (progress + BrassClock.dt / DURATION).coerceAtMost(1f)
+            progress = (progress + BrassClock.dt / BrassMotion.DURATION).coerceAtMost(1f)
             if (progress >= 1f) finish() else layoutSlide()
         }
         super.animationFrame()
     }
 
-    /**
-     * The arriving page glides in from its side on a spring (quick to start, a long gentle settle, no
-     * bounce), the leaving one drifts a little the other way and fades out early, so the two are never
-     * half-seen over each other. Offsets snap to whole pixels.
-     */
+    /** The arriving page glides in from its side, the leaving one drifts away and fades (see [BrassMotion]). */
     private fun layoutSlide() {
         val size = if (slide == Slide.VERTICAL) getHeight() else getWidth()
-        val t = spring(progress)
-        val out = 1f - smooth((progress / OUT).coerceIn(0f, 1f))
-        val inn = smooth((progress / IN).coerceIn(0f, 1f))
-        val arriving = current
-        val arrive = Math.round(direction * (1f - t) * size * TRAVEL).toFloat()
-        val drift = Math.round(-direction * t * size * DRIFT).toFloat()
-        arriving?.apply {
+        val arrive = BrassMotion.arrive(progress, direction, size)
+        val drift = BrassMotion.drift(progress, direction, size)
+        current?.apply {
             if (slide == Slide.VERTICAL) { dy = arrive; dx = 0f } else { dx = arrive; dy = 0f }
-            fade = inn
+            fade = BrassMotion.fadeIn(progress)
         }
         leaving?.apply {
             if (slide == Slide.VERTICAL) { dy = drift; dx = 0f } else { dx = drift; dy = 0f }
-            fade = out * out
-            leaving = out > 0f
+            fade = BrassMotion.fadeOut(progress)
+            leaving = fade > 0f
         }
     }
 
@@ -213,29 +211,6 @@ class BrassPages @JvmOverloads constructor(
         current?.let { it.dx = 0f; it.dy = 0f; it.fade = 1f }
         clip?.let { removeEffect(it) }
         clip = null
-    }
-
-    private companion object {
-        /** How long a switch takes, in seconds: unhurried, most of it the settle. */
-        const val DURATION = 0.55f
-        /** How far the arriving page starts out (of the pages' width or height): a glide, not a full sweep. */
-        const val TRAVEL = 0.35f
-        /** How far the leaving page drifts the other way. */
-        const val DRIFT = 0.12f
-        /** By what share of the switch the old page has faded out, and the new one in. */
-        const val OUT = 0.4f
-        const val IN = 0.5f
-        /** The spring's stiffness over the whole switch (critically damped: it settles without overshoot). */
-        const val STIFFNESS = 7f
-
-        /** Ease in-out (quintic smootherstep), as BrassNavStack. */
-        fun smooth(t: Float): Float = t * t * t * (t * (t * 6f - 15f) + 10f)
-
-        /** A critically damped spring from 0 to 1 over the switch, scaled to land exactly on 1. */
-        fun spring(t: Float): Float {
-            fun f(x: Float) = 1f - (1f + STIFFNESS * x) * kotlin.math.exp(-STIFFNESS * x)
-            return (f(t) / f(1f)).coerceIn(0f, 1f)
-        }
     }
 
     private fun release(page: Page) {

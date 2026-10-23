@@ -68,7 +68,7 @@ class BrassTabSwitch(
         constrain { height = 18.pixels() }
         val n = options.size.coerceAtLeast(1)
         options.forEachIndexed { i, opt ->
-            val tab = BrassButton(opt, if (i == initialIndex) accent else BrassAccent.DEFAULT) { select(i) }
+            val tab = BrassButton(opt, if (i == initialIndex) accent else BrassAccent.DEFAULT) { clicked(i) }
             tab.selectable = true
             tab.selected = i == initialIndex
             tab.constrain {
@@ -121,10 +121,20 @@ class BrassTabSwitch(
 
     fun select(index: Int) { value = index }
 
+    /** Set while the player's click selects a tab: only that eases into its new colours. */
+    private var clicking = false
+
+    private fun clicked(index: Int) {
+        clicking = true
+        try { select(index) } finally { clicking = false }
+    }
+
     private fun applySelection(index: Int) {
         tabs.forEachIndexed { i, tab ->
             tab.selected = i == index
             tab.accent = if (i == index) accent else BrassAccent.DEFAULT
+            // A selection set in code (restored after a rebuild, from bound state) lands at once.
+            if (!clicking) tab.settleColors()
         }
     }
 

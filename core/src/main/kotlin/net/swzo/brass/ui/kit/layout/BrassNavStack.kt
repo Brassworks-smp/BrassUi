@@ -14,6 +14,7 @@ import net.swzo.brass.ui.kit.base.BrassClock
 import net.swzo.brass.ui.kit.base.BrassEntrance
 import net.swzo.brass.ui.kit.base.BrassFocus
 import net.swzo.brass.ui.kit.base.BrassInert
+import net.swzo.brass.ui.kit.base.BrassMotion
 import net.swzo.brass.ui.kit.base.BrassTree
 import net.swzo.brass.ui.kit.base.BrassWidget
 import net.swzo.brass.ui.kit.text.BrassTextField
@@ -35,10 +36,9 @@ import net.swzo.brass.ui.kit.text.BrassTextField
  * nav.push(detailLevel)                 // slides in
  * nav.pop()                             // slides back to listLevel, untouched
  * ```
- * Each level is any component; the stack sizes it to fill itself. Motion follows [BrassFrameAnim]'s
- * approach: it is drawn through the matrix (no relayout per frame), so hit-testing uses the resting
- * bounds during the ~400 ms a transition runs (eased in and out; the old level fades out in its
- * first third).
+ * Each level is any component; the stack sizes it to fill itself. It moves like a page switch
+ * ([BrassMotion]: the same spring, travel, drift and fades), drawn through the matrix on whole pixels (no
+ * relayout per frame), so hit-testing uses the resting bounds while a transition runs.
  */
 class BrassNavStack : UIContainer() {
 
@@ -221,9 +221,8 @@ class BrassNavStack : UIContainer() {
 
     override fun animationFrame() {
         if (direction != 0) {
-            // Linear in time; the curve is applied in [apply] (an exponential approach front-loads all
-            // the motion into the first frames and reads as a snap).
-            progress = (progress + BrassClock.dt / DURATION).coerceAtMost(1f)
+            // Linear in time; the curve is applied in [apply].
+            progress = (progress + BrassClock.dt / BrassMotion.DURATION).coerceAtMost(1f)
             if (progress >= 1f) land() else apply()
         } else if (top?.phase == BrassEntrance.Phase.SETTLING && System.nanoTime() - settledAt > SETTLE_NANOS) {
             top?.phase = BrassEntrance.Phase.IDLE
@@ -231,31 +230,28 @@ class BrassNavStack : UIContainer() {
         super.animationFrame()
     }
 
-    /** Lays the moving levels out for the current [progress]. */
+    /** Lays the moving levels out for the current [progress] (see [BrassMotion]). */
     private fun apply() {
         val w = getWidth()
-        val t = smooth(progress)
-        // The level being covered (or leaving) is gone by OUT of the way; the arriving one fades in
-        // over the first IN of it, so the two never sit half-visible on top of each other.
-        val out = 1f - (progress / OUT).coerceIn(0f, 1f)
-        val inn = smooth((progress / IN).coerceIn(0f, 1f))
+        val inn = BrassMotion.fadeIn(progress)
+        val out = BrassMotion.fadeOut(progress)
         val under = levels.getOrNull(levels.size - 2)
         val onTop = top
         when (direction) {
             +1 -> {
-                // The new top comes in from the right edge; the one it covers drifts left and dims.
-                onTop?.apply { shown = true; dx = (1f - t) * w; fade = inn; phase = BrassEntrance.Phase.OPENING }
-                under?.apply { shown = out > 0f; dx = -t * w * DRIFT; fade = out * out }
+                // The new top glides in from the right; the one it covers drifts left and fades.
+                onTop?.apply { shown = true; dx = BrassMotion.arrive(progress, +1, w); fade = inn; phase = BrassEntrance.Phase.OPENING }
+                under?.apply { shown = out > 0f; dx = BrassMotion.drift(progress, +1, w); fade = out }
             }
             -1 -> {
-                // The leaving level goes back out to the right; the one under it returns from the left.
-                leaving?.apply { shown = out > 0f; dx = t * w; fade = out * out; phase = BrassEntrance.Phase.IDLE }
-                onTop?.apply { shown = true; dx = -(1f - t) * w * DRIFT; fade = inn; phase = BrassEntrance.Phase.IDLE }
+                // The leaving level drifts back out to the right; the one under it glides in from the left.
+                leaving?.apply { shown = out > 0f; dx = BrassMotion.drift(progress, -1, w); fade = out; phase = BrassEntrance.Phase.IDLE }
+                onTop?.apply { shown = true; dx = BrassMotion.arrive(progress, -1, w); fade = inn; phase = BrassEntrance.Phase.IDLE }
                 under?.shown = false
             }
             else -> {}
         }
-        // The leaving level is drawn over the returning one (it is the one sliding across).
+        // The leaving level is drawn over the returning one (it is the one moving across).
         leaving?.let { if (children.lastOrNull() !== it) { removeChild(it); addChild(it) } }
     }
 
@@ -269,17 +265,6 @@ class BrassNavStack : UIContainer() {
     }
 
     private companion object {
-        /** How long a slide takes, in seconds. */
-        const val DURATION = 0.42f
-        /** How far (of the width) the covered level drifts left. */
-        const val DRIFT = 0.25f
-        /** By what share of the slide the old level has faded out, and the new one in. */
-        const val OUT = 0.35f
-        const val IN = 0.6f
-
-        /** Ease in-out (quintic smootherstep): starts gently, glides, settles without a jolt. */
-        fun smooth(x: Float): Float = x * x * x * (x * (x * 6f - 15f) + 10f)
-
         val SETTLE_NANOS: Long = ((BrassWidget.ENTRANCE_DELAY_MAX + 1f / BrassWidget.ENTRANCE_SPEED) * 1e9f).toLong()
     }
 }
