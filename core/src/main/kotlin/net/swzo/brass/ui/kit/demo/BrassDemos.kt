@@ -38,6 +38,10 @@ import net.swzo.brass.ui.kit.surface.BrassChart
 import net.swzo.brass.ui.kit.surface.BrassChat
 import net.swzo.brass.ui.kit.surface.BrassPanel
 import net.swzo.brass.ui.kit.surface.BrassListRow
+import net.swzo.brass.ui.kit.quest.BrassQuestCard
+import net.swzo.brass.ui.kit.layout.BrassSidebar
+import net.swzo.brass.ui.kit.layout.BrassMasterDetail
+import net.swzo.brass.ui.kit.quest.BrassQuestTree
 import net.swzo.brass.ui.kit.surface.BrassStat
 import net.swzo.brass.ui.kit.layout.BrassSectionHeader
 import net.swzo.brass.ui.kit.input.BrassNavRail
@@ -130,6 +134,10 @@ object BrassDemos {
         BrassChart,
         BrassTable,
         BrassListRow,
+        BrassQuestCard,
+        BrassSidebar,
+        BrassMasterDetail,
+        BrassQuestTree,
         BrassTreeView,
         BrassAccordion,
         BrassChat,

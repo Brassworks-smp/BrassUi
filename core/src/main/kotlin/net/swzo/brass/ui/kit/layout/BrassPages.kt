@@ -126,6 +126,16 @@ class BrassPages @JvmOverloads constructor(
 
     fun select(title: String) = select(all.indexOfFirst { it.title == title })
 
+    /**
+     * Select [index] as the player's own switch, so it slides like a click on [tabs] would - for a tab
+     * strip built by hand (one that hides some pages, say).
+     */
+    fun pick(index: Int) {
+        if (index !in all.indices || index == selection.value) return
+        picked = index
+        selection.value = index
+    }
+
     fun tabs(equalWidths: Boolean = false): BrassTabSwitch {
         val tabs = BrassTabSwitch(all.map { it.title }, selection.value.coerceAtLeast(0), equalWidths = equalWidths)
         tabs.onChange { picked = it } // before the binding: the player's pick is known when the selection moves

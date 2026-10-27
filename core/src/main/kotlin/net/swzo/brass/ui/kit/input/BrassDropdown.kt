@@ -49,7 +49,10 @@ class BrassDropdown(
     private val selectedId: String get() = holder.value
 
     private val field = Field()
-    private val menu = UIContainer()
+    // A layer of its own: open, it unrolls over whatever sits below the dropdown on purpose.
+    private val menu = object : UIContainer(), net.swzo.brass.ui.kit.surface.BrassLayers.Layer {
+        override val rank get() = net.swzo.brass.ui.kit.surface.BrassLayers.Rank.TRANSIENT
+    }
     private val card = Card()
     private val rows = LinkedHashMap<String, BrassButton>()
 

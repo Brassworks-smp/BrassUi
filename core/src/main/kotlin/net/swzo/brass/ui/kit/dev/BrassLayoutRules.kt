@@ -35,6 +35,8 @@ object BrassLayoutRules {
         val insetRef: Rect? = null,
         val layer: Boolean = false,
         val allowed: Map<String, String> = emptyMap(),
+        /** What a click at this clickable widget's visible centre lands on instead (no higher a layer), if anything. */
+        val blockedBy: String? = null,
         val children: List<Node> = emptyList(),
     ) {
         val paint: Rect
@@ -90,6 +92,7 @@ object BrassLayoutRules {
                 }
                 val visible = n.box.intersect(ctx.clip)
                 if (!visible.empty) placed += Placed(n, visible, ctx.layer, ancestors, where)
+                n.blockedBy?.let { report("unclickable", Severity.ERROR, "a click lands on $it instead") }
             }
 
             if ((n.clip == Clip.SCROLL || n.selfScroll) && ctx.inScroll) {

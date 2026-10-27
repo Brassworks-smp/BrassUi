@@ -6,6 +6,7 @@ import net.swzo.brass.ui.kit.dev.BrassLayoutRules.Node
 import net.swzo.brass.ui.kit.dev.BrassLayoutRules.Rect
 import net.swzo.brass.ui.kit.dev.BrassLayoutRules.Severity
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -103,5 +104,20 @@ class BrassLayoutRulesTest {
             )),
         ))
         assertEquals(emptyList<String>(), rules(collapsed))
+    }
+
+    @Test
+    fun `a clickable widget whose click lands on something else is unclickable`() {
+        // what the audit records when a real click at the widget's centre lands elsewhere
+        val blocked = Node("BrassButton", Rect(120f, 80f, 180f, 98f), widget = true, bleeds = true, blockedBy = "UIContainer (0,0 640x400)")
+        assertTrue("unclickable" in rules(window(blocked)))
+        assertFalse("unclickable" in rules(window(button(120f, 80f))))
+    }
+
+    @Test
+    fun `unclickable can be excused`() {
+        val blocked = Node("BrassButton", Rect(120f, 80f, 180f, 98f), widget = true, bleeds = true,
+            blockedBy = "Scrim", allowed = mapOf("unclickable" to "covered by design while loading"))
+        assertFalse("unclickable" in rules(window(blocked)))
     }
 }

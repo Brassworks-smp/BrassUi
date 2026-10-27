@@ -76,7 +76,13 @@ fun main() {
 
         val jumpTo = System.getProperty("ui.demo")
         val shotOf = System.getProperty("ui.shot")
-        val screen = if (jumpTo != null || shotOf != null) {
+        // -Dui.screen=<reference id> opens one reference screen to use by hand (the harness drives and quits).
+        val referenceScreen = System.getProperty("ui.screen")?.let { id ->
+            net.swzo.brass.ui.demo.reference.BrassReferences.find(id)?.create?.invoke(net.swzo.brass.ui.BrassAppScreen.Fit.FLOATING)
+        }
+        val screen = if (referenceScreen != null) {
+            referenceScreen
+        } else if (jumpTo != null || shotOf != null) {
             val glfwId = window.glfwWindow.glfwId
             BrassDemoBrowser(
                 onExit = { GLFW.glfwSetWindowShouldClose(glfwId, true) },

@@ -12,6 +12,7 @@ object BrassReferences {
         Reference("settings", "Settings") { ClientSettingsScreen(it) },
         Reference("registry", "Large list") { ItemRegistryScreen(it) },
         Reference("guild", "Multi-tab manager") { GuildManagerScreen(it) },
+        Reference("quests", "Quest journal") { QuestJournalScreen(it) },
     )
 
     fun find(id: String): Reference? = ALL.firstOrNull { it.id.equals(id, ignoreCase = true) }

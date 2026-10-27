@@ -60,6 +60,7 @@ import net.swzo.brass.ui.kit.media.BrassEffectIcon
 import net.swzo.brass.ui.kit.media.BrassEntity
 import net.swzo.brass.ui.kit.media.BrassItem
 import net.swzo.brass.ui.kit.media.BrassPlayerHead
+import net.swzo.brass.ui.kit.quest.BrassQuestCard
 import net.swzo.brass.ui.kit.surface.BrassAccordion
 import net.swzo.brass.ui.kit.surface.BrassBarChart
 import net.swzo.brass.ui.kit.surface.BrassChart
@@ -222,6 +223,7 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             add("Appearance" to { openAppearance() })
             add("Markdown" to { openMarkdown() })
             add("Table" to { openTable() })
+            add("Quests" to { openQuests() })
             // The declared demos, played live. Deliberately first-class in the nav rather than
             // tucked away: this is the one section that is guaranteed to match the captured
             // documentation, because it is running the same scripts.
@@ -626,6 +628,39 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
     private data class Player(val name: String, val ping: Int, val state: String)
 
     /** BrassNavStack: rows open a deeper level that slides in; back slides it away, the list as it was. */
+    private fun openQuests() {
+        val b = popupBounds(360f, 440f)
+        val quests = net.swzo.brass.ui.demo.reference.QuestSamples.all()
+        val toast: (BrassQuestCard.Kind, net.swzo.brass.ui.kit.quest.BrassQuest) -> Unit = { kind, q ->
+            BrassToast.show(background, "${q.title}: ${kind.name.lowercase()}", BrassToast.Type.SUCCESS)
+        }
+        val card = BrassQuestCard(quests[0]).also { it.onAction = toast }
+        fun q(id: String) = quests.first { it.id == id }
+        val milestone = BrassQuestCard(q("long-night")).also { it.onAction = toast; it.maxObjectives = 3 }
+        val available = BrassQuestCard(q("depths")).also { it.onAction = toast; it.showSummary = false }
+        val folded = BrassQuestCard(q("relay")).also { it.collapsed = true }
+        val log = BrassVBox(gap = 1f, bleed = false)
+        val rows = ArrayList<BrassQuestCard>()
+        quests.forEach { q -> rows += BrassQuestCard(q, BrassQuestCard.Style.COMPACT) { picked -> rows.forEach { it.selected = it === picked } } }
+        rows[0].selected = true
+        rows.forEach { row ->
+            row.constrain { width = basicWidthConstraint { log.getWidth() } }
+            log.add(row)
+        }
+        val tracker = BrassQuestCard(quests[0], BrassQuestCard.Style.TRACKER)
+        BrassPopup("Quests")
+            .addField("Quest card", card)
+            .addField("Milestone - click +N more to expand", milestone)
+            .addField("Available (no summary)", available)
+            .addField("Collapsed - click a header to fold", folded)
+            .addField("Quest log rows", log)
+            .addField("Tracker", tracker)
+            .addField("Quest tree - drag to pan, click a node", net.swzo.brass.ui.kit.quest.BrassQuestTree.sampleTree { q ->
+                BrassToast.show(background, q.title, BrassToast.Type.INFO)
+            }.also { it.constrain { height = 150.pixels() } })
+            .show(background, b[0], b[1], b[2], b[3])
+    }
+
     private fun openNavigation() {
         val b = popupBounds(340f, 300f)
         val nav = net.swzo.brass.ui.kit.layout.BrassNavStack()
