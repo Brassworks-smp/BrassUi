@@ -186,10 +186,7 @@ class BrassListRow @JvmOverloads constructor(
         val fx = x.toFloat(); val fy = y.toFloat()
         val hot = (hoveredState || proxyHovered) && active
         when {
-            selected -> {
-                BrassPaint.rect(m, fx, fy, fx + w, fy + h, withAlpha(Colors.UI_INNER_BG_SELECTED, entranceFade))
-                BrassPaint.rect(m, fx, fy, fx + SELECT_BAR, fy + h, withAlpha(Colors.UI_ACCENT, entranceFade))
-            }
+            selected -> BrassPaint.selection(m, fx, fy, fx + w, fy + h, entranceFade)
             hot -> BrassPaint.rect(m, fx, fy, fx + w, fy + h, withAlpha(Colors.ROW_HOVER, entranceFade))
         }
 
@@ -228,7 +225,6 @@ class BrassListRow @JvmOverloads constructor(
         private const val KEY_W = 14f
         private const val KEY_H = 11f
         private const val KEY_GAP = 3f
-        private const val SELECT_BAR = 2f
         private const val TWO_LINE_TOP = 4f
 
         @JvmStatic

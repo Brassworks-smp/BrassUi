@@ -1,5 +1,11 @@
 package net.swzo.brass.ui.kit.input
 
+import net.swzo.brass.ui.kit.paint.BrassPaint
+
+import net.swzo.brass.ui.Colors
+
+import gg.essential.universal.UMatrixStack
+
 import gg.essential.elementa.constraints.SiblingConstraint
 import gg.essential.elementa.dsl.basicYConstraint
 import gg.essential.elementa.dsl.childOf
@@ -52,10 +58,10 @@ class BrassNavRail @JvmOverloads constructor(
         val heads = pinnedTop.coerceIn(0, top)
         items.forEachIndexed { i, label ->
             val head = i < heads
-            val row = BrassButton(label, BrassAccent.DEFAULT) { clicked(i) }.apply {
+            val row = (if (head) BrassButton(label, BrassAccent.DEFAULT) { clicked(i) } else RailRow(label) { clicked(i) }).apply {
                 centered = false
                 icon = icons.getOrNull(i)
-                chrome = if (head) BrassChrome.KEYCAP else BrassChrome.FLAT
+                chrome = if (head) BrassChrome.KEYCAP else BrassChrome.NONE
                 selectable = true
             }
             if (i == heads && heads > 0) {
@@ -108,7 +114,21 @@ class BrassNavRail @JvmOverloads constructor(
         }
     }
 
+    /** A flat rail row: the shared selected-row look, a hover wash, the label on top. */
+    private class RailRow(label: String, onClick: () -> Unit) : BrassButton(label, BrassAccent.DEFAULT, onClick) {
+        override fun drawContent(m: UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
+            val x1 = x.toFloat(); val y1 = y.toFloat(); val x2 = (x + w).toFloat(); val y2 = (y + h).toFloat()
+            when {
+                selected -> BrassPaint.selection(m, x1, y1, x2, y2, entranceFade)
+                hoveredState && active -> BrassPaint.rect(m, x1, y1, x2, y2, withAlpha(Colors.ROW_HOVER, entranceFade))
+            }
+            // the label starts clear of the bar and its notch
+            super.drawContent(m, x + LABEL_INSET, y, w - LABEL_INSET, h)
+        }
+    }
+
     companion object : BrassDemoSource {
+        private const val LABEL_INSET = 4
         const val ROW_H = 18f
         const val GAP = 3f
         /** Between the headline keycaps' lip and the separator, and the separator and the rows below. */

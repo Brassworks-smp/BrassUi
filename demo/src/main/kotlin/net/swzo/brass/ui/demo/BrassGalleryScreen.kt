@@ -236,9 +236,19 @@ class BrassGalleryScreen(private val host: BrassDemoHost) : BrassScreen(backdrop
             if (host.gameWidgets) add("Items" to { openItems() })
         }
         sections.forEachIndexed { i, (label, open) ->
-            val row = BrassButton(label, BrassAccent.DEFAULT) { selectNav(i); open() }.apply {
+            val row = object : BrassButton(label, BrassAccent.DEFAULT, { selectNav(i); open() }) {
+                override fun drawContent(m: gg.essential.universal.UMatrixStack, x: Int, y: Int, w: Int, h: Int) {
+                    val x1 = x.toFloat(); val y1 = y.toFloat(); val x2 = (x + w).toFloat(); val y2 = (y + h).toFloat()
+                    when {
+                        selected -> net.swzo.brass.ui.kit.paint.BrassPaint.selection(m, x1, y1, x2, y2, entranceFade)
+                        hoveredState && active -> net.swzo.brass.ui.kit.paint.BrassPaint.rect(m, x1, y1, x2, y2, withAlpha(Colors.ROW_HOVER, entranceFade))
+                    }
+                    super.drawContent(m, x + 4, y, w - 4, h)
+                }
+            }.apply {
                 centered = false
-                chrome = BrassChrome.FLAT
+                chrome = BrassChrome.NONE
+                selectable = true
             }
             row.constrain {
                 x = 0.pixels()

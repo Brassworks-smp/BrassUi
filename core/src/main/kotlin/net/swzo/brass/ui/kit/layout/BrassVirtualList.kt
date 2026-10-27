@@ -283,7 +283,9 @@ abstract class BrassVirtualList<T>(
 
         for (i in first until last) {
             val ry = bodyTop + i * rowHeight - scroll
-            rowBackground(i)?.let { BrassPaint.rectSnapped(m, x + 1f, ry, x + w - 1f, ry + rowHeight, it) }
+            val bg = rowBackground(i)
+            if (i == selectedIndex && bg == SELECTED) BrassPaint.selection(m, x + 1f, ry, x + w - 1f, ry + rowHeight)
+            else bg?.let { BrassPaint.rectSnapped(m, x + 1f, ry, x + w - 1f, ry + rowHeight, it) }
             // Rows shift left by the horizontal scroll (code wider than the viewport); the scissor
             // clips the overflow, and the h-bar reveals it.
             paintRow(m, items[i], i, x - hScroll, ry, w)

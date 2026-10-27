@@ -1,5 +1,7 @@
 package net.swzo.brass.ui.kit.paint
 
+import net.swzo.brass.ui.Colors
+
 import gg.essential.elementa.components.UIBlock
 import gg.essential.universal.UGraphics
 import gg.essential.universal.UMatrixStack
@@ -81,6 +83,34 @@ object BrassPaint {
         rect(m, ox1, iy1, ix1, iy2, c)
         rect(m, ix2, iy1, ox2, iy2, c)
     }
+
+    /**
+     * The selected-row look shared by list rows, sidebars and quest rows: the selected fill, an accent wash
+     * fading out from the left in stepped bands, a two-pixel bar (inset from the row's ends) lit along its inner edge, and a small
+     * notch at its middle pointing into the row.
+     */
+    @JvmOverloads
+    fun selection(m: UMatrixStack, x1: Float, y1: Float, x2: Float, y2: Float, alpha: Float = 1f) {
+        if (x2 <= x1 || y2 <= y1 || alpha <= 0.001f) return
+        rect(m, x1, y1, x2, y2, fade(Colors.UI_INNER_BG_SELECTED, alpha))
+        val reach = minOf(WASH, (x2 - x1) / 3f)
+        val step = reach / WASH_BANDS
+        for (i in 0 until WASH_BANDS) {
+            val k = 1f - i / WASH_BANDS.toFloat()
+            rect(m, x1 + i * step, y1, x1 + (i + 1) * step, y2, fade(Colors.UI_ACCENT, alpha * 0.14f * k * k))
+        }
+        val inset = if (y2 - y1 >= 12f) 2f else 1f
+        rect(m, x1, y1 + inset, x1 + 1f, y2 - inset, fade(Colors.UI_ACCENT, alpha))
+        rect(m, x1 + 1f, y1 + inset, x1 + 2f, y2 - inset, fade(Colors.UI_ACCENT_BRIGHT, alpha))
+        if (y2 - y1 >= 10f) {
+            val cy = kotlin.math.floor((y1 + y2) / 2f)
+            rect(m, x1 + 2f, cy - 1f, x1 + 3f, cy + 2f, fade(Colors.UI_ACCENT_BRIGHT, alpha))
+            rect(m, x1 + 3f, cy, x1 + 4f, cy + 1f, fade(Colors.UI_ACCENT_BRIGHT, alpha))
+        }
+    }
+
+    private const val WASH = 36f
+    private const val WASH_BANDS = 6
 
     fun fade(c: Color, a: Float): Color =
         if (a >= 1f) c

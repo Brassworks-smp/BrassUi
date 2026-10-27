@@ -1,5 +1,7 @@
 package net.swzo.brass.ui.kit.dev
 
+import net.swzo.brass.ui.kit.paint.BrassPaint
+
 import gg.essential.elementa.UIComponent
 import gg.essential.elementa.components.UIBlock
 import gg.essential.universal.UMatrixStack
@@ -54,7 +56,7 @@ internal class TreeRow(
         }
 
         val selected = BrassDevMode.selectedComponent === target
-        if (selected) fill(x.toFloat(), y.toFloat(), (x + w).toFloat(), (y + h).toFloat(), Colors.UI_SELECTION)
+        if (selected) BrassPaint.selection(m, x.toFloat(), y.toFloat(), (x + w).toFloat(), (y + h).toFloat(), a)
         else if (hoveredState) fill(x.toFloat(), y.toFloat(), (x + w).toFloat(), (y + h).toFloat(), Colors.UI_SELECTION_FAINT)
 
         // Indent guides and the expand glyph come from BrassTreeGuides, so the inspector and a

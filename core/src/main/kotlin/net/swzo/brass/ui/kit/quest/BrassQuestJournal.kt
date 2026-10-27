@@ -99,6 +99,7 @@ class BrassQuestJournal @JvmOverloads constructor(
     private var overviewDirty = true
     private val hooked = HashSet<BrassQuest>()
     private var overviewBody: BrassVBox? = null
+    private val overviewRows = ArrayList<BrassQuestCard>()
     private var overviewShape = 0
 
     /**
@@ -259,6 +260,7 @@ class BrassQuestJournal @JvmOverloads constructor(
         card.quest = quest
         hasCard = true
         e.board?.mark(quest)
+        if (e.kind == Kind.OVERVIEW) overviewRows.forEach { it.selected = it.quest === quest }
         if (notify) {
             // a pick by the player opens the card; restoring a page's last pick does not
             md.open()
@@ -302,6 +304,7 @@ class BrassQuestJournal @JvmOverloads constructor(
         overviewDirty = false
         val body = overviewBody ?: return
         body.clearChildren()
+        overviewRows.clear()
         val ready = readyQuests()
         val tracked = trackedQuests().filter { it !in ready }
         val overview = entries.firstOrNull { it.kind == Kind.OVERVIEW }
@@ -310,6 +313,7 @@ class BrassQuestJournal @JvmOverloads constructor(
                 c.entranceEnabled = false
                 c.selected = overview?.picked === q
                 c.constrain { width = 100.percent() }
+                overviewRows += c
             }
         fun gap(h: Float) = UIContainer().constrain { width = 100.percent(); height = h.pixels() }
         fun header(title: String, count: Int? = null) = BrassSectionHeader(title, count?.toString()).also { it.constrain { width = 100.percent() } }

@@ -100,8 +100,8 @@ class BrassQuestCard @JvmOverloads constructor(
      */
     var fillHeight: (() -> Float)? = null
 
-    /** Milestones only: the slow light sweep across the header. */
-    var shimmer = true
+    /** Milestones only: a slow band of light sweeping across the header every few seconds (off by default). */
+    var shimmer = false
 
     /**
      * FULL only: swapping [quest] glides the new one in (content rises and fades in, the frame stays put);
@@ -551,14 +551,14 @@ class BrassQuestCard @JvmOverloads constructor(
         val ms = quest.milestone
         val border = when {
             selected -> Colors.UI_ACCENT
-            ms -> Colors.mix(goldDim(), gold(), if (hot()) 0.6f else 0.3f)
+            ms -> Colors.mix(Colors.UI_INNER_BORDER, gold(), if (hot()) 0.3f else 0.1f)
             hot() && (onClick != null || collapsible) -> Colors.UI_ELEMENT_BORDER_HOVER
             else -> Colors.UI_INNER_BORDER
         }
         val reveal = if (swapMilestone && ms && swapT < 1f) swapT else 1f
         atRest(m) {
             BrassCard.panel(m, x, y, x + w, y + h, fill = if (selected) Colors.UI_INNER_BG_SELECTED else Colors.UI_INNER_BG, border = border, alpha = entranceFade)
-            if (ms) ornaments(m, x, y, w, h, BrassMotion.spring(reveal))
+            if (ms) ornaments(m, x, y, w, h, g.headerBottom, BrassMotion.spring(reveal))
             if (reveal < 1f) {
                 // the milestone reveal: a gold flash round the frame and a sweep of light over the header
                 val flash = 1f - BrassMotion.smooth(reveal)
@@ -832,21 +832,38 @@ class BrassQuestCard @JvmOverloads constructor(
         BrassPaint.rect(m, x1, y - 1f, x1 + minOf(width, x2 - x1), y + 1f, c(tint))
     }
 
-    /** Milestones: a faint inner brass ring and bracket ornaments in the four corners. */
-    private fun ornaments(m: UMatrixStack, x: Float, y: Float, w: Float, h: Float, grow: Float = 1f) {
-        BrassPaint.border(m, x + 3f, y + 3f, x + w - 3f, y + h - 3f, withAlpha(goldDim(), entranceFade * 0.45f * grow))
-        val col = c(gold())
-        val l = floor(ORNAMENT * grow).coerceAtLeast(2f)
-        for ((cx, cy, dx, dy) in listOf(
-            floatArrayOf(x + 2f, y + 2f, 1f, 1f), floatArrayOf(x + w - 2f, y + 2f, -1f, 1f),
-            floatArrayOf(x + 2f, y + h - 2f, 1f, -1f), floatArrayOf(x + w - 2f, y + h - 2f, -1f, -1f),
-        )) {
-            val hx1 = if (dx > 0) cx else cx - l
-            val vy1 = if (dy > 0) cy else cy - l
-            val ex = if (dx > 0) cx else cx - 2f
-            val ey = if (dy > 0) cy else cy - 2f
-            BrassPaint.rect(m, hx1, ey, hx1 + l, ey + 2f, col)
-            BrassPaint.rect(m, ex, vy1, ex + 2f, vy1 + l, col)
+    /**
+     * Milestones wear the selected-row look in gold: a bar down the left edge lit on its inner side with a
+     * notch at the header, a stepped wash fading right across the header, and gold top and bottom edges
+     * fading out the same way. [grow] (0..1) draws it in during the reveal.
+     */
+    private fun ornaments(m: UMatrixStack, x: Float, y: Float, w: Float, h: Float, headerBottom: Float, grow: Float = 1f) {
+        if (grow <= 0f) return
+        val gold = gold()
+        val lit = Colors.mix(gold, Colors.UI_TEXT_HOVER, 0.35f)
+        val a = entranceFade
+        val top = y + 3f
+        val bottom = top + floor((h - 6f) * grow)
+        BrassPaint.rect(m, x + 1f, top, x + 2f, bottom, withAlpha(gold, a))
+        BrassPaint.rect(m, x + 2f, top, x + 3f, bottom, withAlpha(lit, a))
+        val cy = floor(y + PAD + TILE / 2f)
+        if (cy + 2f <= bottom) {
+            BrassPaint.rect(m, x + 3f, cy - 1f, x + 4f, cy + 2f, withAlpha(lit, a))
+            BrassPaint.rect(m, x + 4f, cy, x + 5f, cy + 1f, withAlpha(lit, a))
+        }
+        val wash = minOf(GOLD_WASH, w / 3f) * grow
+        for (i in 0 until GOLD_BANDS) {
+            val k = 1f - i / GOLD_BANDS.toFloat()
+            val bx = x + 1f + i * wash / GOLD_BANDS
+            BrassPaint.rect(m, bx, y + 1f, bx + wash / GOLD_BANDS, y + headerBottom, withAlpha(gold, a * 0.16f * k * k))
+        }
+        val edge = (w - 2f) * EDGE_REACH * grow
+        for (i in 0 until GOLD_BANDS) {
+            val k = 1f - i / GOLD_BANDS.toFloat()
+            val ex = x + 1f + i * edge / GOLD_BANDS
+            val c = withAlpha(gold, a * k)
+            BrassPaint.rect(m, ex, y + 1f, ex + edge / GOLD_BANDS, y + 2f, c)
+            BrassPaint.rect(m, ex, y + h - 2f, ex + edge / GOLD_BANDS, y + h - 1f, c)
         }
     }
 
@@ -893,10 +910,7 @@ class BrassQuestCard @JvmOverloads constructor(
         val tint = statusColor(st)
         val dim = st == BrassQuest.Status.CLAIMED || st == BrassQuest.Status.LOCKED
         when {
-            selected -> {
-                BrassPaint.rect(m, x, y, x + w, y + h, c(Colors.UI_INNER_BG_SELECTED))
-                BrassPaint.rect(m, x, y, x + SEAM, y + h, c(Colors.UI_ACCENT))
-            }
+            selected -> BrassPaint.selection(m, x, y, x + w, y + h, entranceFade)
             hot() -> BrassPaint.rect(m, x, y, x + w, y + h, c(Colors.ROW_HOVER))
         }
         val tx = x + PAD
@@ -1064,7 +1078,9 @@ class BrassQuestCard @JvmOverloads constructor(
         private const val CHECK = 8f
         private const val TELL_W = 40f
         private const val BAR_ROW_GAP = 6f
-        private const val ORNAMENT = 6f
+        private const val GOLD_WASH = 48f
+        private const val GOLD_BANDS = 6
+        private const val EDGE_REACH = 0.6f
         private const val SWEEP_W = 14f
         private const val SWEEP_PERIOD = 4.5f
         private const val CELEBRATE_TIME = 1.4f

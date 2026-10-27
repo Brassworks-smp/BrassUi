@@ -663,6 +663,22 @@ class BrassQuestTree @JvmOverloads constructor(
             }
         }
 
+        /**
+         * A status badge on a tile's corner, in the status tags' language: square, the near-black outer ring,
+         * a dark wash of the status colour, a status-coloured border and a small glyph in its bright tone.
+         */
+        private fun pip(m: UMatrixStack, x: Float, y: Float, glyph: Array<String>, tint: Color, alpha: Float) {
+            BrassPaint.rect(m, x - 1f, y - 1f, x + PIP + 1f, y + PIP + 1f, c(Colors.UI_OUTER_BORDER, alpha))
+            BrassPaint.rect(m, x, y, x + PIP, y + PIP, c(Colors.mix(Colors.UI_INNER_BG, tint, 0.18f), alpha))
+            BrassPaint.border(m, x, y, x + PIP, y + PIP, c(tint, alpha))
+            val ink = c(Colors.mix(tint, Colors.UI_TEXT_HOVER, 0.25f), alpha)
+            val gx = x + floor((PIP - glyph[0].length) / 2f)
+            val gy = y + floor((PIP - glyph.size) / 2f)
+            glyph.forEachIndexed { r, row ->
+                row.forEachIndexed { col, ch -> if (ch == '#') BrassPaint.rect(m, gx + col, gy + r, gx + col + 1f, gy + r + 1f, ink) }
+            }
+        }
+
         private fun drawNode(m: UMatrixStack, n: Node) {
             val id = n.quest.id
             val p = worldOf(id) ?: return
@@ -734,19 +750,15 @@ class BrassQuestTree @JvmOverloads constructor(
                 BrassPaint.rect(m, bx1, by, bx1 + (bx2 - bx1) * a.progress, by + 2f, c(Colors.UI_ACCENT_BRIGHT, alpha))
             }
 
-            val badge: Pair<BrassIcons.Icon, Color>? = when (st) {
-                BrassQuest.Status.CLAIMED -> BrassIcons.CHECK to Colors.BRASS_600
-                BrassQuest.Status.READY -> BrassIcons.GIFT to Colors.BRASS_600
-                BrassQuest.Status.FAILED -> BrassIcons.CLOSE to Colors.PROGRESS_FAIL
+            val badge: Pair<Array<String>, Color>? = when (st) {
+                BrassQuest.Status.CLAIMED -> GLYPH_CHECK to Colors.UI_ACCENT
+                BrassQuest.Status.READY -> GLYPH_STAR to BrassQuestCard.gold()
+                BrassQuest.Status.FAILED -> GLYPH_CROSS to Colors.DANGER
                 else -> null
             }
-            badge?.let { (icon, bg) ->
+            badge?.let { (glyph, fill) ->
                 val bob = if (st == BrassQuest.Status.READY && animated) floor(sin(time * 4f) * 1.5f) else 0f
-                val bx = x1 + s - 6f
-                val by = y1 - 4f + bob
-                BrassPaint.rect(m, bx, by, bx + 10f, by + 10f, c(Colors.UI_OUTER_BORDER, alpha))
-                BrassPaint.rect(m, bx + 1f, by + 1f, bx + 9f, by + 9f, c(bg, alpha))
-                BrassIcons.draw(m, icon, bx + 1f, by + 1f, 8f, c(Colors.UI_TEXT_HOVER, alpha))
+                pip(m, x1 + s - 5f, y1 - 4f + bob, glyph, fill, alpha)
             }
             m.pop()
 
@@ -785,6 +797,10 @@ class BrassQuestTree @JvmOverloads constructor(
     companion object : BrassDemoSource {
         private const val INSET = 2f
         private const val NUB = 4f
+        private const val PIP = 9f
+        private val GLYPH_CHECK = arrayOf("....#", "...#.", "#.#..", ".#...")
+        private val GLYPH_STAR = arrayOf("..#..", ".###.", "#####", ".###.", "..#..")
+        private val GLYPH_CROSS = arrayOf("#..#", ".##.", ".##.", "#..#")
         private const val MILESTONE_GROW = 8f
         private const val MARGIN = 10f
         private const val LABEL_GAP = 4f

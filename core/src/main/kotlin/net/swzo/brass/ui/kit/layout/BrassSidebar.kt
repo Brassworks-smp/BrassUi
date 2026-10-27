@@ -238,10 +238,7 @@ class BrassSidebar @JvmOverloads constructor(
             val a = (fh / ROW_H).coerceIn(0f, 1f) * entranceFade
             val hot = hoveredState && active
             when {
-                selected -> {
-                    BrassPaint.rect(m, fx, fy, fx + fw, fy + fh, withAlpha(Colors.UI_INNER_BG_SELECTED, a))
-                    BrassPaint.rect(m, fx, fy, fx + 2f, fy + fh, withAlpha(Colors.UI_ACCENT, a))
-                }
+                selected -> BrassPaint.selection(m, fx, fy, fx + fw, fy + fh, a)
                 hot -> BrassPaint.rect(m, fx, fy, fx + fw, fy + fh, withAlpha(Colors.ROW_HOVER, a))
             }
             if (item.glow > 0f) {

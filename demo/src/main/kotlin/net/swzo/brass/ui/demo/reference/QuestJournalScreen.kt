@@ -56,6 +56,11 @@ class QuestJournalScreen(fit: Fit) : BrassReferenceScreen("Quest Journal", "Iron
     override fun scenario() = listOf(
         ReferenceStep("overview-hover") { d -> d.hover(book) },
         // Untracking (no status change, so no hook) must still drop the quest from the Overview's Tracking.
+        ReferenceStep("overview-pick", frames = 20) { overviewRows().getOrNull(1)?.let { click(it) } },
+        ReferenceStep("overview-pick-check") {
+            val rows = overviewRows()
+            println("CLICK-TEST overview pick marks the row: ${if (rows.getOrNull(1)?.selected == true && rows.count { it.selected } == 1) "OK" else "FAILED"}")
+        },
         ReferenceStep("untrack", frames = 30) { missions.first { it.id == "iron-age" }.tracked = false },
         ReferenceStep("untrack-check") {
             val q = missions.first { it.id == "iron-age" }
@@ -117,6 +122,10 @@ class QuestJournalScreen(fit: Fit) : BrassReferenceScreen("Quest Journal", "Iron
         window.mouseClick(x, y, 0)
         window.mouseRelease()
     }
+
+    private fun overviewRows() = net.swzo.brass.ui.kit.base.BrassTree.descendantsOfType(window, BrassQuestCard::class.java)
+        .filter { it.style == BrassQuestCard.Style.COMPACT && net.swzo.brass.ui.kit.base.BrassTree.isAttached(it) }
+        .filter { c -> net.swzo.brass.ui.kit.base.BrassTree.ancestors(c).none { it is net.swzo.brass.ui.kit.base.BrassInert && it.inert } }
 
     private fun clickBack() {
         val back = net.swzo.brass.ui.kit.base.BrassTree.descendantsOfType(window, BrassButton::class.java)
