@@ -32,3 +32,4 @@ target-rust/
 .claude/
 AGENTS.md
 ARCHITECTURE.md
+CLAUDE.md

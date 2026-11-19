@@ -74,6 +74,12 @@ fun main() {
             exitProcess(if (harness.errors == 0) 0 else 1)
         }
 
+        System.getProperty("ui.wiki")?.let { which ->
+            UScreen.displayScreen(WikiCapture(which, window.glfwWindow.glfwId))
+            window.renderScreenUntilClosed()
+            exitProcess(0)
+        }
+
         val jumpTo = System.getProperty("ui.demo")
         val shotOf = System.getProperty("ui.shot")
         // -Dui.screen=<reference id> opens one reference screen to use by hand (the harness drives and quits).

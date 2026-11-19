@@ -15,13 +15,24 @@ object BrassReferences {
         Reference("quests", "Quest journal") { QuestJournalScreen(it) },
     )
 
-    fun find(id: String): Reference? = ALL.firstOrNull { it.id.equals(id, ignoreCase = true) }
+    val EXAMPLES: List<Reference> = listOf(
+        Reference("hub", "Server hub") { net.swzo.brass.ui.demo.examples.ServerHubScreen(it) },
+        Reference("mod-settings", "Mod settings") { net.swzo.brass.ui.demo.examples.ModSettingsScreen(it) },
+        Reference("market", "Market") { net.swzo.brass.ui.demo.examples.MarketScreen(it) },
+    )
+
+    fun find(id: String): Reference? = (ALL + EXAMPLES).firstOrNull { it.id.equals(id, ignoreCase = true) }
 }
 
 interface ReferenceDriver {
     fun hover(component: UIComponent)
 
     fun unhover()
+
+    fun click(component: UIComponent, fx: Float = 0.5f, fy: Float = 0.5f) =
+        clickAt(component.getLeft() + component.getWidth() * fx, component.getTop() + component.getHeight() * fy)
+
+    fun clickAt(x: Float, y: Float)
 }
 
 class ReferenceStep(val name: String, val frames: Int = 24, val act: (ReferenceDriver) -> Unit)
